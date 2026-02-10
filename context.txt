@@ -5,11 +5,13 @@ TARGET PAIR: BTC/USDT
 CAPITAL: $10 USD (Micro-Account / High Risk Limit)
 LEVERAGE: 5x (Dynamic)
 
-STRATEGY: "BB-RSI Mean Reversion"
-- Timeframe: 5m or 15m (To avoid extreme noise of 1m)
-- Entry Long: Price < Lower BB AND RSI < 30
-- Entry Short: Price > Upper BB AND RSI > 70
-- Exit: Price crosses Middle BB (SMA 20)
+STRATEGY: "Smart Metralladora v6.7"
+- Timeframe: 1m (High Frequency)
+- Indicators: EMA 200 (Trend), Bollinger Bands, StochRSI.
+- Entry: Mean reversion with trend filter (Only Long if price > EMA 200).
+- Management: DCA (Grinder) - Max 2 Safety Orders.
+- Execution: Real-time Websocket (CCXT/Websocket-client).
+- Backtest: +18% PnL in 15 days (93% Win Rate).
 
 TECH STACK:
 - Language: Python 3.10+

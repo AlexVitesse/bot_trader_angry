@@ -2,95 +2,47 @@ ROADMAP: BINANCE SCALPER & ML EVOLUTION
 META FINAL: Bot de Trading de Alta Frecuencia (HFT) autonomo potenciado por ML.
 
 [ESTADO ACTUAL]
-Fase: FASE 2 - PAPER TRADING (EN PROGRESO)
-Proximo Hito: Validar bot en Testnet y preparar despliegue en vivo.
+Fase: FASE 2 - PAPER TRADING (v6.7 SMART METRALLADORA)
+Proximo Hito: Evaluar desempeño en Testnet con Websocket y DCA.
 Bot corriendo en: Binance Futures Testnet
 Ultima actualizacion: 2026-02-11
 
 ---
 
 FASE -1: VALIDACION DE ESTRATEGIA (COMPLETADA)
-[X] Backtest v1.0: Mean Reversion basico (BB + RSI) --> -38.5% (FALLIDO)
-[X] Backtest v2.0: + EMA 200 Filter + SL 1.5% --> +5.0% pero solo 6 trades
-[X] Backtest v3.0: + EMA 50 + RSI 35/65 + 5m --> -6.3% (R/R invertido)
-[X] Backtest v4.0: + Trailing Stop fijo 0.8% --> -1.2% (SL muy ajustado)
-[X] Backtest v5.0: + ATR Dynamic --> +2.6%, PF 1.30, R/R 2.21:1 (APROBADA)
+[X] Backtest v1.0 - v5.0: Diversas pruebas de Mean Reversion.
+[X] Backtest v6.7 (Smart Metralladora): +18.04% PnL, 92.7% WR (APROBADA)
 
-ESTRATEGIA ACTUAL (v6.0 - METRALLADORA):
-  - Tipo: Scalping Agresivo / Alta Frecuencia (Experimental)
-  - Par: BTC/USDT Futures
-  - Timeframe: 1 minuto (1m)
-  - Entrada: Toque de Bandas de Bollinger + RSI(6) Extremo (<25 o >75).
-  - Filtro: NINGUNO (Sin filtro de tendencia EMA).
-  - Stop Loss: 1.5 * ATR(14) (Muy ajustado)
-  - Trailing Stop: Activacion 1.5 * ATR, Distancia 0.5 * ATR (Pegado al precio)
-  - Apalancamiento: 10x
-  - Riesgo: MUY ALTO (Volatilidad pura)
-
-ESTRATEGIA ANTERIOR (OBSOLETA):
-  - v5.0 (ATR Dynamic): Validada (+2.6%), pero considerada demasiado lenta.
+ESTRATEGIA ACTUAL (v6.7 - SMART METRALLADORA):
+  - Tipo: Grinder de Alta Frecuencia (Trend Following Mean Reversion)
+  - Par: BTC/USDT Futures | Timeframe: 1m
+  - Entrada: Filtro EMA 200 + Bollinger Bands + StochRSI.
+  - Gestion: DCA (Grinder) - Max 2 Safety Orders.
+  - Apalancamiento: 10x | Margen Base: $12.
 
 ---
 
 FASE 0: CIMIENTOS DE INGENIERIA (COMPLETADA)
-[X] Crear cuenta Binance y Generar API Keys (Lectura/Trading).
-[X] Configurar entorno Python (Poetry) + Librerias (ccxt, pandas, pandas_ta, requests).
-[X] Crear estructura de carpetas del proyecto (src/, config/, logs/, data/).
-[X] Archivo .env para API Keys (seguridad).
-[X] config/settings.py con parametros de estrategia v5.0.
-[X] Script de conexion a Binance (src/test_connection.py).
-[-] Instalar Docker + InfluxDB (POSPUESTO - no necesario por ahora).
+[X] Entorno Python (Poetry) + Librerias (ccxt, pandas_ta, websocket-client).
+[X] Repositorio Git inicializado.
 
-Archivos creados:
-  - config/settings.py: Configuracion central del bot
-  - .env: API Keys (testnet y live)
-  - .gitignore: Exclusiones de git
-  - pyproject.toml: Dependencias Poetry
+FASE 1: LA TUBERIA DE DATOS (COMPLETADA)
+[X] Conexion a Binance via Websocket (Tiempo Real).
+[X] Descargador de historial masivo (fetch_history.py).
 
-FASE 1: LA TUBERIA DE DATOS (COMPLETADA - SIMPLIFICADA)
-[X] Conexion a Binance via REST API (polling cada 5 segundos).
-[X] Obtencion de velas 5m en tiempo real (get_klines).
-[X] Calculo de indicadores en tiempo real (BB, RSI, EMA, ATR).
-[-] Websocket Manager (POSPUESTO - REST es suficiente para 5m).
-[-] Data Ingestion a BD (POSPUESTO - datos en memoria por ahora).
-
-Nota: Se opto por REST API en lugar de WebSocket porque el timeframe
-de 5 minutos no requiere latencia ultra-baja. Simplifica el codigo.
-
-FASE 2: EL MOTOR DE TRADING v1.0 (COMPLETADA - EN PAPER TRADING)
-[X] Modulo de Gestion de Riesgo (Position Sizing, SL dinamico ATR).
-[X] Estrategia v5.0: Implementar logica de entrada/salida validada.
-[X] Motor de Ejecucion: Enviar ordenes a Binance Futures.
-[X] Paper Trading: Bot corriendo en Testnet de Binance.
-[X] Kill Switch: Limite de perdida diaria 20%, max 5 perdidas consecutivas.
-
-Archivos creados:
-  - src/exchange.py: Cliente Binance Futures (ordenes, balance, posiciones)
-  - src/strategy.py: Estrategia v5.0 ATR Dynamic
-  - src/trader.py: Motor de ejecucion y gestion de riesgo
-  - src/bot.py: Loop principal del bot
-  - src/test_bot.py: Test de componentes
-
-Comando para ejecutar: poetry run python src/bot.py
+FASE 2: EL MOTOR DE TRADING v1.0 (COMPLETADA)
+[X] Modulo de Ejecución con soporte para DCA/Safety Orders.
+[X] Paper Trading activo en Testnet.
 
 FASE 3: DESPLIEGUE EN VIVO (LIVE FIRE)
-[ ] Despliegue con capital minimo ($10 USDT).
-[ ] Sistema de "Kill Switch": Boton de panico para detener todo.
-[ ] Monitoreo de Metricas: Win Rate, Profit Factor, Latencia media.
-[ ] Logs y alertas (Telegram/Discord opcional).
+[ ] Validacion de estabilidad del Websocket 24/7.
+[ ] Despliegue con capital real ($100 - $200 USDT).
+[ ] Alertas de Telegram para ejecucion de trades.
 
-FASE 4: EVOLUCION A MACHINE LEARNING (EL CEREBRO v2.0)
-[ ] Feature Engineering: Variables predictivas desde datos historicos.
-[ ] Entrenamiento de Modelos:
-    - Nivel 1: Regresion Logistica / Random Forest (Direccion del precio).
-    - Nivel 2: LSTM / Transformers (Secuencias temporales complejas).
-[ ] Backtesting de ML: Probar modelo con datos "fuera de muestra".
-[ ] Inferencia en Tiempo Real: Modelo decide comprar/vender.
-[ ] Analista IA (analista_ia.py):
-    - Script secundario que corre cada hora.
-    - Lee noticias cripto (APIs de noticias/sentiment) y resumen de trades.
-    - Ajusta parametros del bot (RSI, SL, filtros) segun contexto.
-    - Modo conservador en alta volatilidad, agresivo en mercados estables.
+FASE 4: EL CEREBRO v2.0 (IA & ML)
+[ ] Analista IA (LLM): Analisis de sentimiento y noticias para pausar bot.
+[ ] ML Predictor: Reduccion de falsas entradas intra-vela.
+
 
 FASE 5: OPTIMIZACION Y ESCALADO (Largo Plazo)
 [ ] Migracion a Cloud (AWS/GCP) cerca de servidores de Binance.
