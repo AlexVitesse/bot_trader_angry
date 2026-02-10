@@ -1,16 +1,15 @@
 """
-Strategy v6.0 - METRALLADORA (Aggressive Scalper)
-=================================================
-Estrategia de Alta Frecuencia (Experimental):
+Strategy v6.7 - SMART METRALLADORA (Trend Filter + DCA)
+========================================================
+Estrategia de Alta Frecuencia:
   - Timeframe: 1m
   - Leverage: 10x
-  - Objetivo: Scalping agresivo en volatilidad.
 
 Logica:
-  - Entrada LONG: Precio <= BB_lower + RSI < 25 (Sin filtro de tendencia)
-  - Entrada SHORT: Precio >= BB_upper + RSI > 75 (Sin filtro de tendencia)
-  - Stop Loss: 1.5 * ATR (Ajustado)
-  - Trailing Stop: Activacion 1.5 * ATR, Distancia 0.5 * ATR (Muy rapido)
+  - Entrada LONG: Precio > EMA 200 + rebote BB Lower + StochRSI < 20
+  - Entrada SHORT: Precio < EMA 200 + rechazo BB Upper + StochRSI > 80
+  - Gestion: DCA con Martingale (max 2 Safety Orders)
+  - TP: 0.6% desde promedio | SL: 1.5% desde promedio
 """
 
 import sys
@@ -21,13 +20,10 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import pandas as pd
 import pandas_ta as ta
-from dataclasses import dataclass
-from typing import Optional, Tuple
 from enum import Enum
 from config.settings import (
     BB_LENGTH, BB_STD, EMA_TREND_LENGTH,
-    BASE_ORDER_MARGIN, DCA_STEP_PCT, MAX_SAFETY_ORDERS, 
-    MARTINGALE_MULTIPLIER, TAKE_PROFIT_PCT, STOP_LOSS_CATASTROPHIC
+    ATR_REGIME_LENGTH, ATR_REGIME_MULT_HIGH, ATR_REGIME_MULT_LOW
 )
 
 
@@ -39,21 +35,14 @@ class Signal(Enum):
     CLOSE = "close"
 
 
-@dataclass
-class TradeState:
-    """Estado de un trade activo."""
-    side: str  # 'long' o 'short'
-    avg_price: float
-    total_quantity: float
-    so_count: int
-    trailing_active: bool = False # Legacy, kept for compatibility
-
-
 class StrategyV6:
-    """Estrategia Smart Metralladora v6.7 (Trend Filter + DCA)."""
+    """Estrategia Smart Metralladora v6.7 (Trend Filter + DCA).
 
-    def __init__(self):
-        self.trade_state: Optional[TradeState] = None
+    Solo se encarga de:
+    1. Calcular indicadores tecnicos
+    2. Generar senales de entrada
+    El estado del trade y gestion de posicion es responsabilidad del Trader.
+    """
 
     def calculate_indicators(self, df: pd.DataFrame) -> pd.DataFrame:
         """
@@ -66,10 +55,14 @@ class StrategyV6:
         bbands = ta.bbands(df['close'], length=BB_LENGTH, std=BB_STD)
         df['bb_lower'] = bbands.iloc[:, 0]
         df['bb_upper'] = bbands.iloc[:, 2]
-        
+
         # Stochastic RSI
         stoch = ta.stochrsi(df['close'], length=14, rsi_length=14, k=3, d=3)
         df['stoch_k'] = stoch.iloc[:, 0]
+
+        # ATR para filtro de regimen de volatilidad
+        df['atr'] = ta.atr(df['high'], df['low'], df['close'], length=ATR_REGIME_LENGTH)
+        df['atr_sma'] = df['atr'].rolling(window=100).mean()
 
         return df
 
@@ -85,6 +78,19 @@ class StrategyV6:
         price = last['close']
         trend_price = last['ema_trend']
 
+        # Verificar que los indicadores no sean NaN
+        if pd.isna(trend_price) or pd.isna(last['bb_lower']) or pd.isna(last['stoch_k']):
+            return Signal.NONE
+
+        # Filtro de regimen de volatilidad
+        if 'atr' in last.index and 'atr_sma' in last.index:
+            if not pd.isna(last['atr']) and not pd.isna(last['atr_sma']) and last['atr_sma'] > 0:
+                atr_ratio = last['atr'] / last['atr_sma']
+                if atr_ratio > ATR_REGIME_MULT_HIGH:
+                    return Signal.NONE  # Volatilidad extrema - no operar
+                if atr_ratio < ATR_REGIME_MULT_LOW:
+                    return Signal.NONE  # Mercado muerto - no operar
+
         # TENDENCIA ALCISTA -> Solo Longs
         if price > trend_price:
             if prev['close'] <= prev['bb_lower'] and price > last['bb_lower']:
@@ -99,53 +105,18 @@ class StrategyV6:
 
         return Signal.NONE
 
-    def open_trade(self, side: str, entry_price: float, quantity: float):
-        """Registra la apertura de un trade Grinder."""
-        self.trade_state = TradeState(
-            side=side,
-            avg_price=entry_price,
-            total_quantity=quantity,
-            so_count=0
-        )
-        return self.trade_state
-
-    def update_trade(self, high: float, low: float, close: float) -> Optional[Signal]:
-        """Legacy method - functionality moved to Trader for DCA management."""
-        return None
-
-    def close_trade(self) -> Optional[TradeState]:
-        """Cierra el trade actual."""
-        final_state = self.trade_state
-        self.trade_state = None
-        return final_state
-
-    def get_exit_reason(self) -> str:
-        return "SIGNAL"
-
-    def has_open_trade(self) -> bool:
-        return self.trade_state is not None
-
-    def get_current_stop(self) -> Optional[float]:
-        if not self.trade_state: return None
-        # Retornamos el SL catastrofico segun el lado
-        if self.trade_state.side == 'long':
-            return self.trade_state.avg_price * (1 - STOP_LOSS_CATASTROPHIC)
-        return self.trade_state.avg_price * (1 + STOP_LOSS_CATASTROPHIC)
-
-
 
 # Instancia global
 strategy = StrategyV6()
 
 
 if __name__ == "__main__":
-    print("[TEST] Probando estrategia v6.0 (Metralladora)...")
+    print("[TEST] Probando estrategia v6.7 (Smart Metralladora)...")
 
-    # Crear datos de prueba
     import numpy as np
 
     np.random.seed(42)
-    dates = pd.date_range('2024-01-01', periods=300, freq='5min')
+    dates = pd.date_range('2024-01-01', periods=300, freq='1min')
     prices = 100 + np.cumsum(np.random.randn(300) * 0.5)
 
     df = pd.DataFrame({
@@ -156,15 +127,13 @@ if __name__ == "__main__":
         'volume': np.random.rand(300) * 1000
     }, index=dates)
 
-    # Calcular indicadores
     df = strategy.calculate_indicators(df)
     print(f"[OK] Indicadores calculados")
     print(f"     Ultima vela:")
     print(f"     - Close: {df['close'].iloc[-1]:.2f}")
-    print(f"     - RSI: {df['rsi'].iloc[-1]:.2f}")
-    print(f"     - ATR: {df['atr'].iloc[-1]:.2f}")
+    print(f"     - EMA 200: {df['ema_trend'].iloc[-1]:.2f}")
+    print(f"     - StochK: {df['stoch_k'].iloc[-1]:.2f}")
     print(f"     - BB Lower/Upper: {df['bb_lower'].iloc[-1]:.2f} / {df['bb_upper'].iloc[-1]:.2f}")
 
-    # Verificar senal
     signal = strategy.check_entry_signal(df)
     print(f"[OK] Senal de entrada: {signal.value}")

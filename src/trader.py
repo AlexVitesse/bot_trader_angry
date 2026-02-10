@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.exchange import client
-from src.strategy import strategy, Signal
+from src.strategy import Signal
 from config.settings import (
     SYMBOL,
     LEVERAGE,
@@ -24,7 +24,10 @@ from config.settings import (
     COMMISSION_RATE,
     MAX_DAILY_LOSS_PCT,
     MAX_CONSECUTIVE_LOSSES,
-    MAX_TRADES_PER_DAY
+    MAX_TRADES_PER_DAY,
+    ROLLING_WR_WINDOW,
+    ROLLING_WR_MIN,
+    ROLLING_WR_RESUME
 )
 
 
@@ -117,9 +120,6 @@ class Trader:
             order = client.market_buy(quantity, self.symbol) if signal == Signal.LONG else client.market_sell(quantity, self.symbol)
             fill_price = float(order.get('avgPrice', current_price))
 
-            # Sincronizar con Estrategia
-            strategy.open_trade(side, fill_price, quantity)
-
             self.current_trade = TradeRecord(
                 entry_time=datetime.now(),
                 side=side,
@@ -136,14 +136,24 @@ class Trader:
             print(f"[ERROR] open_position: {e}")
             return False
 
-    def execute_dca(self, current_price: float):
+    def execute_dca(self, current_price: float) -> bool:
         """Ejecuta una Safety Order para promediar el precio."""
         trade = self.current_trade
         so_num = trade.safety_orders_count + 1
-        
+
         # Cantidad de la recompra (Martingala)
         so_margin = self.grinder_settings['base_margin'] * (self.grinder_settings['martingale'] ** so_num)
         so_quantity = round((so_margin * self.leverage) / current_price, 3)
+
+        # Verificar balance disponible antes de ejecutar
+        try:
+            available_balance = client.get_usdt_balance()
+            if available_balance < so_margin:
+                print(f"[DCA] Balance insuficiente: ${available_balance:.2f} < ${so_margin:.2f} requerido")
+                return False
+        except Exception as e:
+            print(f"[DCA] No se pudo verificar balance: {e}")
+            return False
 
         try:
             print(f"[DCA] Ejecutando Recompra #{so_num}...")
@@ -158,17 +168,19 @@ class Trader:
             trade.commission += so_quantity * fill_price * COMMISSION_RATE
 
             print(f"[DCA] OK | Nuevo Promedio: ${trade.avg_price:,.2f} | Total Qty: {trade.total_quantity}")
+            return True
         except Exception as e:
             print(f"[ERROR] execute_dca: {e}")
+            return False
 
     def update_position(self, high: float, low: float, close: float) -> Optional[Signal]:
-        """Actualiza y gestiona TP, DCA y SL."""
+        """Actualiza y gestiona TP, SL y DCA (en ese orden de prioridad)."""
         if self.current_trade is None: return None
 
         trade = self.current_trade
         settings = self.grinder_settings
-        
-        # 1. Verificar Take Profit
+
+        # 1. Verificar Take Profit (prioridad maxima)
         if trade.side == 'long':
             tp_price = trade.avg_price * (1 + settings['tp_pct'])
             if high >= tp_price:
@@ -180,18 +192,8 @@ class Trader:
                 self.close_position(tp_price, "TAKE_PROFIT_GRINDER")
                 return Signal.CLOSE
 
-        # 2. Verificar DCA (Safety Orders)
-        if trade.safety_orders_count < settings['max_so']:
-            if trade.side == 'long':
-                dca_trigger = trade.avg_price * (1 - settings['dca_step'])
-                if low <= dca_trigger:
-                    self.execute_dca(close)
-            else:
-                dca_trigger = trade.avg_price * (1 + settings['dca_step'])
-                if high >= dca_trigger:
-                    self.execute_dca(close)
-
-        # 3. Verificar Stop Loss Catastrofico
+        # 2. Verificar Stop Loss Catastrofico ANTES de DCA
+        #    (no abrir mas posicion si ya estamos en zona de SL)
         if trade.side == 'long':
             sl_trigger = trade.avg_price * (1 - settings['sl_pct'])
             if low <= sl_trigger:
@@ -202,6 +204,17 @@ class Trader:
             if high >= sl_trigger:
                 self.close_position(close, "STOP_LOSS_CATASTROPHIC")
                 return Signal.CLOSE
+
+        # 3. Verificar DCA (Safety Orders) - solo si no tocamos SL
+        if trade.safety_orders_count < settings['max_so']:
+            if trade.side == 'long':
+                dca_trigger = trade.avg_price * (1 - settings['dca_step'])
+                if low <= dca_trigger:
+                    self.execute_dca(close)
+            else:
+                dca_trigger = trade.avg_price * (1 + settings['dca_step'])
+                if high >= dca_trigger:
+                    self.execute_dca(close)
 
         return None
 
@@ -232,7 +245,6 @@ class Trader:
             self._update_stats(trade)
             self.trade_history.append(trade)
             self.current_trade = None
-            strategy.close_trade()
             return True
         except Exception as e:
             print(f"[ERROR] close_position: {e}")
@@ -255,28 +267,53 @@ class Trader:
 
         self._check_kill_switch()
 
+    def _get_rolling_win_rate(self) -> float:
+        """Calcula el Win Rate de los ultimos N trades."""
+        if len(self.trade_history) < ROLLING_WR_WINDOW:
+            return 1.0  # No tenemos suficientes datos, asumir OK
+        recent = self.trade_history[-ROLLING_WR_WINDOW:]
+        wins = sum(1 for t in recent if t.pnl > 0)
+        return wins / len(recent)
+
     def _check_kill_switch(self):
         """Verifica si debe pausar el bot por seguridad."""
+        # 1. Perdidas consecutivas
         if self.daily_stats.consecutive_losses >= MAX_CONSECUTIVE_LOSSES:
             self._pause(f"{MAX_CONSECUTIVE_LOSSES} perdidas consecutivas")
             return
 
+        # 2. Perdida diaria maxima
         try:
             balance = client.get_usdt_balance()
             if balance > 0:
                 daily_loss_pct = abs(self.daily_stats.total_pnl) / balance
                 if self.daily_stats.total_pnl < 0 and daily_loss_pct >= MAX_DAILY_LOSS_PCT:
                     self._pause(f"Perdida diaria >= {MAX_DAILY_LOSS_PCT*100}%")
-        except: pass
+                    return
+        except:
+            pass
+
+        # 3. Rolling Win Rate - detecta degradacion de la estrategia
+        rolling_wr = self._get_rolling_win_rate()
+        if rolling_wr < ROLLING_WR_MIN:
+            self._pause(f"Rolling WR ({rolling_wr*100:.1f}%) < minimo ({ROLLING_WR_MIN*100}%)")
+            return
 
     def _pause(self, reason: str):
         self.is_paused = True
         self.pause_reason = reason
         print(f"[KILL SWITCH] Bot pausado: {reason}")
 
-    def resume(self):
+    def resume(self, force: bool = False):
+        """Reanuda el bot. Si fue pausado por WR, solo reanuda si WR se recupero."""
+        if not force and "Rolling WR" in self.pause_reason:
+            rolling_wr = self._get_rolling_win_rate()
+            if rolling_wr < ROLLING_WR_RESUME:
+                print(f"[KILL SWITCH] No se puede reanudar: WR rolling ({rolling_wr*100:.1f}%) < {ROLLING_WR_RESUME*100}%")
+                return
         self.is_paused = False
         self.pause_reason = ""
+        print("[TRADER] Bot reanudado")
 
     def has_open_position(self) -> bool:
         return self.current_trade is not None

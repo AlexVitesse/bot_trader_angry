@@ -6,6 +6,11 @@ import pandas as pd
 from datetime import datetime
 from typing import Callable, Optional
 
+MAX_RECONNECT_ATTEMPTS = 10
+INITIAL_RECONNECT_DELAY = 5  # segundos
+MAX_RECONNECT_DELAY = 300    # 5 minutos maximo
+
+
 class BinanceWebsocketManager:
     """
     Gestor de Websocket para Binance Futures.
@@ -16,25 +21,33 @@ class BinanceWebsocketManager:
         self.interval = timeframe
         self.on_candle_closed = on_candle_closed
         self.testnet = testnet
-        
+
         # URL base
         if self.testnet:
             self.base_url = "wss://stream.binancefuture.com/ws"
         else:
             self.base_url = "wss://fstream.binance.com/ws"
-            
+
         self.ws: Optional[websocket.WebSocketApp] = None
         self.wst: Optional[threading.Thread] = None
         self.running = False
         self.last_candle = None
+        self._reconnect_count = 0
+        self._reconnect_delay = INITIAL_RECONNECT_DELAY
 
     def start(self):
         """Inicia el thread del Websocket."""
         self.running = True
+        self._reconnect_count = 0
+        self._reconnect_delay = INITIAL_RECONNECT_DELAY
+        self._connect()
+
+    def _connect(self):
+        """Crea la conexion WebSocket en un thread daemon."""
         stream_url = f"{self.base_url}/{self.symbol}@kline_{self.interval}"
-        
+
         print(f"[WS] Conectando a {stream_url}...")
-        
+
         self.ws = websocket.WebSocketApp(
             stream_url,
             on_open=self._on_open,
@@ -55,6 +68,9 @@ class BinanceWebsocketManager:
 
     def _on_open(self, ws):
         print("[WS] Conexion establecida")
+        # Reset reconexion al conectar exitosamente
+        self._reconnect_count = 0
+        self._reconnect_delay = INITIAL_RECONNECT_DELAY
 
     def _on_error(self, ws, error):
         if self.running:
@@ -62,10 +78,20 @@ class BinanceWebsocketManager:
 
     def _on_close(self, ws, close_status_code, close_msg):
         print("[WS] Conexion cerrada")
-        if self.running:
-            print("[WS] Reconectando en 5s...")
-            time.sleep(5)
-            self.start()
+        if not self.running:
+            return
+
+        self._reconnect_count += 1
+        if self._reconnect_count > MAX_RECONNECT_ATTEMPTS:
+            print(f"[WS] Maximo de reconexiones alcanzado ({MAX_RECONNECT_ATTEMPTS}). Deteniendo.")
+            self.running = False
+            return
+
+        print(f"[WS] Reconectando en {self._reconnect_delay}s... (intento {self._reconnect_count}/{MAX_RECONNECT_ATTEMPTS})")
+        time.sleep(self._reconnect_delay)
+        # Backoff exponencial: 5s, 10s, 20s, 40s... hasta MAX_RECONNECT_DELAY
+        self._reconnect_delay = min(self._reconnect_delay * 2, MAX_RECONNECT_DELAY)
+        self._connect()
 
     def _on_message(self, ws, message):
         """
@@ -89,7 +115,7 @@ class BinanceWebsocketManager:
             data = json.loads(message)
             if 'k' in data:
                 k = data['k']
-                
+
                 # Convertir a formato amigable
                 candle = {
                     'timestamp': pd.to_datetime(k['t'], unit='ms'),
@@ -100,14 +126,14 @@ class BinanceWebsocketManager:
                     'volume': float(k['v']),
                     'closed': k['x'] # Booleano: True si la vela cerro
                 }
-                
+
                 # Guardar ultima vela (para monitoreo en tiempo real)
                 self.last_candle = candle
-                
+
                 # Si la vela cerro, notificar al callback
                 if candle['closed']:
                     self.on_candle_closed(candle)
-                    
+
         except Exception as e:
             print(f"[WS] Error procesando mensaje: {e}")
 
@@ -116,3 +142,7 @@ class BinanceWebsocketManager:
         if self.last_candle:
             return self.last_candle['close']
         return 0.0
+
+    def is_connected(self) -> bool:
+        """Retorna True si el WS esta activo."""
+        return self.running and self.wst is not None and self.wst.is_alive()

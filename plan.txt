@@ -3,27 +3,40 @@ META FINAL: Bot de Trading de Alta Frecuencia (HFT) autonomo potenciado por ML.
 
 [ESTADO ACTUAL]
 Fase: FASE 2 - PAPER TRADING (v6.7 SMART METRALLADORA)
-Proximo Hito: Evaluar desempeño en Testnet con Websocket y DCA.
+Proximo Hito: Validar estabilidad en Testnet 24/7, luego despliegue live.
 Bot corriendo en: Binance Futures Testnet
-Ultima actualizacion: 2026-02-11
+Ultima actualizacion: 2026-02-10
 
 ---
 
 FASE -1: VALIDACION DE ESTRATEGIA (COMPLETADA)
 [X] Backtest v1.0 - v5.0: Diversas pruebas de Mean Reversion.
-[X] Backtest v6.7 (Smart Metralladora): +18.04% PnL, 92.7% WR (APROBADA)
+[X] Backtest v6.7 (Smart Metralladora): +43.78% PnL, 83% WR, PF 1.48 (APROBADA)
+    - Backtest corregido: usa high/low intra-vela, orden TP>SL>DCA, comisiones reales
+    - Parametros unificados con settings.py ($12 margen, 10x leverage)
 
 ESTRATEGIA ACTUAL (v6.7 - SMART METRALLADORA):
   - Tipo: Grinder de Alta Frecuencia (Trend Following Mean Reversion)
   - Par: BTC/USDT Futures | Timeframe: 1m
   - Entrada: Filtro EMA 200 + Bollinger Bands + StochRSI.
-  - Gestion: DCA (Grinder) - Max 2 Safety Orders.
-  - Apalancamiento: 10x | Margen Base: $12.
+  - Gestion: DCA (Grinder) - Max 2 Safety Orders (Martingale x2).
+  - Apalancamiento: 10x | Margen Base: $12 | TP: 0.6% | SL: 1.5%.
+  - Modo: Agresivo (filtros ATR y Rolling WR disponibles pero desactivados).
+
+AUDITORIA DE CODIGO (2026-02-10):
+[X] Fix validate_config() - referencia a variable eliminada (ATR_SL_MULTIPLIER)
+[X] Fix evaluacion TP/DCA/SL - SL ahora se evalua ANTES de DCA
+[X] Fix loop principal - ya no llama update_position con high=low=price
+[X] Verificacion de balance antes de ejecutar DCA
+[X] Reconexion WS con backoff exponencial (5s-5min, max 10 intentos)
+[X] Eliminacion de estado duplicado Strategy/Trader
+[X] Tests corregidos (test_bot.py, strategy __main__)
+[X] Protecciones implementadas (Rolling WR + ATR regime filter) - desactivadas modo agresivo
 
 ---
 
 FASE 0: CIMIENTOS DE INGENIERIA (COMPLETADA)
-[X] Entorno Python (Poetry) + Librerias (ccxt, pandas_ta, websocket-client).
+[X] Entorno Python (Poetry) + Librerias (pandas_ta, websocket-client, requests).
 [X] Repositorio Git inicializado.
 
 FASE 1: LA TUBERIA DE DATOS (COMPLETADA)
@@ -31,8 +44,10 @@ FASE 1: LA TUBERIA DE DATOS (COMPLETADA)
 [X] Descargador de historial masivo (fetch_history.py).
 
 FASE 2: EL MOTOR DE TRADING v1.0 (COMPLETADA)
-[X] Modulo de Ejecución con soporte para DCA/Safety Orders.
+[X] Modulo de Ejecucion con soporte para DCA/Safety Orders.
 [X] Paper Trading activo en Testnet.
+[X] Backtest corregido y validado con parametros reales.
+[X] Kill switches: 3 consecutive losses, 20% daily loss.
 
 FASE 3: DESPLIEGUE EN VIVO (LIVE FIRE)
 [ ] Validacion de estabilidad del Websocket 24/7.
@@ -42,7 +57,6 @@ FASE 3: DESPLIEGUE EN VIVO (LIVE FIRE)
 FASE 4: EL CEREBRO v2.0 (IA & ML)
 [ ] Analista IA (LLM): Analisis de sentimiento y noticias para pausar bot.
 [ ] ML Predictor: Reduccion de falsas entradas intra-vela.
-
 
 FASE 5: OPTIMIZACION Y ESCALADO (Largo Plazo)
 [ ] Migracion a Cloud (AWS/GCP) cerca de servidores de Binance.

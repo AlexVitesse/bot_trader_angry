@@ -1,8 +1,7 @@
 """
 Binance Scalper Bot - Configuracion Central
 ============================================
-Estrategia: v5.0 ATR Dynamic Mean Reversion
-Validada en Backtest: +2.6%, PF 1.30, R/R 2.21:1
+Estrategia: v6.7 Smart Metralladora (Trend Filter + DCA)
 """
 
 import os
@@ -75,8 +74,18 @@ COMMISSION_RATE = 0.0004  # 0.04% taker fee
 # LIMITES DE SEGURIDAD (KILL SWITCH)
 # =============================================================================
 MAX_DAILY_LOSS_PCT = 0.20       # 20% perdida diaria maxima -> pausar bot
-MAX_CONSECUTIVE_LOSSES = 5      # 5 perdidas seguidas -> pausar bot
+MAX_CONSECUTIVE_LOSSES = 3      # 3 perdidas seguidas -> pausar bot (antes era 5)
 MAX_TRADES_PER_DAY = 50         # Maximo de trades por dia
+
+# Rolling Win Rate Protection (DESACTIVADO - modo agresivo)
+ROLLING_WR_WINDOW = 20          # Ventana de ultimos N trades para calcular WR
+ROLLING_WR_MIN = 0.0            # 0% = desactivado (breakeven real es ~77%)
+ROLLING_WR_RESUME = 0.82        # Threshold para reanudar si se reactiva
+
+# Volatility Regime Filter (DESACTIVADO - modo agresivo)
+ATR_REGIME_LENGTH = 14          # Periodo del ATR para detectar regimen
+ATR_REGIME_MULT_HIGH = 99.0     # 99x = efectivamente desactivado
+ATR_REGIME_MULT_LOW = 0.0       # 0x = efectivamente desactivado
 
 # =============================================================================
 # LOGGING
@@ -103,8 +112,12 @@ def validate_config() -> bool:
         errors.append("BINANCE_API_SECRET no configurada")
     if LEVERAGE < 1 or LEVERAGE > 20:
         errors.append(f"LEVERAGE fuera de rango: {LEVERAGE}")
-    if ATR_SL_MULTIPLIER <= 0:
-        errors.append("ATR_SL_MULTIPLIER debe ser > 0")
+    if BASE_ORDER_MARGIN <= 0:
+        errors.append("BASE_ORDER_MARGIN debe ser > 0")
+    if TAKE_PROFIT_PCT <= 0:
+        errors.append("TAKE_PROFIT_PCT debe ser > 0")
+    if STOP_LOSS_CATASTROPHIC <= 0:
+        errors.append("STOP_LOSS_CATASTROPHIC debe ser > 0")
 
     if errors:
         print("[CONFIG ERROR] Errores de configuracion:")

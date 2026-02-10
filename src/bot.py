@@ -169,13 +169,18 @@ class ScalperBot:
         self.running = True
         while self.running:
             try:
+                # Solo mantener el loop vivo - la logica de TP/SL/DCA
+                # se ejecuta en _on_candle_closed con high/low reales.
+                # Aqui solo monitoreamos el precio para logging.
                 live_price = self.ws_manager.get_latest_price()
                 if live_price > 0 and trader.has_open_position():
-                    trader.update_position(live_price, live_price, live_price)
-                time.sleep(1)
+                    pos_info = trader.get_position_info()
+                    if pos_info:
+                        self._print_position_status(pos_info, live_price)
+                time.sleep(5)
             except Exception as e:
                 print(f"[ERROR] Loop: {e}")
-                time.sleep(1)
+                time.sleep(5)
 
         self.ws_manager.stop()
 
