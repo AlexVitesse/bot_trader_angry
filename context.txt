@@ -1,0 +1,24 @@
+PROJECT_NAME: Binance Futures Scalper (Python)
+TYPE: Algorithmic Trading (Mean Reversion)
+TARGET EXCHANGE: Binance Futures
+TARGET PAIR: BTC/USDT
+CAPITAL: $10 USD (Micro-Account / High Risk Limit)
+LEVERAGE: 5x (Dynamic)
+
+STRATEGY: "BB-RSI Mean Reversion"
+- Timeframe: 5m or 15m (To avoid extreme noise of 1m)
+- Entry Long: Price < Lower BB AND RSI < 30
+- Entry Short: Price > Upper BB AND RSI > 70
+- Exit: Price crosses Middle BB (SMA 20)
+
+TECH STACK:
+- Language: Python 3.10+
+- Connectivity: ccxt (Async), Binance Websockets.
+- Data Storage: InfluxDB (Real-time ticks) + Parquet (Historical).
+- Backtesting: vectorbt o backtrader (Python libraries).
+
+CRITICAL CONSTRAINTS:
+1. Minimum Order Size: Binance requires ~$5 minimum notional. With $10 capital, strict position sizing is needed.
+2. Risk Tolerance: 100% loss acceptable (Experimental Phase).
+3. Latency: Local execution. Acknowledge network delays (150-300ms).
+4. No Manual Intervention: Bot must handle Entry, Stop Loss, and Take Profit.
