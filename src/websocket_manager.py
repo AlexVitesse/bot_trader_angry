@@ -32,6 +32,7 @@ class BinanceWebsocketManager:
         self.wst: Optional[threading.Thread] = None
         self.running = False
         self.last_candle = None
+        self._last_closed_time = None  # Filtro de velas duplicadas
         self._reconnect_count = 0
         self._reconnect_delay = INITIAL_RECONNECT_DELAY
 
@@ -130,8 +131,9 @@ class BinanceWebsocketManager:
                 # Guardar ultima vela (para monitoreo en tiempo real)
                 self.last_candle = candle
 
-                # Si la vela cerro, notificar al callback
-                if candle['closed']:
+                # Si la vela cerro, notificar al callback (solo una vez por vela)
+                if candle['closed'] and candle['timestamp'] != self._last_closed_time:
+                    self._last_closed_time = candle['timestamp']
                     self.on_candle_closed(candle)
 
         except Exception as e:
