@@ -2,8 +2,8 @@ ROADMAP: BINANCE SCALPER & ML EVOLUTION
 META FINAL: Bot de Trading de Alta Frecuencia (HFT) autonomo potenciado por ML.
 
 [ESTADO ACTUAL]
-Fase: FASE 2.5 - PERSISTENCIA DE DATOS (COMPLETADA) -> Siguiente: FASE 2.7
-Proximo Hito: Implementar Telegram + Slippage test + Position sizing dinamico.
+Fase: FASE 2.7 - ROBUSTEZ OPERATIVA (EN PROGRESO)
+Proximo Hito: Recoleccion de datos + estabilidad 48h+ en testnet.
 Bot corriendo en: Binance Futures Testnet
 Ultima actualizacion: 2026-02-10
 
@@ -123,6 +123,13 @@ FASE 3.5: MIGRACION A VPS (Solo si Fase 3 es rentable)
   [ ] Firewall: solo SSH + outbound HTTPS (Binance API + Telegram)
   [ ] Backup automatico de SQLite (cron diario -> cloud storage o local)
   [ ] Validar estabilidad 48h+ en VPS antes de mover capital completo
+
+  Dashboard Visual (proceso separado, ~20MB RAM extra)
+  [ ] Implementar dashboard estilo Binance (detalle completo en docs/dashboard_plan.txt)
+  [ ] FastAPI + TradingView Lightweight Charts, lee SQLite read-only
+  [ ] Chart de velas con EMA 200 + Bollinger Bands overlay
+  [ ] Panel: precio en vivo, posicion activa, PnL, stats, historial de trades
+  [ ] Servicio systemd separado en puerto 8080
 
 FASE 4A: ML PREDICTOR - FILTRO DE ENTRADAS (Modelo Propio)
   Objetivo: Reducir falsas entradas prediciendo P(win) antes de abrir posicion.

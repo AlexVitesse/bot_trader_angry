@@ -1,0 +1,84 @@
+PLAN: DASHBOARD DE TRADING (ESTILO BINANCE)
+=============================================
+Fecha: 2026-02-10
+Estado: PENDIENTE (para implementar en Fase 3.5 junto con VPS)
+
+CONTEXTO
+--------
+Dashboard visual para monitorear el bot en tiempo real.
+Similar al dashboard de Binance Demo Trading (dark theme, chart de velas, precio, posicion, historial).
+Proceso SEPARADO del bot - cero impacto en rendimiento de trading.
+
+ARQUITECTURA
+------------
+  [Bot] --> escribe SQLite (data/bot_trades.db)
+  [Dashboard] --> lee SQLite (read-only) + sirve HTML en puerto 8080
+
+  - 2 archivos nuevos: src/dashboard.py + src/dashboard.html
+  - Dependencias: fastapi + uvicorn (~5MB, ~20MB RAM)
+  - Polling HTTP cada 5s (sin WebSocket adicional)
+
+ARCHIVOS A CREAR
+----------------
+
+1. src/dashboard.py (Backend FastAPI)
+   - Conexion SQLite read-only: file:...?mode=ro
+   - Importa config desde settings.py (SYMBOL, LEVERAGE, indicadores)
+   - 7 endpoints API:
+     GET /              -> Sirve dashboard.html
+     GET /api/candles   -> Velas OHLCV (unix timestamp para TradingView)
+     GET /api/price     -> Precio actual + cambio 24h %
+     GET /api/position  -> Posicion activa + PnL no realizado (calculado con leverage)
+     GET /api/trades    -> Historial de trades cerrados (ultimos 30)
+     GET /api/stats     -> Stats diarias + all-time (wins, WR, PnL)
+     GET /api/indicators -> EMA 200 + BB upper/lower (calculados con pandas_ta)
+   - main() lanza uvicorn en puerto 8080 (configurable via DASHBOARD_PORT env var)
+
+2. src/dashboard.html (Frontend single-page)
+   - Dark theme Binance:
+     --bg-primary: #0b0e11 (fondo)
+     --bg-secondary: #1e2329 (paneles)
+     --green: #0ecb81 (profit/long)
+     --red: #f6465d (loss/short)
+     --yellow: #f0b90b (acento Binance)
+   - TradingView Lightweight Charts v4 (CDN, ~40KB)
+   - Layout:
+     HEADER: Logo + BTCUSDT + indicador estado bot (dot verde/rojo)
+     CHART (70%): Velas + EMA 200 (amarillo) + BB upper/lower (azul punteado)
+     PANEL (30%): Precio, posicion, stats diarias, stats all-time
+     TABLA: Historial trades (side, entry, exit, PnL, razon)
+   - JS vanilla: setInterval(fetchAll, 5000) con 7 fetches en paralelo
+   - Chart update eficiente: update() para ultima vela, setData() solo con nueva vela
+
+3. pyproject.toml (Modificar)
+   Agregar: "fastapi (>=0.115.0,<1.0.0)", "uvicorn[standard] (>=0.34.0,<1.0.0)"
+
+COMO EJECUTAR
+-------------
+  # Terminal 1: Bot
+  poetry run python src/bot.py
+
+  # Terminal 2: Dashboard (proceso separado)
+  poetry run python -m src.dashboard
+  # Abrir http://localhost:8080
+
+  # En VPS con systemd:
+  /etc/systemd/system/scalper-dashboard.service
+  ExecStart=poetry run python -m src.dashboard
+  Environment=DASHBOARD_PORT=8080
+
+DETALLES TECNICOS
+-----------------
+- Timestamps: candles en ISO text -> convertir a Unix seconds para TradingView
+- Indicadores: pandas_ta calcula EMA/BB desde 500 candles de DB (~50ms)
+- PnL posicion: (last_close - avg_price) / avg_price * leverage
+- Bot status: si ultimo candle > 120s -> desconectado
+- Seguridad: no expone API keys, DB read-only, FastAPI docs deshabilitados
+- SQLite WAL mode permite lectura concurrente sin bloquear escrituras del bot
+
+RECURSOS VPS
+------------
+- RAM adicional: ~20MB
+- CPU: <2% en polling
+- Disco: 0 (no escribe nada)
+- Red: ~24KB por refresh (300 candles OHLCV)

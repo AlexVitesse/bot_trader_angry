@@ -181,11 +181,32 @@ with patch('src.trader.client') as mock_client, \
     test_trader = Trader()
 
 
-@test("Precio normal calcula cantidad correcta")
+@test("Sizing dinamico: 12% de $5000 = $600 margen")
 def _():
-    qty = test_trader.calculate_base_quantity(97000.0)
-    expected = round((12.0 * 10) / 97000.0, 3)
-    assert qty == expected, f"Esperado {expected}, obtenido {qty}"
+    with patch('src.trader.client') as mock_client:
+        mock_client.get_usdt_balance.return_value = 5000.0
+        qty = test_trader.calculate_base_quantity(97000.0)
+        expected_margin = 5000.0 * 0.12  # $600
+        expected = round((expected_margin * 10) / 97000.0, 3)
+        assert qty == expected, f"Esperado {expected}, obtenido {qty}"
+
+
+@test("Sizing dinamico: balance bajo usa minimo $12")
+def _():
+    with patch('src.trader.client') as mock_client:
+        mock_client.get_usdt_balance.return_value = 50.0  # 12% de 50 = $6, menor que min $12
+        qty = test_trader.calculate_base_quantity(97000.0)
+        expected = round((12.0 * 10) / 97000.0, 3)
+        assert qty == expected, f"Esperado {expected} (minimo $12), obtenido {qty}"
+
+
+@test("Sizing dinamico: balance=0 usa fallback fijo")
+def _():
+    with patch('src.trader.client') as mock_client:
+        mock_client.get_usdt_balance.return_value = 0.0
+        qty = test_trader.calculate_base_quantity(97000.0)
+        expected = round((12.0 * 10) / 97000.0, 3)
+        assert qty == expected, f"Esperado {expected} (fallback), obtenido {qty}"
 
 
 @test("Precio 0 retorna 0 sin crashear")

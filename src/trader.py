@@ -24,6 +24,8 @@ from config.settings import (
     INITIAL_CAPITAL,
     MAX_POSITION_SIZE_PCT,
     COMMISSION_RATE,
+    POSITION_SIZE_PCT,
+    MIN_ORDER_MARGIN,
     MAX_DAILY_LOSS_PCT,
     MAX_CONSECUTIVE_LOSSES,
     MAX_TRADES_PER_DAY,
@@ -167,13 +169,31 @@ class Trader:
         except Exception as e:
             logger.warning(f"[WARN] No se pudo configurar leverage: {e}")
 
+    def _get_dynamic_margin(self) -> float:
+        """Calcula margen dinamico: POSITION_SIZE_PCT del balance actual.
+
+        Retorna el margen en USDT, con minimo MIN_ORDER_MARGIN.
+        Si no puede obtener balance, usa BASE_ORDER_MARGIN como fallback.
+        """
+        try:
+            balance = client.get_usdt_balance()
+            if balance > 0:
+                margin = balance * POSITION_SIZE_PCT
+                margin = max(margin, MIN_ORDER_MARGIN)
+                return margin
+        except Exception as e:
+            logger.warning(f"[WARN] No se pudo obtener balance para sizing dinamico: {e}")
+        return self.grinder_settings['base_margin']
+
     def calculate_base_quantity(self, entry_price: float) -> float:
-        """Calcula cantidad inicial basada en BASE_ORDER_MARGIN."""
+        """Calcula cantidad inicial basada en % del balance (sizing dinamico)."""
         if entry_price <= 0:
             logger.error(f"[ERROR] entry_price invalido: {entry_price}")
             return 0.0
-        notional = self.grinder_settings['base_margin'] * self.leverage
+        margin = self._get_dynamic_margin()
+        notional = margin * self.leverage
         quantity = notional / entry_price
+        logger.info(f"[SIZING] Margen: ${margin:.2f} ({POSITION_SIZE_PCT*100}% del balance) | Notional: ${notional:.2f}")
         return round(quantity, 3)
 
     def open_position(self, signal: Signal, current_price: float, atr: float) -> bool:
@@ -224,11 +244,12 @@ class Trader:
         trade = self.current_trade
         so_num = trade.safety_orders_count + 1
 
-        # Cantidad de la recompra (Martingala)
+        # Cantidad de la recompra (Martingala sobre margen dinamico)
         if current_price <= 0:
             logger.error(f"[ERROR] DCA: current_price invalido: {current_price}")
             return False
-        so_margin = self.grinder_settings['base_margin'] * (self.grinder_settings['martingale'] ** so_num)
+        base_margin = self._get_dynamic_margin()
+        so_margin = base_margin * (self.grinder_settings['martingale'] ** so_num)
         so_quantity = round((so_margin * self.leverage) / current_price, 3)
 
         # Verificar balance disponible antes de ejecutar

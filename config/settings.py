@@ -61,7 +61,9 @@ BB_STD = 2.0
 EMA_TREND_LENGTH = 200  # Filtro maestro de tendencia
 
 # Gestion de Riesgo Grinder (DCA)
-BASE_ORDER_MARGIN = 12.0      # Subimos a $12 para que 12*10x = $120 (Minimo Binance es $100)
+POSITION_SIZE_PCT = 0.12      # 12% del balance como margen por trade
+MIN_ORDER_MARGIN = 12.0       # Minimo $12 para cumplir $100 notional con 10x
+BASE_ORDER_MARGIN = 12.0      # Fallback fijo (usado si no se puede obtener balance)
 DCA_STEP_PCT = 0.008         # 0.8% distancia (Mas seguro)
 MAX_SAFETY_ORDERS = 2        # Solo 2 recompras
 MARTINGALE_MULTIPLIER = 2.0 
@@ -120,6 +122,10 @@ def validate_config() -> bool:
         errors.append(f"LEVERAGE fuera de rango: {LEVERAGE}")
     if BASE_ORDER_MARGIN <= 0:
         errors.append("BASE_ORDER_MARGIN debe ser > 0")
+    if POSITION_SIZE_PCT <= 0 or POSITION_SIZE_PCT > 0.5:
+        errors.append(f"POSITION_SIZE_PCT fuera de rango seguro: {POSITION_SIZE_PCT} (debe ser 0-50%)")
+    if MIN_ORDER_MARGIN <= 0:
+        errors.append("MIN_ORDER_MARGIN debe ser > 0")
     if TAKE_PROFIT_PCT <= 0:
         errors.append("TAKE_PROFIT_PCT debe ser > 0")
     if STOP_LOSS_CATASTROPHIC <= 0:
@@ -148,6 +154,7 @@ def print_config():
     _logger.info(f"Capital: ${INITIAL_CAPITAL}")
     _logger.info(f"Estrategia: v6.7 SMART METRALLADORA (Trend Filter + DCA)")
     _logger.info(f"  - BB({BB_LENGTH}, {BB_STD}) | EMA Trend: {EMA_TREND_LENGTH}")
+    _logger.info(f"  - Position Sizing: {POSITION_SIZE_PCT*100}% del balance (min ${MIN_ORDER_MARGIN})")
     _logger.info(f"  - DCA: {MAX_SAFETY_ORDERS} Recompras cada {DCA_STEP_PCT*100}%")
     _logger.info(f"  - Take Profit: {TAKE_PROFIT_PCT*100}% | SL: {STOP_LOSS_CATASTROPHIC*100}%")
     _logger.info(f"Seguridad:")
