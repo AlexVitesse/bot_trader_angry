@@ -2,101 +2,132 @@
 # ============================================================
 # Setup Script - Bot Trader Angry (Ubuntu 24.04)
 # ============================================================
-# Uso: sudo bash setup_server.sh
+# NO requiere sudo. Corre con tu usuario normal.
+# Uso: bash deploy/setup_server.sh
 # ============================================================
 
 set -e
 
-BOT_USER="botuser"
-BOT_DIR="/home/$BOT_USER/bot_trader_angry"
-REPO_URL="https://github.com/AlexVitesse/bot_trader_angry.git"
+BOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+USER_SYSTEMD="$HOME/.config/systemd/user"
 
 echo "=========================================="
 echo "  Bot Trader Angry - Server Setup"
 echo "=========================================="
+echo "  Usuario: $(whoami)"
+echo "  Directorio: $BOT_DIR"
+echo ""
 
-# 1. Actualizar sistema
-echo "[1/7] Actualizando sistema..."
-apt update && apt upgrade -y
-
-# 2. Instalar dependencias del sistema
-echo "[2/7] Instalando dependencias..."
-apt install -y python3.12 python3.12-venv python3-pip git curl ufw
-
-# 3. Instalar Poetry
-echo "[3/7] Instalando Poetry..."
-if ! command -v poetry &> /dev/null; then
-    curl -sSL https://install.python-poetry.org | python3 -
-fi
-
-# 4. Crear usuario dedicado (si no existe)
-echo "[4/7] Configurando usuario $BOT_USER..."
-if ! id "$BOT_USER" &>/dev/null; then
-    useradd -m -s /bin/bash "$BOT_USER"
-    echo "  -> Usuario $BOT_USER creado"
+# 1. Verificar Python
+echo "[1/5] Verificando Python..."
+if command -v python3.12 &> /dev/null; then
+    PYTHON_CMD="python3.12"
+elif command -v python3 &> /dev/null; then
+    PYTHON_CMD="python3"
+    echo "  -> Usando $(python3 --version)"
 else
-    echo "  -> Usuario $BOT_USER ya existe"
+    echo "[ERROR] Python3 no encontrado. Pide al admin: sudo apt install python3"
+    exit 1
 fi
+echo "  -> $($PYTHON_CMD --version) OK"
 
-# Asegurar que Poetry esta en el PATH del botuser
-su - $BOT_USER -c "curl -sSL https://install.python-poetry.org | python3 -" || true
-
-# 5. Clonar repo e instalar dependencias
-echo "[5/7] Clonando repositorio..."
-if [ ! -d "$BOT_DIR" ]; then
-    su - $BOT_USER -c "git clone $REPO_URL"
+# 2. Instalar Poetry (en usuario)
+echo "[2/5] Verificando Poetry..."
+if ! command -v poetry &> /dev/null && ! [ -f "$HOME/.local/bin/poetry" ]; then
+    echo "  -> Instalando Poetry..."
+    curl -sSL https://install.python-poetry.org | $PYTHON_CMD -
+    export PATH="$HOME/.local/bin:$PATH"
 else
-    echo "  -> Repo ya existe, haciendo pull..."
-    su - $BOT_USER -c "cd $BOT_DIR && git pull"
+    echo "  -> Poetry ya instalado"
 fi
 
-echo "  -> Instalando dependencias Python..."
-su - $BOT_USER -c "cd $BOT_DIR && /home/$BOT_USER/.local/bin/poetry install --no-interaction"
+# Asegurar PATH
+if ! echo "$PATH" | grep -q "$HOME/.local/bin"; then
+    export PATH="$HOME/.local/bin:$PATH"
+    # Agregar al .bashrc si no esta
+    if ! grep -q 'export PATH="$HOME/.local/bin:$PATH"' "$HOME/.bashrc" 2>/dev/null; then
+        echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$HOME/.bashrc"
+        echo "  -> PATH agregado a .bashrc"
+    fi
+fi
+
+# 3. Instalar dependencias
+echo "[3/5] Instalando dependencias Python..."
+cd "$BOT_DIR"
+poetry install --no-interaction
 
 # Crear directorio de datos
-su - $BOT_USER -c "mkdir -p $BOT_DIR/data"
+mkdir -p "$BOT_DIR/data"
 
-# 6. Configurar systemd
-echo "[6/7] Configurando servicio systemd..."
-cp "$BOT_DIR/deploy/bot-trader.service" /etc/systemd/system/
-systemctl daemon-reload
-systemctl enable bot-trader.service
-echo "  -> Servicio habilitado (se inicia con el sistema)"
+# 4. Configurar servicio systemd de usuario (no requiere sudo)
+echo "[4/5] Configurando servicio systemd de usuario..."
+mkdir -p "$USER_SYSTEMD"
 
-# Configurar logrotate
-cp "$BOT_DIR/deploy/logrotate-bot" /etc/logrotate.d/bot-trader
+cat > "$USER_SYSTEMD/bot-trader.service" << SERVICEEOF
+[Unit]
+Description=Bot Trader Angry - Binance Scalper v6.7
+After=network-online.target
+Wants=network-online.target
 
-# 7. Firewall
-echo "[7/7] Configurando firewall..."
-ufw allow OpenSSH
-ufw --force enable
-echo "  -> Firewall: SSH permitido, todo lo demas bloqueado (outbound libre)"
+[Service]
+Type=simple
+WorkingDirectory=$BOT_DIR
+ExecStart=$HOME/.local/bin/poetry run python src/bot.py
+Restart=always
+RestartSec=10
+StartLimitIntervalSec=300
+StartLimitBurst=5
+EnvironmentFile=$BOT_DIR/.env
+
+[Install]
+WantedBy=default.target
+SERVICEEOF
+
+systemctl --user daemon-reload
+systemctl --user enable bot-trader.service
+echo "  -> Servicio de usuario configurado"
+
+# 5. Verificar .env
+echo "[5/5] Verificando configuracion..."
+if [ ! -f "$BOT_DIR/.env" ]; then
+    cat > "$BOT_DIR/.env" << 'ENVEOF'
+# === BINANCE API ===
+BINANCE_API_KEY=TU_API_KEY_AQUI
+BINANCE_API_SECRET=TU_API_SECRET_AQUI
+TRADING_MODE=testnet
+
+# === TELEGRAM (opcional) ===
+TELEGRAM_BOT_TOKEN=
+TELEGRAM_CHAT_ID=
+ENVEOF
+    echo "  -> .env creado. EDITA con tus API keys:"
+    echo "     nano $BOT_DIR/.env"
+else
+    echo "  -> .env ya existe"
+fi
 
 echo ""
 echo "=========================================="
 echo "  Setup completado!"
 echo "=========================================="
 echo ""
-echo "  PASOS MANUALES RESTANTES:"
+echo "  PASOS SIGUIENTES:"
 echo ""
-echo "  1. Crear archivo .env:"
-echo "     sudo -u $BOT_USER nano $BOT_DIR/.env"
-echo ""
-echo "     Contenido:"
-echo "     BINANCE_API_KEY=tu_api_key_real"
-echo "     BINANCE_API_SECRET=tu_api_secret_real"
-echo "     TRADING_MODE=live"
-echo "     TELEGRAM_BOT_TOKEN=tu_token"
-echo "     TELEGRAM_CHAT_ID=tu_chat_id"
+echo "  1. Editar .env con tus API keys:"
+echo "     nano $BOT_DIR/.env"
 echo ""
 echo "  2. Iniciar el bot:"
-echo "     sudo systemctl start bot-trader"
+echo "     systemctl --user start bot-trader"
 echo ""
 echo "  3. Ver logs en tiempo real:"
-echo "     sudo journalctl -u bot-trader -f"
+echo "     journalctl --user -u bot-trader -f"
 echo ""
-echo "  4. Otros comandos utiles:"
-echo "     sudo systemctl stop bot-trader     # Detener"
-echo "     sudo systemctl restart bot-trader  # Reiniciar"
-echo "     sudo systemctl status bot-trader   # Estado"
+echo "  4. Comandos utiles:"
+echo "     systemctl --user stop bot-trader      # Detener"
+echo "     systemctl --user restart bot-trader   # Reiniciar"
+echo "     systemctl --user status bot-trader    # Estado"
+echo ""
+echo "  NOTA: Si el servicio no sobrevive al logout,"
+echo "  pide al admin ejecutar:"
+echo "     sudo loginctl enable-linger $(whoami)"
 echo "=========================================="

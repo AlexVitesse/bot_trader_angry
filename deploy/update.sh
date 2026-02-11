@@ -2,26 +2,27 @@
 # ============================================================
 # Update Script - Actualiza el bot desde GitHub y reinicia
 # ============================================================
-# Uso desde el servidor: bash deploy/update.sh
+# Uso: bash deploy/update.sh
+# NO requiere sudo.
 # ============================================================
 
 set -e
 
-BOT_DIR="/home/botuser/bot_trader_angry"
+BOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 
 echo "[1/4] Descargando cambios..."
 cd "$BOT_DIR"
 git pull origin main
 
 echo "[2/4] Instalando dependencias nuevas (si hay)..."
-/home/botuser/.local/bin/poetry install --no-interaction
+poetry install --no-interaction
 
 echo "[3/4] Reiniciando bot..."
-sudo systemctl restart bot-trader
+systemctl --user restart bot-trader
 
 echo "[4/4] Verificando estado..."
 sleep 3
-sudo systemctl status bot-trader --no-pager -l
+systemctl --user status bot-trader --no-pager -l
 
 echo ""
 echo "[OK] Bot actualizado y reiniciado."
