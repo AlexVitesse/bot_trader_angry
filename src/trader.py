@@ -6,6 +6,7 @@ Gestiona la ejecucion de trades con soporte para DCA (Grinder).
 
 import sys
 import time
+import logging
 from pathlib import Path
 from datetime import datetime, timedelta
 from typing import Optional, Dict, List
@@ -30,6 +31,8 @@ from config.settings import (
     ROLLING_WR_MIN,
     ROLLING_WR_RESUME
 )
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -116,9 +119,9 @@ class Trader:
                 self.trade_history.append(record)
             total = db.get_trade_count()
             if total > 0:
-                print(f"[TRADER] Historial cargado desde DB: {len(self.trade_history)} recientes / {total} total")
+                logger.info(f"[TRADER] Historial cargado desde DB: {len(self.trade_history)} recientes / {total} total")
         except Exception as e:
-            print(f"[WARN] No se pudo cargar historial de DB: {e}")
+            logger.warning(f"[WARN] No se pudo cargar historial de DB: {e}")
 
     def _extract_fill_price(self, order: Dict, fallback_price: float) -> float:
         """Extrae el precio de llenado de la respuesta de Binance.
@@ -146,13 +149,13 @@ class Trader:
         try:
             position = client.get_position(self.symbol)
             if position and position['entry_price'] > 0:
-                print(f"[TRADER] Fill price obtenido via consulta de posicion: ${position['entry_price']:,.2f}")
+                logger.info(f"[TRADER] Fill price obtenido via consulta de posicion: ${position['entry_price']:,.2f}")
                 return position['entry_price']
         except Exception:
             pass
 
         # 4. Fallback (no ideal, pero evita crash)
-        print(f"[WARN] No se pudo obtener fill price real, usando fallback: ${fallback_price:,.2f}")
+        logger.warning(f"[WARN] No se pudo obtener fill price real, usando fallback: ${fallback_price:,.2f}")
         return fallback_price
 
     def _setup(self):
@@ -160,14 +163,14 @@ class Trader:
         try:
             # Configurar leverage
             client.set_leverage(self.leverage, self.symbol)
-            print(f"[TRADER] Leverage configurado: {self.leverage}x")
+            logger.info(f"[TRADER] Leverage configurado: {self.leverage}x")
         except Exception as e:
-            print(f"[WARN] No se pudo configurar leverage: {e}")
+            logger.warning(f"[WARN] No se pudo configurar leverage: {e}")
 
     def calculate_base_quantity(self, entry_price: float) -> float:
         """Calcula cantidad inicial basada en BASE_ORDER_MARGIN."""
         if entry_price <= 0:
-            print(f"[ERROR] entry_price invalido: {entry_price}")
+            logger.error(f"[ERROR] entry_price invalido: {entry_price}")
             return 0.0
         notional = self.grinder_settings['base_margin'] * self.leverage
         quantity = notional / entry_price
@@ -195,7 +198,7 @@ class Trader:
                 commission=quantity * fill_price * COMMISSION_RATE
             )
 
-            print(f"[GRINDER] OPEN {side.upper()} | Precio: ${fill_price:,.2f} | Qty: {quantity}")
+            logger.info(f"[GRINDER] OPEN {side.upper()} | Precio: ${fill_price:,.2f} | Qty: {quantity}")
             self.daily_stats.trades += 1
 
             # Persistir posicion activa en DB
@@ -209,11 +212,11 @@ class Trader:
                     'commission': self.current_trade.commission
                 })
             except Exception as e:
-                print(f"[WARN] No se pudo guardar posicion en DB: {e}")
+                logger.warning(f"[WARN] No se pudo guardar posicion en DB: {e}")
 
             return True
         except Exception as e:
-            print(f"[ERROR] open_position: {e}")
+            logger.error(f"[ERROR] open_position: {e}")
             return False
 
     def execute_dca(self, current_price: float) -> bool:
@@ -223,7 +226,7 @@ class Trader:
 
         # Cantidad de la recompra (Martingala)
         if current_price <= 0:
-            print(f"[ERROR] DCA: current_price invalido: {current_price}")
+            logger.error(f"[ERROR] DCA: current_price invalido: {current_price}")
             return False
         so_margin = self.grinder_settings['base_margin'] * (self.grinder_settings['martingale'] ** so_num)
         so_quantity = round((so_margin * self.leverage) / current_price, 3)
@@ -232,14 +235,14 @@ class Trader:
         try:
             available_balance = client.get_usdt_balance()
             if available_balance < so_margin:
-                print(f"[DCA] Balance insuficiente: ${available_balance:.2f} < ${so_margin:.2f} requerido")
+                logger.warning(f"[DCA] Balance insuficiente: ${available_balance:.2f} < ${so_margin:.2f} requerido")
                 return False
         except Exception as e:
-            print(f"[DCA] No se pudo verificar balance: {e}")
+            logger.warning(f"[DCA] No se pudo verificar balance: {e}")
             return False
 
         try:
-            print(f"[DCA] Ejecutando Recompra #{so_num}...")
+            logger.info(f"[DCA] Ejecutando Recompra #{so_num}...")
             order = client.market_buy(so_quantity, self.symbol) if trade.side == 'long' else client.market_sell(so_quantity, self.symbol)
             fill_price = self._extract_fill_price(order, current_price)
 
@@ -250,7 +253,7 @@ class Trader:
             trade.safety_orders_count = so_num
             trade.commission += so_quantity * fill_price * COMMISSION_RATE
 
-            print(f"[DCA] OK | Nuevo Promedio: ${trade.avg_price:,.2f} | Total Qty: {trade.total_quantity}")
+            logger.info(f"[DCA] OK | Nuevo Promedio: ${trade.avg_price:,.2f} | Total Qty: {trade.total_quantity}")
 
             # Actualizar posicion activa en DB
             try:
@@ -267,7 +270,7 @@ class Trader:
 
             return True
         except Exception as e:
-            print(f"[ERROR] execute_dca: {e}")
+            logger.error(f"[ERROR] execute_dca: {e}")
             return False
 
     def update_position(self, high: float, low: float, close: float) -> Optional[Signal]:
@@ -331,7 +334,7 @@ class Trader:
             
             # PnL Neto (proteccion contra avg_price=0)
             if trade.avg_price <= 0:
-                print(f"[ERROR] avg_price invalido ({trade.avg_price}), usando close price para evitar crash")
+                logger.error(f"[ERROR] avg_price invalido ({trade.avg_price}), usando close price para evitar crash")
                 trade.avg_price = current_price
             pnl_pct = ((current_price - trade.avg_price) / trade.avg_price) if trade.side == 'long' else ((trade.avg_price - current_price) / trade.avg_price)
             pnl_pct = pnl_pct * self.leverage
@@ -340,7 +343,7 @@ class Trader:
             trade.pnl = (trade.total_quantity * trade.avg_price * pnl_pct) - trade.commission
             trade.pnl_pct = pnl_pct
 
-            print(f"[GRINDER] CLOSE {trade.side.upper()} | PnL: ${trade.pnl:,.2f} ({pnl_pct*100:+.2f}%) | Razon: {reason}")
+            logger.info(f"[GRINDER] CLOSE {trade.side.upper()} | PnL: ${trade.pnl:,.2f} ({pnl_pct*100:+.2f}%) | Razon: {reason}")
 
             self._update_stats(trade)
             self.trade_history.append(trade)
@@ -366,12 +369,12 @@ class Trader:
                 db.update_feature_outcome(trade_id, outcome)
                 db.clear_active_position()
             except Exception as e:
-                print(f"[WARN] No se pudo guardar trade en DB: {e}")
+                logger.warning(f"[WARN] No se pudo guardar trade en DB: {e}")
 
             self.current_trade = None
             return True
         except Exception as e:
-            print(f"[ERROR] close_position: {e}")
+            logger.error(f"[ERROR] close_position: {e}")
             return False
 
     def _update_stats(self, trade: TradeRecord):
@@ -426,18 +429,18 @@ class Trader:
     def _pause(self, reason: str):
         self.is_paused = True
         self.pause_reason = reason
-        print(f"[KILL SWITCH] Bot pausado: {reason}")
+        logger.warning(f"[KILL SWITCH] Bot pausado: {reason}")
 
     def resume(self, force: bool = False):
         """Reanuda el bot. Si fue pausado por WR, solo reanuda si WR se recupero."""
         if not force and "Rolling WR" in self.pause_reason:
             rolling_wr = self._get_rolling_win_rate()
             if rolling_wr < ROLLING_WR_RESUME:
-                print(f"[KILL SWITCH] No se puede reanudar: WR rolling ({rolling_wr*100:.1f}%) < {ROLLING_WR_RESUME*100}%")
+                logger.warning(f"[KILL SWITCH] No se puede reanudar: WR rolling ({rolling_wr*100:.1f}%) < {ROLLING_WR_RESUME*100}%")
                 return
         self.is_paused = False
         self.pause_reason = ""
-        print("[TRADER] Bot reanudado")
+        logger.info("[TRADER] Bot reanudado")
 
     def has_open_position(self) -> bool:
         return self.current_trade is not None
@@ -468,10 +471,10 @@ class Trader:
                         safety_orders_count=db_pos.get('safety_orders_count', 0),
                         commission=db_pos.get('commission', 0.0)
                     )
-                    print(f"[TRADER] Posicion recuperada desde DB: {db_pos['side']} @ ${db_pos['avg_price']:.2f} (DCA: {db_pos.get('safety_orders_count', 0)})")
+                    logger.info(f"[TRADER] Posicion recuperada desde DB: {db_pos['side']} @ ${db_pos['avg_price']:.2f} (DCA: {db_pos.get('safety_orders_count', 0)})")
                 else:
                     if db_pos:
-                        print(f"[WARN] DB tiene avg_price invalido ({db_pos.get('avg_price')}), usando exchange")
+                        logger.warning(f"[WARN] DB tiene avg_price invalido ({db_pos.get('avg_price')}), usando exchange")
                         db.clear_active_position()
                     # Fallback: reconstruir desde exchange (sin datos de DCA)
                     self.current_trade = TradeRecord(
@@ -481,7 +484,7 @@ class Trader:
                         total_quantity=position['size'],
                         safety_orders_count=0
                     )
-                    print(f"[TRADER] Posicion recuperada desde Exchange: {position['side']} @ ${position['entry_price']:.2f}")
+                    logger.info(f"[TRADER] Posicion recuperada desde Exchange: {position['side']} @ ${position['entry_price']:.2f}")
 
             elif not position and self.current_trade is not None:
                 self.current_trade = None
@@ -492,10 +495,10 @@ class Trader:
                 db_pos = db.get_active_position()
                 if db_pos:
                     db.clear_active_position()
-                    print("[TRADER] Posicion huerfana en DB limpiada")
+                    logger.info("[TRADER] Posicion huerfana en DB limpiada")
 
         except Exception as e:
-            print(f"[WARN] sync_with_exchange: {e}")
+            logger.warning(f"[WARN] sync_with_exchange: {e}")
 
     def get_stats_summary(self) -> str:
         s = self.daily_stats

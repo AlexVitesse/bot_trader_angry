@@ -31,6 +31,8 @@ from config.settings import (
     print_config
 )
 
+logger = logging.getLogger(__name__)
+
 
 def setup_logging():
     """Configura logging a archivo + consola."""
@@ -76,7 +78,7 @@ class ScalperBot:
 
     def _handle_shutdown(self, signum, frame):
         """Maneja shutdown graceful."""
-        print("\n[BOT] Deteniendo bot...")
+        logger.info("[BOT] Deteniendo bot...")
         self.running = False
         self.ws_manager.stop()
 
@@ -110,18 +112,18 @@ class ScalperBot:
             return df
 
         except Exception as e:
-            print(f"[ERROR] Error obteniendo velas: {e}")
+            logger.error(f"[ERROR] Error obteniendo velas: {e}")
             return pd.DataFrame()
 
     def fetch_initial_history(self, limit: int = 500):
         """Carga historial inicial para indicadores."""
-        print("[BOT] Cargando historial inicial...")
+        logger.info("[BOT] Cargando historial inicial...")
         df = self.fetch_candles(limit)
         if not df.empty:
             self.df_history = df
             strategy.calculate_indicators(self.df_history)
             self.last_candle_time = self.df_history.index[-1]
-            print(f"[BOT] Historial cargado. {len(df)} velas.")
+            logger.info(f"[BOT] Historial cargado. {len(df)} velas.")
 
     def _on_candle_closed(self, candle):
         """Callback cuando cierra una vela via Websocket."""
@@ -155,7 +157,7 @@ class ScalperBot:
         except Exception:
             pass
 
-        print(f"\n[WS] Nueva vela cerrada: {self.last_candle_time}")
+        logger.info(f"[WS] Nueva vela cerrada: {self.last_candle_time}")
         self.process_candle(self.df_history)
 
     def process_candle(self, df: pd.DataFrame):
@@ -176,11 +178,11 @@ class ScalperBot:
 
         entry_signal = strategy.check_entry_signal(df)
         if entry_signal != Signal.NONE:
-            print(f"\n[SIGNAL] {entry_signal.value.upper()} detectada!")
-            print(f"         Precio: ${current_price:,.2f} | StochK: {last_candle['stoch_k']:.1f}")
+            logger.info(f"[SIGNAL] {entry_signal.value.upper()} detectada!")
+            logger.info(f"         Precio: ${current_price:,.2f} | StochK: {last_candle['stoch_k']:.1f}")
             success = trader.open_position(entry_signal, current_price, 0)
             if success:
-                print("[BOT] Posicion abierta exitosamente")
+                logger.info("[BOT] Posicion abierta exitosamente")
                 self._capture_features(df, current_price)
 
     def _capture_features(self, df: pd.DataFrame, price: float):
@@ -261,25 +263,25 @@ class ScalperBot:
             # Usamos el trade count + 1 como estimacion
             trade_count = db.get_trade_count()
             db.save_features(features, trade_id=trade_count + 1)
-            print(f"[DB] Features capturados: EMA dist={ema_dist_pct:.2f}% | BB pos={bb_position:.2f} | ATR ratio={atr_ratio:.2f}" if ema_dist_pct and bb_position and atr_ratio else "[DB] Features capturados")
+            logger.info(f"[DB] Features capturados: EMA dist={ema_dist_pct:.2f}% | BB pos={bb_position:.2f} | ATR ratio={atr_ratio:.2f}" if ema_dist_pct and bb_position and atr_ratio else "[DB] Features capturados")
 
         except Exception as e:
-            print(f"[WARN] Error capturando features: {e}")
+            logger.warning(f"[WARN] Error capturando features: {e}")
 
     def _print_position_status(self, pos_info: dict, current_price: float):
         """Imprime estado de la posicion actual."""
         avg_entry = pos_info['avg_price']
         if avg_entry <= 0 or current_price <= 0:
-            print(f"[POS] {pos_info['side'].upper()} | Avg: ${avg_entry:,.2f} | PnL: N/A | DCA: {pos_info['so_count']}")
+            logger.info(f"[POS] {pos_info['side'].upper()} | Avg: ${avg_entry:,.2f} | PnL: N/A | DCA: {pos_info['so_count']}")
             return
         pnl_pct = ((current_price - avg_entry) / avg_entry * 100) if pos_info['side'] == 'long' else ((avg_entry - current_price) / avg_entry * 100)
-        print(f"[POS] {pos_info['side'].upper()} | Avg: ${avg_entry:,.2f} | PnL: {pnl_pct:+.2f}% | DCA: {pos_info['so_count']}")
+        logger.info(f"[POS] {pos_info['side'].upper()} | Avg: ${avg_entry:,.2f} | PnL: {pnl_pct:+.2f}% | DCA: {pos_info['so_count']}")
 
     def run(self):
         """Loop principal del bot."""
-        print("\n" + "="*60)
-        print("BINANCE SCALPER BOT v6.7 (WEBSOCKET)")
-        print("="*60)
+        logger.info("=" * 60)
+        logger.info("BINANCE SCALPER BOT v6.7 (WEBSOCKET)")
+        logger.info("=" * 60)
         print_config()
 
         trader.sync_with_exchange()
@@ -287,9 +289,9 @@ class ScalperBot:
         
         if self.df_history.empty: return
 
-        print(f"[BOT] Precio: ${self.df_history['close'].iloc[-1]:,.2f}")
+        logger.info(f"[BOT] Precio: ${self.df_history['close'].iloc[-1]:,.2f}")
         self.ws_manager.start()
-        print("\n[BOT] Escuchando mercado...")
+        logger.info("[BOT] Escuchando mercado...")
         
         self.running = True
         while self.running:
@@ -304,7 +306,7 @@ class ScalperBot:
                         self._print_position_status(pos_info, live_price)
                 time.sleep(5)
             except Exception as e:
-                print(f"[ERROR] Loop: {e}")
+                logger.error(f"[ERROR] Loop: {e}")
                 time.sleep(5)
 
         self.ws_manager.stop()

@@ -5,6 +5,7 @@ Estrategia: v6.7 Smart Metralladora (Trend Filter + DCA)
 """
 
 import os
+import logging
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -125,9 +126,10 @@ def validate_config() -> bool:
         errors.append("STOP_LOSS_CATASTROPHIC debe ser > 0")
 
     if errors:
-        print("[CONFIG ERROR] Errores de configuracion:")
+        _logger = logging.getLogger(__name__)
+        _logger.error("[CONFIG ERROR] Errores de configuracion:")
         for e in errors:
-            print(f"  - {e}")
+            _logger.error(f"  - {e}")
         return False
 
     return True
@@ -135,22 +137,23 @@ def validate_config() -> bool:
 
 def print_config():
     """Imprime la configuracion actual."""
-    print("\n" + "="*60)
-    print("CONFIGURACION DEL BOT")
-    print("="*60)
-    print(f"Modo: {TRADING_MODE.upper()}")
-    print(f"Simbolo: {SYMBOL}")
-    print(f"Timeframe: {TIMEFRAME}")
-    print(f"Leverage: {LEVERAGE}x")
-    print(f"Capital: ${INITIAL_CAPITAL}")
-    print(f"\nEstrategia: v6.7 SMART METRALLADORA (Trend Filter + DCA)")
-    print(f"  - BB({BB_LENGTH}, {BB_STD}) | EMA Trend: {EMA_TREND_LENGTH}")
-    print(f"  - DCA: {MAX_SAFETY_ORDERS} Recompras cada {DCA_STEP_PCT*100}%")
-    print(f"  - Take Profit: {TAKE_PROFIT_PCT*100}% | SL: {STOP_LOSS_CATASTROPHIC*100}%")
-    print(f"\nSeguridad:")
-    print(f"  - Max Daily Loss: {MAX_DAILY_LOSS_PCT*100}%")
-    print(f"  - Max Consecutive Losses: {MAX_CONSECUTIVE_LOSSES}")
-    print("="*60 + "\n")
+    _logger = logging.getLogger(__name__)
+    _logger.info("=" * 60)
+    _logger.info("CONFIGURACION DEL BOT")
+    _logger.info("=" * 60)
+    _logger.info(f"Modo: {TRADING_MODE.upper()}")
+    _logger.info(f"Simbolo: {SYMBOL}")
+    _logger.info(f"Timeframe: {TIMEFRAME}")
+    _logger.info(f"Leverage: {LEVERAGE}x")
+    _logger.info(f"Capital: ${INITIAL_CAPITAL}")
+    _logger.info(f"Estrategia: v6.7 SMART METRALLADORA (Trend Filter + DCA)")
+    _logger.info(f"  - BB({BB_LENGTH}, {BB_STD}) | EMA Trend: {EMA_TREND_LENGTH}")
+    _logger.info(f"  - DCA: {MAX_SAFETY_ORDERS} Recompras cada {DCA_STEP_PCT*100}%")
+    _logger.info(f"  - Take Profit: {TAKE_PROFIT_PCT*100}% | SL: {STOP_LOSS_CATASTROPHIC*100}%")
+    _logger.info(f"Seguridad:")
+    _logger.info(f"  - Max Daily Loss: {MAX_DAILY_LOSS_PCT*100}%")
+    _logger.info(f"  - Max Consecutive Losses: {MAX_CONSECUTIVE_LOSSES}")
+    _logger.info("=" * 60)
 
 
 if __name__ == "__main__":

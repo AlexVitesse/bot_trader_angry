@@ -9,12 +9,16 @@ import sys
 import time
 import hmac
 import hashlib
+import logging
 import requests
 from pathlib import Path
 
 # Agregar raiz al path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from typing import Dict, List, Optional, Any
+
+logger = logging.getLogger(__name__)
+
 from config.settings import (
     BINANCE_API_KEY,
     BINANCE_API_SECRET,
@@ -42,7 +46,7 @@ class BinanceClient:
             server_time = response.json()['serverTime']
             self.time_offset = server_time - int(time.time() * 1000)
         except Exception as e:
-            print(f"[WARN] No se pudo sincronizar tiempo: {e}")
+            logger.warning(f"[WARN] No se pudo sincronizar tiempo: {e}")
             self.time_offset = 0
 
     def _get_timestamp(self) -> int:

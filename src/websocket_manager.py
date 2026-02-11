@@ -1,10 +1,13 @@
 import json
+import logging
 import threading
 import time
 import websocket
 import pandas as pd
 from datetime import datetime
 from typing import Callable, Optional
+
+logger = logging.getLogger(__name__)
 
 MAX_RECONNECT_ATTEMPTS = 10
 INITIAL_RECONNECT_DELAY = 5  # segundos
@@ -47,7 +50,7 @@ class BinanceWebsocketManager:
         """Crea la conexion WebSocket en un thread daemon."""
         stream_url = f"{self.base_url}/{self.symbol}@kline_{self.interval}"
 
-        print(f"[WS] Conectando a {stream_url}...")
+        logger.info(f"[WS] Conectando a {stream_url}...")
 
         self.ws = websocket.WebSocketApp(
             stream_url,
@@ -68,27 +71,27 @@ class BinanceWebsocketManager:
             self.ws.close()
 
     def _on_open(self, ws):
-        print("[WS] Conexion establecida")
+        logger.info("[WS] Conexion establecida")
         # Reset reconexion al conectar exitosamente
         self._reconnect_count = 0
         self._reconnect_delay = INITIAL_RECONNECT_DELAY
 
     def _on_error(self, ws, error):
         if self.running:
-            print(f"[WS] Error: {error}")
+            logger.error(f"[WS] Error: {error}")
 
     def _on_close(self, ws, close_status_code, close_msg):
-        print("[WS] Conexion cerrada")
+        logger.info("[WS] Conexion cerrada")
         if not self.running:
             return
 
         self._reconnect_count += 1
         if self._reconnect_count > MAX_RECONNECT_ATTEMPTS:
-            print(f"[WS] Maximo de reconexiones alcanzado ({MAX_RECONNECT_ATTEMPTS}). Deteniendo.")
+            logger.error(f"[WS] Maximo de reconexiones alcanzado ({MAX_RECONNECT_ATTEMPTS}). Deteniendo.")
             self.running = False
             return
 
-        print(f"[WS] Reconectando en {self._reconnect_delay}s... (intento {self._reconnect_count}/{MAX_RECONNECT_ATTEMPTS})")
+        logger.warning(f"[WS] Reconectando en {self._reconnect_delay}s... (intento {self._reconnect_count}/{MAX_RECONNECT_ATTEMPTS})")
         time.sleep(self._reconnect_delay)
         # Backoff exponencial: 5s, 10s, 20s, 40s... hasta MAX_RECONNECT_DELAY
         self._reconnect_delay = min(self._reconnect_delay * 2, MAX_RECONNECT_DELAY)
@@ -137,7 +140,7 @@ class BinanceWebsocketManager:
                     self.on_candle_closed(candle)
 
         except Exception as e:
-            print(f"[WS] Error procesando mensaje: {e}")
+            logger.error(f"[WS] Error procesando mensaje: {e}")
 
     def get_latest_price(self) -> float:
         """Retorna el ultimo precio conocido."""
