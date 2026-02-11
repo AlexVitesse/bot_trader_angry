@@ -54,11 +54,19 @@ print("="*60)
 
 from src.trader import Trader
 
+# Crear un trader para tests de _extract_fill_price (no es static, necesita instancia)
+with patch('src.trader.client') as _mc, patch('src.trader.db') as _md:
+    _mc.set_leverage.return_value = {}
+    _mc.get_position.return_value = None  # Sin posicion (para que no interfiera)
+    _md.get_recent_trades.return_value = []
+    _md.get_trade_count.return_value = 0
+    _fill_test_trader = Trader()
+
 
 @test("avgPrice valido retorna el precio")
 def _():
     order = {'avgPrice': '97500.50', 'fills': []}
-    result = Trader._extract_fill_price(order, 99000.0)
+    result = _fill_test_trader._extract_fill_price(order, 99000.0)
     assert result == 97500.50, f"Esperado 97500.50, obtenido {result}"
 
 
@@ -71,53 +79,90 @@ def _():
             {'qty': '0.001', 'price': '97100.0'}
         ]
     }
-    result = Trader._extract_fill_price(order, 99000.0)
+    result = _fill_test_trader._extract_fill_price(order, 99000.0)
     expected = (0.001 * 97000.0 + 0.001 * 97100.0) / 0.002
     assert abs(result - expected) < 0.01, f"Esperado {expected}, obtenido {result}"
 
 
-@test("avgPrice='0' sin fills usa fallback")
+@test("avgPrice='0' sin fills consulta posicion al exchange")
 def _():
-    order = {'avgPrice': '0', 'fills': []}
-    result = Trader._extract_fill_price(order, 98000.0)
-    assert result == 98000.0, f"Esperado 98000.0, obtenido {result}"
+    with patch('src.trader.client') as mock_client:
+        mock_client.get_position.return_value = {
+            'symbol': 'BTCUSDT', 'side': 'long',
+            'size': 0.002, 'entry_price': 97350.0,
+            'unrealized_pnl': 0.0, 'leverage': 10
+        }
+        order = {'avgPrice': '0', 'fills': []}
+        result = _fill_test_trader._extract_fill_price(order, 98000.0)
+        assert result == 97350.0, f"Esperado 97350.0 (de posicion), obtenido {result}"
 
 
-@test("avgPrice='0.00000000' sin fills usa fallback")
+@test("avgPrice='0' sin fills ni posicion usa fallback")
 def _():
-    order = {'avgPrice': '0.00000000'}
-    result = Trader._extract_fill_price(order, 98000.0)
-    assert result == 98000.0, f"Esperado 98000.0, obtenido {result}"
+    with patch('src.trader.client') as mock_client:
+        mock_client.get_position.return_value = None
+        order = {'avgPrice': '0', 'fills': []}
+        result = _fill_test_trader._extract_fill_price(order, 98000.0)
+        assert result == 98000.0, f"Esperado 98000.0, obtenido {result}"
 
 
-@test("avgPrice ausente usa fallback")
+@test("avgPrice='0.00000000' sin fills consulta exchange")
 def _():
-    order = {'orderId': 12345}
-    result = Trader._extract_fill_price(order, 97000.0)
-    assert result == 97000.0, f"Esperado 97000.0, obtenido {result}"
+    with patch('src.trader.client') as mock_client:
+        mock_client.get_position.return_value = {
+            'symbol': 'BTCUSDT', 'side': 'long',
+            'size': 0.002, 'entry_price': 97100.0,
+            'unrealized_pnl': 0.0, 'leverage': 10
+        }
+        order = {'avgPrice': '0.00000000'}
+        result = _fill_test_trader._extract_fill_price(order, 98000.0)
+        assert result == 97100.0, f"Esperado 97100.0, obtenido {result}"
 
 
-@test("avgPrice negativo usa fallback")
+@test("avgPrice ausente, exchange falla -> usa fallback")
 def _():
-    order = {'avgPrice': '-1'}
-    result = Trader._extract_fill_price(order, 97000.0)
-    assert result == 97000.0, f"Esperado 97000.0, obtenido {result}"
+    with patch('src.trader.client') as mock_client:
+        mock_client.get_position.side_effect = Exception("Connection error")
+        order = {'orderId': 12345}
+        result = _fill_test_trader._extract_fill_price(order, 97000.0)
+        assert result == 97000.0, f"Esperado 97000.0, obtenido {result}"
 
 
-@test("fills con qty=0 usa fallback")
+@test("avgPrice negativo consulta exchange")
 def _():
-    order = {
-        'avgPrice': '0',
-        'fills': [{'qty': '0', 'price': '97000.0'}]
-    }
-    result = Trader._extract_fill_price(order, 98500.0)
-    assert result == 98500.0, f"Esperado 98500.0, obtenido {result}"
+    with patch('src.trader.client') as mock_client:
+        mock_client.get_position.return_value = {
+            'symbol': 'BTCUSDT', 'side': 'long',
+            'size': 0.002, 'entry_price': 96900.0,
+            'unrealized_pnl': 0.0, 'leverage': 10
+        }
+        order = {'avgPrice': '-1'}
+        result = _fill_test_trader._extract_fill_price(order, 97000.0)
+        assert result == 96900.0, f"Esperado 96900.0, obtenido {result}"
 
 
-@test("order dict vacio usa fallback")
+@test("fills con qty=0, exchange retorna precio real")
 def _():
-    result = Trader._extract_fill_price({}, 96000.0)
-    assert result == 96000.0, f"Esperado 96000.0, obtenido {result}"
+    with patch('src.trader.client') as mock_client:
+        mock_client.get_position.return_value = {
+            'symbol': 'BTCUSDT', 'side': 'long',
+            'size': 0.002, 'entry_price': 97250.0,
+            'unrealized_pnl': 0.0, 'leverage': 10
+        }
+        order = {
+            'avgPrice': '0',
+            'fills': [{'qty': '0', 'price': '97000.0'}]
+        }
+        result = _fill_test_trader._extract_fill_price(order, 98500.0)
+        assert result == 97250.0, f"Esperado 97250.0, obtenido {result}"
+
+
+@test("order dict vacio, exchange sin posicion -> usa fallback")
+def _():
+    with patch('src.trader.client') as mock_client:
+        mock_client.get_position.return_value = None
+        result = _fill_test_trader._extract_fill_price({}, 96000.0)
+        assert result == 96000.0, f"Esperado 96000.0, obtenido {result}"
 
 
 # =====================================================================

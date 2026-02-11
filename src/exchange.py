@@ -172,6 +172,10 @@ class BinanceClient:
             'quantity': quantity
         }
 
+        # Forzar respuesta con datos de fill (avgPrice, fills)
+        if order_type == 'MARKET':
+            params['newOrderRespType'] = 'RESULT'
+
         if order_type == 'LIMIT':
             params['price'] = price
             params['timeInForce'] = 'GTC'

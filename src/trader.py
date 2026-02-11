@@ -120,18 +120,21 @@ class Trader:
         except Exception as e:
             print(f"[WARN] No se pudo cargar historial de DB: {e}")
 
-    @staticmethod
-    def _extract_fill_price(order: Dict, fallback_price: float) -> float:
+    def _extract_fill_price(self, order: Dict, fallback_price: float) -> float:
         """Extrae el precio de llenado de la respuesta de Binance.
 
-        Binance Futures puede retornar avgPrice='0' en market orders.
-        En ese caso, calcula el precio desde el array 'fills' o usa el fallback.
+        Cadena de intentos:
+        1. avgPrice del response (normal en live)
+        2. Calcular desde array 'fills'
+        3. Consultar posicion al exchange (entryPrice)
+        4. Fallback al precio de la senal (ultimo recurso)
         """
+        # 1. avgPrice directo
         avg = float(order.get('avgPrice', 0))
         if avg > 0:
             return avg
 
-        # Calcular desde fills array
+        # 2. Calcular desde fills array
         fills = order.get('fills', [])
         if fills:
             total_qty = sum(float(f['qty']) for f in fills)
@@ -139,6 +142,17 @@ class Trader:
             if total_qty > 0:
                 return total_cost / total_qty
 
+        # 3. Consultar posicion al exchange (tiene el entryPrice real)
+        try:
+            position = client.get_position(self.symbol)
+            if position and position['entry_price'] > 0:
+                print(f"[TRADER] Fill price obtenido via consulta de posicion: ${position['entry_price']:,.2f}")
+                return position['entry_price']
+        except Exception:
+            pass
+
+        # 4. Fallback (no ideal, pero evita crash)
+        print(f"[WARN] No se pudo obtener fill price real, usando fallback: ${fallback_price:,.2f}")
         return fallback_price
 
     def _setup(self):
