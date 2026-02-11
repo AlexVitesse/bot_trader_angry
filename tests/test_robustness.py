@@ -888,16 +888,17 @@ def _():
 # =====================================================================
 # RESUMEN
 # =====================================================================
-print("\n" + "="*60)
-total = passed + failed
-print(f"RESULTADO: {passed}/{total} tests pasaron")
-if failed > 0:
-    print(f"\n[ERRORES] {failed} tests fallaron:")
-    for e in errors:
-        print(f"  - {e}")
-    print("="*60)
-    sys.exit(1)
-else:
-    print("[OK] Todos los tests pasaron - Bot robusto!")
-    print("="*60)
-    sys.exit(0)
+if __name__ == "__main__":
+    print("\n" + "="*60)
+    total = passed + failed
+    print(f"RESULTADO: {passed}/{total} tests pasaron")
+    if failed > 0:
+        print(f"\n[ERRORES] {failed} tests fallaron:")
+        for e in errors:
+            print(f"  - {e}")
+        print("="*60)
+        sys.exit(1)
+    else:
+        print("[OK] Todos los tests pasaron - Bot robusto!")
+        print("="*60)
+        sys.exit(0)

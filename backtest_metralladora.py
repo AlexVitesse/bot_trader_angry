@@ -1,10 +1,10 @@
 """
-Backtest v6.7 - Smart Metralladora (con Protecciones)
-======================================================
+Backtest v6.7 - Smart Metralladora (con Protecciones + Sizing Dinamico)
+========================================================================
 Incluye:
   - Filtro de regimen de volatilidad (ATR)
   - Rolling WR kill switch (pausa si WR < 78%)
-  - Comparacion con/sin protecciones
+  - Comparacion margen fijo vs sizing dinamico (% del balance)
 """
 
 import pandas as pd
@@ -13,16 +13,17 @@ import numpy as np
 
 from config.settings import (
     SYMBOL, BB_LENGTH, BB_STD, EMA_TREND_LENGTH,
-    INITIAL_CAPITAL, LEVERAGE, COMMISSION_RATE,
+    INITIAL_CAPITAL, LEVERAGE, COMMISSION_RATE, SLIPPAGE_PCT,
     BASE_ORDER_MARGIN, DCA_STEP_PCT, MAX_SAFETY_ORDERS,
     MARTINGALE_MULTIPLIER, TAKE_PROFIT_PCT, STOP_LOSS_CATASTROPHIC,
     ATR_REGIME_LENGTH, ATR_REGIME_MULT_HIGH, ATR_REGIME_MULT_LOW,
-    ROLLING_WR_WINDOW, ROLLING_WR_MIN, MAX_CONSECUTIVE_LOSSES
+    ROLLING_WR_WINDOW, ROLLING_WR_MIN, MAX_CONSECUTIVE_LOSSES,
+    POSITION_SIZE_PCT, MIN_ORDER_MARGIN
 )
 
 
-def run_backtest(use_protections: bool = True):
-    """Ejecuta backtest. use_protections=True activa filtro ATR + rolling WR."""
+def run_backtest(use_protections: bool = True, dynamic_sizing: bool = False, slippage_pct: float = 0.0):
+    """Ejecuta backtest. slippage_pct simula deslizamiento de precio en cada fill."""
     filename = f"data/{SYMBOL.replace('/', '_')}_1m_history.parquet"
     df = pd.read_parquet(filename)
 
@@ -58,6 +59,9 @@ def run_backtest(use_protections: bool = True):
     trades = []
     balance_curve = [INITIAL_CAPITAL]
 
+    # Slippage acumulado por trade (entry + DCA fills)
+    entry_slippage = 0.0
+
     # Protecciones
     is_paused = False
     consecutive_losses = 0
@@ -78,18 +82,20 @@ def run_backtest(use_protections: bool = True):
                 if high >= tp_target:
                     gross_pnl = total_size_notional * TAKE_PROFIT_PCT
                     commission = entry_commission + (total_size_notional * COMMISSION_RATE)
-                    net_pnl = gross_pnl - commission
+                    exit_slippage = total_size_notional * slippage_pct
+                    net_pnl = gross_pnl - commission - entry_slippage - exit_slippage
                     balance += net_pnl
-                    trades.append({'res': 'WIN', 'pnl': net_pnl, 'gross': gross_pnl, 'comm': commission, 'so': so_count})
+                    trades.append({'res': 'WIN', 'pnl': net_pnl, 'gross': gross_pnl, 'comm': commission, 'slip': entry_slippage + exit_slippage, 'so': so_count})
                     in_position = False
                     consecutive_losses = 0
 
                 elif low <= sl_target:
                     gross_pnl = -(total_size_notional * STOP_LOSS_CATASTROPHIC)
                     commission = entry_commission + (total_size_notional * COMMISSION_RATE)
-                    net_pnl = gross_pnl - commission
+                    exit_slippage = total_size_notional * slippage_pct
+                    net_pnl = gross_pnl - commission - entry_slippage - exit_slippage
                     balance += net_pnl
-                    trades.append({'res': 'LOSS', 'pnl': net_pnl, 'gross': gross_pnl, 'comm': commission, 'so': so_count})
+                    trades.append({'res': 'LOSS', 'pnl': net_pnl, 'gross': gross_pnl, 'comm': commission, 'slip': entry_slippage + exit_slippage, 'so': so_count})
                     in_position = False
                     consecutive_losses += 1
 
@@ -97,11 +103,13 @@ def run_backtest(use_protections: bool = True):
                     dca_target = avg_price * (1 - DCA_STEP_PCT)
                     if low <= dca_target:
                         so_count += 1
-                        so_size = (BASE_ORDER_MARGIN * LEVERAGE) * (MARTINGALE_MULTIPLIER ** so_count)
+                        dca_base = entry_margin if dynamic_sizing else BASE_ORDER_MARGIN
+                        so_size = (dca_base * LEVERAGE) * (MARTINGALE_MULTIPLIER ** so_count)
                         new_size = total_size_notional + so_size
                         avg_price = ((avg_price * total_size_notional) + (price * so_size)) / new_size
                         total_size_notional = new_size
                         entry_commission += so_size * COMMISSION_RATE
+                        entry_slippage += so_size * slippage_pct
 
             elif position_type == -1:  # SHORT
                 tp_target = avg_price * (1 - TAKE_PROFIT_PCT)
@@ -110,18 +118,20 @@ def run_backtest(use_protections: bool = True):
                 if low <= tp_target:
                     gross_pnl = total_size_notional * TAKE_PROFIT_PCT
                     commission = entry_commission + (total_size_notional * COMMISSION_RATE)
-                    net_pnl = gross_pnl - commission
+                    exit_slippage = total_size_notional * slippage_pct
+                    net_pnl = gross_pnl - commission - entry_slippage - exit_slippage
                     balance += net_pnl
-                    trades.append({'res': 'WIN', 'pnl': net_pnl, 'gross': gross_pnl, 'comm': commission, 'so': so_count})
+                    trades.append({'res': 'WIN', 'pnl': net_pnl, 'gross': gross_pnl, 'comm': commission, 'slip': entry_slippage + exit_slippage, 'so': so_count})
                     in_position = False
                     consecutive_losses = 0
 
                 elif high >= sl_target:
                     gross_pnl = -(total_size_notional * STOP_LOSS_CATASTROPHIC)
                     commission = entry_commission + (total_size_notional * COMMISSION_RATE)
-                    net_pnl = gross_pnl - commission
+                    exit_slippage = total_size_notional * slippage_pct
+                    net_pnl = gross_pnl - commission - entry_slippage - exit_slippage
                     balance += net_pnl
-                    trades.append({'res': 'LOSS', 'pnl': net_pnl, 'gross': gross_pnl, 'comm': commission, 'so': so_count})
+                    trades.append({'res': 'LOSS', 'pnl': net_pnl, 'gross': gross_pnl, 'comm': commission, 'slip': entry_slippage + exit_slippage, 'so': so_count})
                     in_position = False
                     consecutive_losses += 1
 
@@ -129,11 +139,13 @@ def run_backtest(use_protections: bool = True):
                     dca_target = avg_price * (1 + DCA_STEP_PCT)
                     if high >= dca_target:
                         so_count += 1
-                        so_size = (BASE_ORDER_MARGIN * LEVERAGE) * (MARTINGALE_MULTIPLIER ** so_count)
+                        dca_base = entry_margin if dynamic_sizing else BASE_ORDER_MARGIN
+                        so_size = (dca_base * LEVERAGE) * (MARTINGALE_MULTIPLIER ** so_count)
                         new_size = total_size_notional + so_size
                         avg_price = ((avg_price * total_size_notional) + (price * so_size)) / new_size
                         total_size_notional = new_size
                         entry_commission += so_size * COMMISSION_RATE
+                        entry_slippage += so_size * slippage_pct
 
         # ENTRADAS
         if not in_position:
@@ -164,15 +176,22 @@ def run_backtest(use_protections: bool = True):
                 if consecutive_losses >= MAX_CONSECUTIVE_LOSSES:
                     consecutive_losses = 0
             else:
+                # Calcular margen para esta entrada
+                if dynamic_sizing:
+                    entry_margin = max(balance * POSITION_SIZE_PCT, MIN_ORDER_MARGIN)
+                else:
+                    entry_margin = BASE_ORDER_MARGIN
+
                 # TENDENCIA ALCISTA -> Solo Longs
                 if price > row['ema_trend']:
                     if prev['close'] <= prev['bb_lower'] and price > row['bb_lower'] and row['stoch_k'] < 20:
                         in_position = True
                         position_type = 1
                         avg_price = price
-                        total_size_notional = BASE_ORDER_MARGIN * LEVERAGE
+                        total_size_notional = entry_margin * LEVERAGE
                         so_count = 0
                         entry_commission = total_size_notional * COMMISSION_RATE
+                        entry_slippage = total_size_notional * slippage_pct
 
                 # TENDENCIA BAJISTA -> Solo Shorts
                 elif price < row['ema_trend']:
@@ -180,9 +199,10 @@ def run_backtest(use_protections: bool = True):
                         in_position = True
                         position_type = -1
                         avg_price = price
-                        total_size_notional = BASE_ORDER_MARGIN * LEVERAGE
+                        total_size_notional = entry_margin * LEVERAGE
                         so_count = 0
                         entry_commission = total_size_notional * COMMISSION_RATE
+                        entry_slippage = total_size_notional * slippage_pct
 
         balance_curve.append(balance)
         if balance > peak_balance:
@@ -238,39 +258,70 @@ def print_results(label, trades, max_drawdown, signals_filtered, balance):
         print(f"  Losses: {len(losses)} | Avg Loss: ${avg_loss:+.4f}")
         if avg_loss != 0:
             print(f"  Risk/Reward:        1:{abs(avg_win / avg_loss):.2f}")
+        total_slippage = sum(t.get('slip', 0) for t in trades)
         print(f"  Total Comisiones:   ${total_commission:.4f}")
+        if total_slippage > 0:
+            print(f"  Total Slippage:     ${total_slippage:.4f}")
+            print(f"  Costos Totales:     ${total_commission + total_slippage:.4f}")
         print(f"  Trades con DCA:     {len(dca_trades)} ({len(dca_trades) / len(trades) * 100:.1f}%)")
         print(f"  Max Perdidas Seg.:  {max_consecutive_losses}")
 
 
 def main():
     print("=" * 65)
-    print("  BACKTEST v6.7 SMART METRALLADORA - COMPARACION")
+    print("  BACKTEST v6.7 SMART METRALLADORA - COMPLETO")
     print("=" * 65)
-    print(f"  TP: {TAKE_PROFIT_PCT * 100:.1f}% | SL: {STOP_LOSS_CATASTROPHIC * 100:.1f}% | Leverage: {LEVERAGE}x")
-    print(f"  Protecciones: ATR regime [{ATR_REGIME_MULT_LOW}x - {ATR_REGIME_MULT_HIGH}x]")
-    print(f"                Rolling WR min: {ROLLING_WR_MIN * 100}% (ventana: {ROLLING_WR_WINDOW})")
-    print(f"                Max consecutive losses: {MAX_CONSECUTIVE_LOSSES}")
+    print(f"  Capital: ${INITIAL_CAPITAL} | TP: {TAKE_PROFIT_PCT * 100:.1f}% | SL: {STOP_LOSS_CATASTROPHIC * 100:.1f}% | Leverage: {LEVERAGE}x")
+    print(f"  Sizing: {POSITION_SIZE_PCT * 100:.0f}% del balance (min ${MIN_ORDER_MARGIN})")
+    print(f"  Slippage: {SLIPPAGE_PCT * 100:.2f}% | Comision: {COMMISSION_RATE * 100:.2f}%")
 
-    # Sin protecciones
-    trades_off, curve_off, dd_off, _ = run_backtest(use_protections=False)
-    balance_off = curve_off[-1]
-    print_results("SIN PROTECCIONES", trades_off, dd_off, 0, balance_off)
+    # 1. Sin slippage (ideal)
+    trades_ideal, curve_ideal, dd_ideal, _ = run_backtest(
+        use_protections=False, dynamic_sizing=True, slippage_pct=0.0)
+    balance_ideal = curve_ideal[-1]
+    print_results("SIN SLIPPAGE (ideal)", trades_ideal, dd_ideal, 0, balance_ideal)
 
-    # Con protecciones
-    trades_on, curve_on, dd_on, filtered = run_backtest(use_protections=True)
-    balance_on = curve_on[-1]
-    print_results("CON PROTECCIONES", trades_on, dd_on, filtered, balance_on)
+    # 2. Con slippage realista
+    trades_slip, curve_slip, dd_slip, _ = run_backtest(
+        use_protections=False, dynamic_sizing=True, slippage_pct=SLIPPAGE_PCT)
+    balance_slip = curve_slip[-1]
+    print_results(f"CON SLIPPAGE ({SLIPPAGE_PCT*100:.2f}%)", trades_slip, dd_slip, 0, balance_slip)
+
+    # 3. Con slippage pesimista (0.02%)
+    slip_pessimist = 0.0002
+    trades_pess, curve_pess, dd_pess, _ = run_backtest(
+        use_protections=False, dynamic_sizing=True, slippage_pct=slip_pessimist)
+    balance_pess = curve_pess[-1]
+    print_results(f"SLIPPAGE PESIMISTA ({slip_pessimist*100:.2f}%)", trades_pess, dd_pess, 0, balance_pess)
 
     # Comparacion
-    print(f"\n--- Comparacion ---")
-    dd_improvement = ((dd_off - dd_on) / dd_off * 100) if dd_off > 0 else 0
-    print(f"  Drawdown reducido:  {dd_improvement:+.1f}%")
-    print(f"  Trades evitados:    {len(trades_off) - len(trades_on)}")
-    print(f"  Senales filtradas:  {filtered}")
-    print("=" * 65 + "\n")
+    ret_ideal = ((balance_ideal / INITIAL_CAPITAL) - 1) * 100
+    ret_slip = ((balance_slip / INITIAL_CAPITAL) - 1) * 100
+    ret_pess = ((balance_pess / INITIAL_CAPITAL) - 1) * 100
 
-    return trades_on, curve_on
+    print(f"\n--- Impacto del Slippage ---")
+    print(f"  Sin slippage:       {ret_ideal:+.2f}% | PF {_calc_pf(trades_ideal):.2f} | DD {dd_ideal*100:.2f}%")
+    print(f"  Slippage 0.01%:     {ret_slip:+.2f}% | PF {_calc_pf(trades_slip):.2f} | DD {dd_slip*100:.2f}%")
+    print(f"  Slippage 0.02%:     {ret_pess:+.2f}% | PF {_calc_pf(trades_pess):.2f} | DD {dd_pess*100:.2f}%")
+    print(f"  Impacto 0.01%:      {ret_slip - ret_ideal:+.2f}pp en retorno")
+    print(f"  Impacto 0.02%:      {ret_pess - ret_ideal:+.2f}pp en retorno")
+
+    pf_pess = _calc_pf(trades_pess)
+    if pf_pess < 1.2:
+        print(f"\n  [ALERTA] PF con slippage pesimista ({pf_pess:.2f}) < 1.20")
+        print(f"  -> Considerar subir TP a 0.7-0.8% para compensar")
+    else:
+        print(f"\n  [OK] Estrategia mantiene edge con slippage (PF {pf_pess:.2f} >= 1.20)")
+
+    print("=" * 65 + "\n")
+    return trades_slip, curve_slip
+
+
+def _calc_pf(trades):
+    """Calcula Profit Factor de una lista de trades."""
+    wins = sum(t['pnl'] for t in trades if t['res'] == 'WIN')
+    losses = abs(sum(t['pnl'] for t in trades if t['res'] == 'LOSS'))
+    return wins / losses if losses > 0 else float('inf')
 
 
 if __name__ == "__main__":

@@ -21,6 +21,7 @@ from src.strategy import strategy, Signal
 from src.trader import trader
 from src.database import db
 from src.websocket_manager import BinanceWebsocketManager
+from src.telegram_alerts import TelegramPoller, alert_bot_started, alert_status, alert_daily_summary, alert_ws_disconnected
 from config.settings import (
     SYMBOL,
     TIMEFRAME,
@@ -67,7 +68,11 @@ class ScalperBot:
         self._status_interval = 12  # cada 12 ciclos de 5s = ~60 segundos
         self._pos_counter = 0
         self._pos_interval = 6     # cada 6 ciclos de 5s = ~30 segundos
-        
+        self._daily_summary_sent = ""  # fecha del ultimo resumen enviado
+
+        # Telegram poller para /status
+        self.tg_poller = TelegramPoller(status_callback=self._handle_tg_status)
+
         # Inicializar WS Manager
         self.ws_manager = BinanceWebsocketManager(
             self.symbol, 
@@ -281,8 +286,38 @@ class ScalperBot:
             stats = trader.get_stats_summary()
             pos = "SI" if trader.has_open_position() else "NO"
             logger.info(f"[STATUS] Balance: ${balance:,.2f} | Precio: {price_str} | Posicion: {pos} | WS: {ws_status} | {stats}")
+
+            # Resumen diario a Telegram (una vez al dia, despues de las 23:55 UTC)
+            now = datetime.utcnow()
+            today = now.strftime('%Y-%m-%d')
+            if now.hour == 23 and now.minute >= 55 and self._daily_summary_sent != today:
+                self._daily_summary_sent = today
+                s = trader.daily_stats
+                total = s.wins + s.losses
+                wr = (s.wins / total * 100) if total > 0 else 0
+                alert_daily_summary(total, s.wins, s.losses, s.total_pnl, balance, wr)
         except Exception as e:
             logger.warning(f"[STATUS] No se pudo obtener balance: {e}")
+
+    def _handle_tg_status(self):
+        """Callback para comando /status de Telegram."""
+        try:
+            balance = client.get_usdt_balance()
+            in_pos = trader.has_open_position()
+            side = ""
+            pnl_unreal = 0.0
+            if in_pos:
+                pos_info = trader.get_position_info()
+                if pos_info:
+                    side = pos_info['side']
+                    price = self.ws_manager.get_latest_price()
+                    if pos_info['avg_price'] > 0 and price > 0:
+                        pnl_pct = ((price - pos_info['avg_price']) / pos_info['avg_price']) if side == 'long' else ((pos_info['avg_price'] - price) / pos_info['avg_price'])
+                        pnl_unreal = pos_info['avg_price'] * pos_info.get('total_quantity', 0) * pnl_pct * trader.leverage
+            s = trader.daily_stats
+            alert_status(balance, in_pos, side, pnl_unreal, s.wins + s.losses)
+        except Exception as e:
+            logger.warning(f"[TG] Error generando status: {e}")
 
     def _print_position_status(self, pos_info: dict, current_price: float):
         """Imprime estado de la posicion actual."""
@@ -307,7 +342,15 @@ class ScalperBot:
 
         logger.info(f"[BOT] Precio: ${self.df_history['close'].iloc[-1]:,.2f}")
         self.ws_manager.start()
+        self.tg_poller.start()
         logger.info("[BOT] Escuchando mercado...")
+
+        # Alerta de inicio en Telegram
+        try:
+            balance = client.get_usdt_balance()
+            alert_bot_started(balance, TRADING_MODE)
+        except Exception:
+            alert_bot_started(0, TRADING_MODE)
         
         self.running = True
         while self.running:

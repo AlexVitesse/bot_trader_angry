@@ -73,6 +73,9 @@ STOP_LOSS_CATASTROPHIC = 0.015 # 1.5% SL desde el promedio
 # Comisiones (Binance Futures)
 COMMISSION_RATE = 0.0004  # 0.04% taker fee
 
+# Slippage estimado (diferencia entre precio esperado y precio real de ejecucion)
+SLIPPAGE_PCT = 0.0001    # 0.01% estimado para BTC/USDT (alta liquidez)
+
 # =============================================================================
 # LIMITES DE SEGURIDAD (KILL SWITCH)
 # =============================================================================
@@ -89,6 +92,13 @@ ROLLING_WR_RESUME = 0.82        # Threshold para reanudar si se reactiva
 ATR_REGIME_LENGTH = 14          # Periodo del ATR para detectar regimen
 ATR_REGIME_MULT_HIGH = 99.0     # 99x = efectivamente desactivado
 ATR_REGIME_MULT_LOW = 0.0       # 0x = efectivamente desactivado
+
+# =============================================================================
+# TELEGRAM (Alertas)
+# =============================================================================
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
+TELEGRAM_ENABLED = bool(TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID)
 
 # =============================================================================
 # BASE DE DATOS (SQLite)

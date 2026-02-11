@@ -18,6 +18,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from src.exchange import client
 from src.strategy import Signal
 from src.database import db
+from src import telegram_alerts as tg
 from config.settings import (
     SYMBOL,
     LEVERAGE,
@@ -220,6 +221,8 @@ class Trader:
 
             logger.info(f"[GRINDER] OPEN {side.upper()} | Precio: ${fill_price:,.2f} | Qty: {quantity}")
             self.daily_stats.trades += 1
+            margin = self._get_dynamic_margin()
+            tg.alert_trade_opened(side, fill_price, quantity, margin)
 
             # Persistir posicion activa en DB
             try:
@@ -275,6 +278,7 @@ class Trader:
             trade.commission += so_quantity * fill_price * COMMISSION_RATE
 
             logger.info(f"[DCA] OK | Nuevo Promedio: ${trade.avg_price:,.2f} | Total Qty: {trade.total_quantity}")
+            tg.alert_dca_executed(so_num, fill_price, trade.avg_price, trade.total_quantity)
 
             # Actualizar posicion activa en DB
             try:
@@ -365,6 +369,9 @@ class Trader:
             trade.pnl_pct = pnl_pct
 
             logger.info(f"[GRINDER] CLOSE {trade.side.upper()} | PnL: ${trade.pnl:,.2f} ({pnl_pct*100:+.2f}%) | Razon: {reason}")
+            duration_min = (trade.exit_time - trade.entry_time).total_seconds() / 60
+            tg.alert_trade_closed(trade.side, trade.avg_price, current_price,
+                                  trade.pnl, reason, duration_min)
 
             self._update_stats(trade)
             self.trade_history.append(trade)
@@ -451,6 +458,7 @@ class Trader:
         self.is_paused = True
         self.pause_reason = reason
         logger.warning(f"[KILL SWITCH] Bot pausado: {reason}")
+        tg.alert_kill_switch(reason)
 
     def resume(self, force: bool = False):
         """Reanuda el bot. Si fue pausado por WR, solo reanuda si WR se recupero."""

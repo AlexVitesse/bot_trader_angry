@@ -66,26 +66,24 @@ FASE 2.5: PERSISTENCIA DE DATOS (COMPLETADA)
 FASE 2.7: ROBUSTEZ OPERATIVA (Pre-requisito Live)
   Objetivo: Asegurar que el bot sobrevive en produccion 24/7 sin supervision.
 
-  Slippage & Validacion del Edge
-  [ ] Agregar SLIPPAGE_PCT a settings.py (0.01-0.02% estimado para BTC)
-  [ ] Re-correr backtest con slippage incluido en TP/SL fills
-  [ ] Si PF < 1.2 con slippage, ajustar TP (subir a 0.7-0.8%)
-  [ ] Documentar impacto real del slippage en resultados
+  Slippage & Validacion del Edge (COMPLETADA)
+  [X] SLIPPAGE_PCT = 0.01% en settings.py
+  [X] Backtest con slippage: 0.01% -> PF 1.29 (+35.9%), 0.02% -> PF 1.23 (+27.6%)
+  [X] PF >= 1.20 con slippage pesimista -> NO necesita ajustar TP
+  [X] Impacto documentado: -8.9pp (0.01%) a -17.2pp (0.02%) en retorno
 
-  Position Sizing Dinamico
-  [ ] Cambiar BASE_ORDER_MARGIN fijo ($12) -> % del balance actual
-  [ ] Parametro en settings.py: POSITION_SIZE_PCT = 0.12 (12% del balance)
-  [ ] Margen = balance * POSITION_SIZE_PCT (crece con ganancias, se reduce con perdidas)
-  [ ] Minimo: $12 (para cumplir minimo de Binance de $100 notional con 10x)
-  [ ] Actualizar backtest para simular position sizing dinamico
+  Position Sizing Dinamico (COMPLETADA)
+  [X] POSITION_SIZE_PCT = 0.12 (12% del balance), MIN_ORDER_MARGIN = $12
+  [X] Implementado en trader.py (_get_dynamic_margin) y backtest
+  [X] Backtest: +44.79% dinamico vs +43.78% fijo (efecto crece con mas capital)
 
-  Alertas de Telegram (Monitoreo Remoto)
-  [ ] Bot de Telegram: crear con BotFather, guardar token en .env
-  [ ] Modulo src/telegram_alerts.py: enviar mensajes async (no bloquear trading)
-  [ ] Alertas en: apertura/cierre de trade, DCA ejecutado, kill switch activado
-  [ ] Alerta en: desconexion de WebSocket, error critico
-  [ ] Resumen diario automatico: trades, WR, PnL, balance actual
-  [ ] Comando /status para consultar estado del bot desde Telegram
+  Alertas de Telegram (COMPLETADA)
+  [X] Modulo src/telegram_alerts.py: envio async via threads (no bloquea trading)
+  [X] Alertas: apertura/cierre trade, DCA, kill switch, WS desconexion, error critico
+  [X] Resumen diario automatico a las 23:55 UTC
+  [X] Comando /status: TelegramPoller con long-polling escucha comandos
+  [X] Alerta de inicio de bot con balance y modo
+  [X] Config: TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID en .env
 
 FASE 3: VALIDACION LIVE LOCAL (Primer contacto con dinero real)
   Pre-requisitos: Fase 2.5 + 2.7 completadas, 48h+ estable en testnet.

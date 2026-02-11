@@ -89,9 +89,19 @@ class BinanceWebsocketManager:
         if self._reconnect_count > MAX_RECONNECT_ATTEMPTS:
             logger.error(f"[WS] Maximo de reconexiones alcanzado ({MAX_RECONNECT_ATTEMPTS}). Deteniendo.")
             self.running = False
+            try:
+                from src.telegram_alerts import alert_error
+                alert_error(f"WS desconectado permanentemente ({MAX_RECONNECT_ATTEMPTS} intentos agotados)")
+            except Exception:
+                pass
             return
 
         logger.warning(f"[WS] Reconectando en {self._reconnect_delay}s... (intento {self._reconnect_count}/{MAX_RECONNECT_ATTEMPTS})")
+        try:
+            from src.telegram_alerts import alert_ws_disconnected
+            alert_ws_disconnected(self._reconnect_count, MAX_RECONNECT_ATTEMPTS)
+        except Exception:
+            pass
         time.sleep(self._reconnect_delay)
         # Backoff exponencial: 5s, 10s, 20s, 40s... hasta MAX_RECONNECT_DELAY
         self._reconnect_delay = min(self._reconnect_delay * 2, MAX_RECONNECT_DELAY)
