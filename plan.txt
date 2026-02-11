@@ -2,10 +2,10 @@ ROADMAP: BINANCE SCALPER & ML EVOLUTION
 META FINAL: Bot de Trading de Alta Frecuencia (HFT) autonomo potenciado por ML.
 
 [ESTADO ACTUAL]
-Fase: FASE 2.7 - ROBUSTEZ OPERATIVA (EN PROGRESO)
-Proximo Hito: Recoleccion de datos + estabilidad 48h+ en testnet.
-Bot corriendo en: Binance Futures Testnet
-Ultima actualizacion: 2026-02-10
+Fase: FASE 3 - VALIDACION LIVE (EN PROGRESO)
+Proximo Hito: Estabilidad 48h+ en testnet, evaluar resultados.
+Bot corriendo en: Binance Futures Testnet (VM Ubuntu 24.04 24/7)
+Ultima actualizacion: 2026-02-11
 
 ---
 
@@ -62,6 +62,14 @@ FASE 2.5: PERSISTENCIA DE DATOS (COMPLETADA)
 [X] Migracion: trade_history se carga desde SQLite al iniciar (_load_trade_history)
 [X] Recovery de posicion: sync_with_exchange() prioriza DB sobre exchange
 [X] Test: CRUD verificado (insert, read, update, delete en todas las tablas)
+
+  ML Data Collection (COMPLETADA)
+  [X] Taker buy volume + quote volume en candles (WS + REST)
+  [X] Taker buy ratio en features (% de volumen que son compras)
+  [X] Funding rate cacheado cada 1h, guardado en features
+  [X] Long/Short ratio global cada 5 min, guardado en features
+  [X] Open Interest cada 5 min, guardado en features
+  [X] Migracion automatica de DB existente (ALTER TABLE safe)
 
 FASE 2.7: ROBUSTEZ OPERATIVA (Pre-requisito Live)
   Objetivo: Asegurar que el bot sobrevive en produccion 24/7 sin supervision.

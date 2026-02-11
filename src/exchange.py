@@ -103,6 +103,40 @@ class BinanceClient:
         params = {'symbol': symbol, 'interval': interval, 'limit': limit}
         return self._request('GET', '/fapi/v1/klines', params)
 
+    def get_funding_rate(self, symbol: str = None) -> Optional[float]:
+        """Obtiene el funding rate actual. Cambia cada 8 horas."""
+        symbol = symbol or SYMBOL.replace('/', '')
+        try:
+            data = self._request('GET', '/fapi/v1/premiumIndex', {'symbol': symbol})
+            return float(data.get('lastFundingRate', 0))
+        except Exception as e:
+            logger.warning(f"[WARN] No se pudo obtener funding rate: {e}")
+            return None
+
+    def get_open_interest(self, symbol: str = None) -> Optional[float]:
+        """Obtiene el Open Interest actual (contratos abiertos en USDT)."""
+        symbol = symbol or SYMBOL.replace('/', '')
+        try:
+            data = self._request('GET', '/fapi/v1/openInterest', {'symbol': symbol})
+            return float(data.get('openInterest', 0))
+        except Exception as e:
+            logger.warning(f"[WARN] No se pudo obtener open interest: {e}")
+            return None
+
+    def get_long_short_ratio(self, symbol: str = None, period: str = '5m') -> Optional[float]:
+        """Obtiene el Long/Short ratio global (cuentas). Actualiza cada 5 min.
+        Retorna ratio: >1 = mas longs, <1 = mas shorts.
+        Nota: endpoint de datos publicos, puede no estar en testnet."""
+        symbol = symbol or SYMBOL.replace('/', '')
+        try:
+            data = self._request('GET', '/futures/data/globalLongShortAccountRatio',
+                                 {'symbol': symbol, 'period': period, 'limit': 1})
+            if data and len(data) > 0:
+                return float(data[0].get('longShortRatio', 1.0))
+        except Exception as e:
+            logger.warning(f"[WARN] No se pudo obtener long/short ratio: {e}")
+        return None
+
     # ==================== ACCOUNT ====================
 
     def get_balance(self) -> List[Dict]:

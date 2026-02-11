@@ -69,6 +69,12 @@ class ScalperBot:
         self._pos_counter = 0
         self._pos_interval = 6     # cada 6 ciclos de 5s = ~30 segundos
         self._daily_summary_sent = ""  # fecha del ultimo resumen enviado
+        self._funding_rate = None       # Cache del funding rate actual
+        self._funding_rate_ts = 0       # Timestamp del ultimo fetch
+        self._long_short_ratio = None   # Cache del long/short ratio
+        self._long_short_ratio_ts = 0   # Timestamp del ultimo fetch
+        self._open_interest = None      # Cache del open interest
+        self._open_interest_ts = 0      # Timestamp del ultimo fetch
 
         # Telegram poller para /status
         self.tg_poller = TelegramPoller(status_callback=self._handle_tg_status)
@@ -84,6 +90,31 @@ class ScalperBot:
         # Configurar senales de sistema
         signal.signal(signal.SIGINT, self._handle_shutdown)
         signal.signal(signal.SIGTERM, self._handle_shutdown)
+
+    def _refresh_market_data(self):
+        """Refresca datos de mercado cacheados (funding rate + long/short ratio)."""
+        now = time.time()
+        # Funding rate: cada 1 hora (cambia cada 8h)
+        if now - self._funding_rate_ts > 3600:
+            rate = client.get_funding_rate()
+            if rate is not None:
+                self._funding_rate = rate
+                self._funding_rate_ts = now
+                logger.info(f"[DATA] Funding rate: {rate*100:.4f}%")
+        # Long/Short ratio: cada 5 min (actualiza cada 5 min)
+        if now - self._long_short_ratio_ts > 300:
+            ratio = client.get_long_short_ratio()
+            if ratio is not None:
+                self._long_short_ratio = ratio
+                self._long_short_ratio_ts = now
+                logger.info(f"[DATA] Long/Short ratio: {ratio:.4f} ({'mas longs' if ratio > 1 else 'mas shorts'})")
+        # Open Interest: cada 5 min
+        if now - self._open_interest_ts > 300:
+            oi = client.get_open_interest()
+            if oi is not None:
+                self._open_interest = oi
+                self._open_interest_ts = now
+                logger.info(f"[DATA] Open Interest: {oi:,.2f} BTC")
 
     def _handle_shutdown(self, signum, frame):
         """Maneja shutdown graceful."""
@@ -112,6 +143,8 @@ class ScalperBot:
             df['low'] = df['low'].astype(float)
             df['close'] = df['close'].astype(float)
             df['volume'] = df['volume'].astype(float)
+            df['taker_buy_volume'] = df['taker_buy_base'].astype(float)
+            df['quote_volume'] = df['quote_volume'].astype(float)
 
             # Filtrar solo velas cerradas (close_time ya paso)
             now = pd.Timestamp.now(tz='UTC').tz_localize(None)
@@ -142,7 +175,8 @@ class ScalperBot:
             'high': candle['high'],
             'low': candle['low'],
             'close': candle['close'],
-            'volume': candle['volume']
+            'volume': candle['volume'],
+            'taker_buy_volume': candle.get('taker_buy_volume', 0),
         }])
         row.set_index('timestamp', inplace=True)
 
@@ -153,7 +187,7 @@ class ScalperBot:
         self.df_history = strategy.calculate_indicators(self.df_history)
         self.last_candle_time = self.df_history.index[-1]
 
-        # Guardar candle en SQLite
+        # Guardar candle en SQLite (con taker buy data)
         try:
             db.save_candle({
                 'timestamp': str(candle['timestamp']),
@@ -161,7 +195,9 @@ class ScalperBot:
                 'high': candle['high'],
                 'low': candle['low'],
                 'close': candle['close'],
-                'volume': candle['volume']
+                'volume': candle['volume'],
+                'taker_buy_volume': candle.get('taker_buy_volume'),
+                'quote_volume': candle.get('quote_volume'),
             })
         except Exception:
             pass
@@ -241,6 +277,10 @@ class ScalperBot:
                         break
                     c_losses += 1
 
+            # Taker buy ratio (% del volumen que son compras)
+            taker_buy_vol = last.get('taker_buy_volume', None) if 'taker_buy_volume' in df.columns else None
+            taker_buy_ratio = (taker_buy_vol / vol) if taker_buy_vol and vol and vol > 0 else None
+
             features = {
                 'timestamp': now.isoformat(),
                 'price': price,
@@ -265,6 +305,10 @@ class ScalperBot:
                 'return_60': return_60,
                 'consecutive_wins': c_wins,
                 'consecutive_losses': c_losses,
+                'funding_rate': self._funding_rate,
+                'taker_buy_ratio': taker_buy_ratio,
+                'long_short_ratio': self._long_short_ratio,
+                'open_interest': self._open_interest,
                 'outcome': ''  # Se llena cuando se cierre el trade
             }
 
@@ -341,6 +385,7 @@ class ScalperBot:
         if self.df_history.empty: return
 
         logger.info(f"[BOT] Precio: ${self.df_history['close'].iloc[-1]:,.2f}")
+        self._refresh_market_data()
         self.ws_manager.start()
         self.tg_poller.start()
         logger.info("[BOT] Escuchando mercado...")
@@ -373,6 +418,7 @@ class ScalperBot:
                 if self._status_counter >= self._status_interval:
                     self._status_counter = 0
                     self._log_periodic_status(live_price)
+                    self._refresh_market_data()
 
                 time.sleep(5)
             except Exception as e:

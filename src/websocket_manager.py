@@ -138,6 +138,8 @@ class BinanceWebsocketManager:
                     'low': float(k['l']),
                     'close': float(k['c']),
                     'volume': float(k['v']),
+                    'taker_buy_volume': float(k.get('V', 0)),
+                    'quote_volume': float(k.get('q', 0)),
                     'closed': k['x'] # Booleano: True si la vela cerro
                 }
 

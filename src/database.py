@@ -80,6 +80,10 @@ class Database:
                     return_60 REAL,
                     consecutive_wins INTEGER DEFAULT 0,
                     consecutive_losses INTEGER DEFAULT 0,
+                    funding_rate REAL,
+                    taker_buy_ratio REAL,
+                    long_short_ratio REAL,
+                    open_interest REAL,
                     outcome TEXT DEFAULT '',
                     FOREIGN KEY (trade_id) REFERENCES trades(id)
                 );
@@ -91,7 +95,9 @@ class Database:
                     high REAL NOT NULL,
                     low REAL NOT NULL,
                     close REAL NOT NULL,
-                    volume REAL NOT NULL
+                    volume REAL NOT NULL,
+                    taker_buy_volume REAL,
+                    quote_volume REAL
                 );
 
                 CREATE TABLE IF NOT EXISTS active_position (
@@ -110,9 +116,31 @@ class Database:
                 CREATE INDEX IF NOT EXISTS idx_candles_timestamp ON candles(timestamp);
             """)
             conn.commit()
+
+            # Migraciones: agregar columnas nuevas a tablas existentes
+            self._migrate(conn)
+
             logger.info(f"[DB] Base de datos inicializada: {self.db_path}")
         finally:
             conn.close()
+
+    def _migrate(self, conn: sqlite3.Connection):
+        """Agrega columnas nuevas si no existen (safe para DB existentes)."""
+        migrations = [
+            ("candles", "taker_buy_volume", "REAL"),
+            ("candles", "quote_volume", "REAL"),
+            ("features", "funding_rate", "REAL"),
+            ("features", "taker_buy_ratio", "REAL"),
+            ("features", "long_short_ratio", "REAL"),
+            ("features", "open_interest", "REAL"),
+        ]
+        for table, column, col_type in migrations:
+            try:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}")
+                conn.commit()
+                logger.info(f"[DB] Migración: {table}.{column} agregada")
+            except sqlite3.OperationalError:
+                pass  # Columna ya existe
 
     # =========================================================================
     # TRADES
@@ -173,8 +201,9 @@ class Database:
                     bb_lower, bb_upper, bb_position, stoch_k, atr, atr_sma, atr_ratio,
                     volume, volume_sma_20, volume_relative, spread, spread_relative,
                     hour_utc, day_of_week, return_5, return_15, return_60,
-                    consecutive_wins, consecutive_losses, outcome)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    consecutive_wins, consecutive_losses, funding_rate, taker_buy_ratio,
+                    long_short_ratio, open_interest, outcome)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 trade_id, features['timestamp'], features['price'],
                 features.get('ema_200'), features.get('ema_dist_pct'),
@@ -187,7 +216,10 @@ class Database:
                 features.get('hour_utc'), features.get('day_of_week'),
                 features.get('return_5'), features.get('return_15'),
                 features.get('return_60'), features.get('consecutive_wins', 0),
-                features.get('consecutive_losses', 0), features.get('outcome', '')
+                features.get('consecutive_losses', 0),
+                features.get('funding_rate'), features.get('taker_buy_ratio'),
+                features.get('long_short_ratio'), features.get('open_interest'),
+                features.get('outcome', '')
             ))
             conn.commit()
             return cursor.lastrowid
@@ -229,11 +261,13 @@ class Database:
         conn = self._get_conn()
         try:
             conn.execute("""
-                INSERT OR IGNORE INTO candles (timestamp, open, high, low, close, volume)
-                VALUES (?, ?, ?, ?, ?, ?)
+                INSERT OR IGNORE INTO candles (timestamp, open, high, low, close, volume,
+                    taker_buy_volume, quote_volume)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 candle['timestamp'], candle['open'], candle['high'],
-                candle['low'], candle['close'], candle['volume']
+                candle['low'], candle['close'], candle['volume'],
+                candle.get('taker_buy_volume'), candle.get('quote_volume')
             ))
             conn.commit()
         finally:
