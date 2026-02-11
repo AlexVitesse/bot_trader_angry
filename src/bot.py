@@ -63,6 +63,10 @@ class ScalperBot:
         self.running = False
         self.last_candle_time = None
         self.df_history = pd.DataFrame()
+        self._status_counter = 0
+        self._status_interval = 12  # cada 12 ciclos de 5s = ~60 segundos
+        self._pos_counter = 0
+        self._pos_interval = 6     # cada 6 ciclos de 5s = ~30 segundos
         
         # Inicializar WS Manager
         self.ws_manager = BinanceWebsocketManager(
@@ -268,6 +272,18 @@ class ScalperBot:
         except Exception as e:
             logger.warning(f"[WARN] Error capturando features: {e}")
 
+    def _log_periodic_status(self, live_price: float):
+        """Reporte periodico: balance, precio, stats y estado WS."""
+        try:
+            balance = client.get_usdt_balance()
+            ws_status = "OK" if self.ws_manager.is_connected() else "DESCONECTADO"
+            price_str = f"${live_price:,.2f}" if live_price > 0 else "N/A"
+            stats = trader.get_stats_summary()
+            pos = "SI" if trader.has_open_position() else "NO"
+            logger.info(f"[STATUS] Balance: ${balance:,.2f} | Precio: {price_str} | Posicion: {pos} | WS: {ws_status} | {stats}")
+        except Exception as e:
+            logger.warning(f"[STATUS] No se pudo obtener balance: {e}")
+
     def _print_position_status(self, pos_info: dict, current_price: float):
         """Imprime estado de la posicion actual."""
         avg_entry = pos_info['avg_price']
@@ -296,14 +312,25 @@ class ScalperBot:
         self.running = True
         while self.running:
             try:
-                # Solo mantener el loop vivo - la logica de TP/SL/DCA
-                # se ejecuta en _on_candle_closed con high/low reales.
-                # Aqui solo monitoreamos el precio para logging.
                 live_price = self.ws_manager.get_latest_price()
+
+                # Reporte de posicion (~cada 30s en vez de cada 5s)
                 if live_price > 0 and trader.has_open_position():
-                    pos_info = trader.get_position_info()
-                    if pos_info:
-                        self._print_position_status(pos_info, live_price)
+                    self._pos_counter += 1
+                    if self._pos_counter >= self._pos_interval:
+                        self._pos_counter = 0
+                        pos_info = trader.get_position_info()
+                        if pos_info:
+                            self._print_position_status(pos_info, live_price)
+                else:
+                    self._pos_counter = 0
+
+                # Reporte periodico de balance (~cada 60s)
+                self._status_counter += 1
+                if self._status_counter >= self._status_interval:
+                    self._status_counter = 0
+                    self._log_periodic_status(live_price)
+
                 time.sleep(5)
             except Exception as e:
                 logger.error(f"[ERROR] Loop: {e}")
