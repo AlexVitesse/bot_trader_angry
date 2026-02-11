@@ -1,0 +1,32 @@
+[Unit]
+Description=Bot Trader Angry - Binance Scalper v6.7
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=botuser
+Group=botuser
+WorkingDirectory=/home/botuser/bot_trader_angry
+ExecStart=/home/botuser/.local/bin/poetry run python src/bot.py
+Restart=always
+RestartSec=10
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+# Environment
+EnvironmentFile=/home/botuser/bot_trader_angry/.env
+
+# Logging (stdout/stderr van a journald)
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=bot-trader
+
+# Seguridad
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/botuser/bot_trader_angry/data /home/botuser/bot_trader_angry/bot.log
+
+[Install]
+WantedBy=multi-user.target
