@@ -27,10 +27,16 @@ logs/*.log
 # Data files
 data/*.parquet
 data/*.csv
+data/*.db
+data/*.db-wal
+data/*.db-shm
 
 # OS
 .DS_Store
 Thumbs.db
+
+# Claude Code
+.claude/
 
 # Jupyter
 .ipynb_checkpoints/

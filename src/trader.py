@@ -16,6 +16,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.exchange import client
 from src.strategy import Signal
+from src.database import db
 from config.settings import (
     SYMBOL,
     LEVERAGE,
@@ -89,8 +90,56 @@ class Trader:
         self.is_paused = False
         self.pause_reason = ""
 
+        # Cargar historial de trades desde SQLite
+        self._load_trade_history()
+
         # Inicializar
         self._setup()
+
+    def _load_trade_history(self):
+        """Carga historial reciente de trades desde SQLite."""
+        try:
+            recent = db.get_recent_trades(limit=ROLLING_WR_WINDOW)
+            for t in recent:
+                record = TradeRecord(
+                    entry_time=datetime.fromisoformat(t['entry_time']),
+                    exit_time=datetime.fromisoformat(t['exit_time']) if t.get('exit_time') else None,
+                    side=t['side'],
+                    avg_price=t['avg_price'],
+                    total_quantity=t['total_quantity'],
+                    safety_orders_count=t.get('safety_orders_count', 0),
+                    pnl=t.get('pnl', 0.0),
+                    pnl_pct=t.get('pnl_pct', 0.0),
+                    exit_reason=t.get('exit_reason', ''),
+                    commission=t.get('commission', 0.0)
+                )
+                self.trade_history.append(record)
+            total = db.get_trade_count()
+            if total > 0:
+                print(f"[TRADER] Historial cargado desde DB: {len(self.trade_history)} recientes / {total} total")
+        except Exception as e:
+            print(f"[WARN] No se pudo cargar historial de DB: {e}")
+
+    @staticmethod
+    def _extract_fill_price(order: Dict, fallback_price: float) -> float:
+        """Extrae el precio de llenado de la respuesta de Binance.
+
+        Binance Futures puede retornar avgPrice='0' en market orders.
+        En ese caso, calcula el precio desde el array 'fills' o usa el fallback.
+        """
+        avg = float(order.get('avgPrice', 0))
+        if avg > 0:
+            return avg
+
+        # Calcular desde fills array
+        fills = order.get('fills', [])
+        if fills:
+            total_qty = sum(float(f['qty']) for f in fills)
+            total_cost = sum(float(f['qty']) * float(f['price']) for f in fills)
+            if total_qty > 0:
+                return total_cost / total_qty
+
+        return fallback_price
 
     def _setup(self):
         """Configura el trader."""
@@ -118,7 +167,7 @@ class Trader:
         try:
             side = 'long' if signal == Signal.LONG else 'short'
             order = client.market_buy(quantity, self.symbol) if signal == Signal.LONG else client.market_sell(quantity, self.symbol)
-            fill_price = float(order.get('avgPrice', current_price))
+            fill_price = self._extract_fill_price(order, current_price)
 
             self.current_trade = TradeRecord(
                 entry_time=datetime.now(),
@@ -131,6 +180,20 @@ class Trader:
 
             print(f"[GRINDER] OPEN {side.upper()} | Precio: ${fill_price:,.2f} | Qty: {quantity}")
             self.daily_stats.trades += 1
+
+            # Persistir posicion activa en DB
+            try:
+                db.save_active_position({
+                    'entry_time': self.current_trade.entry_time.isoformat(),
+                    'side': side,
+                    'avg_price': fill_price,
+                    'total_quantity': quantity,
+                    'safety_orders_count': 0,
+                    'commission': self.current_trade.commission
+                })
+            except Exception as e:
+                print(f"[WARN] No se pudo guardar posicion en DB: {e}")
+
             return True
         except Exception as e:
             print(f"[ERROR] open_position: {e}")
@@ -158,7 +221,7 @@ class Trader:
         try:
             print(f"[DCA] Ejecutando Recompra #{so_num}...")
             order = client.market_buy(so_quantity, self.symbol) if trade.side == 'long' else client.market_sell(so_quantity, self.symbol)
-            fill_price = float(order.get('avgPrice', current_price))
+            fill_price = self._extract_fill_price(order, current_price)
 
             # Recalcular Promedio
             new_total_qty = trade.total_quantity + so_quantity
@@ -168,6 +231,20 @@ class Trader:
             trade.commission += so_quantity * fill_price * COMMISSION_RATE
 
             print(f"[DCA] OK | Nuevo Promedio: ${trade.avg_price:,.2f} | Total Qty: {trade.total_quantity}")
+
+            # Actualizar posicion activa en DB
+            try:
+                db.save_active_position({
+                    'entry_time': trade.entry_time.isoformat(),
+                    'side': trade.side,
+                    'avg_price': trade.avg_price,
+                    'total_quantity': trade.total_quantity,
+                    'safety_orders_count': trade.safety_orders_count,
+                    'commission': trade.commission
+                })
+            except Exception:
+                pass
+
             return True
         except Exception as e:
             print(f"[ERROR] execute_dca: {e}")
@@ -227,12 +304,15 @@ class Trader:
         try:
             order = client.close_position(self.symbol)
             if order:
-                current_price = float(order.get('avgPrice', current_price))
+                current_price = self._extract_fill_price(order, current_price)
 
             trade = self.current_trade
             trade.exit_time = datetime.now()
             
-            # PnL Neto
+            # PnL Neto (proteccion contra avg_price=0)
+            if trade.avg_price <= 0:
+                print(f"[ERROR] avg_price invalido ({trade.avg_price}), usando close price para evitar crash")
+                trade.avg_price = current_price
             pnl_pct = ((current_price - trade.avg_price) / trade.avg_price) if trade.side == 'long' else ((trade.avg_price - current_price) / trade.avg_price)
             pnl_pct = pnl_pct * self.leverage
             
@@ -244,6 +324,30 @@ class Trader:
 
             self._update_stats(trade)
             self.trade_history.append(trade)
+
+            # Persistir trade en SQLite
+            try:
+                trade_id = db.save_trade({
+                    'entry_time': trade.entry_time.isoformat(),
+                    'exit_time': trade.exit_time.isoformat() if trade.exit_time else None,
+                    'side': trade.side,
+                    'entry_price': trade.avg_price,
+                    'exit_price': current_price,
+                    'avg_price': trade.avg_price,
+                    'total_quantity': trade.total_quantity,
+                    'safety_orders_count': trade.safety_orders_count,
+                    'pnl': trade.pnl,
+                    'pnl_pct': trade.pnl_pct,
+                    'exit_reason': reason,
+                    'commission': trade.commission
+                })
+                # Actualizar outcome en features
+                outcome = 'WIN' if trade.pnl > 0 else 'LOSS'
+                db.update_feature_outcome(trade_id, outcome)
+                db.clear_active_position()
+            except Exception as e:
+                print(f"[WARN] No se pudo guardar trade en DB: {e}")
+
             self.current_trade = None
             return True
         except Exception as e:
@@ -328,20 +432,47 @@ class Trader:
         }
 
     def sync_with_exchange(self):
-        """Sincroniza el estado con exchange."""
+        """Sincroniza el estado con exchange. Prioriza datos de DB sobre exchange."""
         try:
             position = client.get_position()
+
             if position and self.current_trade is None:
-                self.current_trade = TradeRecord(
-                    entry_time=datetime.now(),
-                    side=position['side'],
-                    avg_price=position['entry_price'],
-                    total_quantity=position['size'],
-                    safety_orders_count=0
-                )
+                # Intentar recuperar de DB primero (tiene datos mas completos)
+                db_pos = db.get_active_position()
+                if db_pos:
+                    self.current_trade = TradeRecord(
+                        entry_time=datetime.fromisoformat(db_pos['entry_time']),
+                        side=db_pos['side'],
+                        avg_price=db_pos['avg_price'],
+                        total_quantity=db_pos['total_quantity'],
+                        safety_orders_count=db_pos.get('safety_orders_count', 0),
+                        commission=db_pos.get('commission', 0.0)
+                    )
+                    print(f"[TRADER] Posicion recuperada desde DB: {db_pos['side']} @ ${db_pos['avg_price']:.2f} (DCA: {db_pos.get('safety_orders_count', 0)})")
+                else:
+                    # Fallback: reconstruir desde exchange (sin datos de DCA)
+                    self.current_trade = TradeRecord(
+                        entry_time=datetime.now(),
+                        side=position['side'],
+                        avg_price=position['entry_price'],
+                        total_quantity=position['size'],
+                        safety_orders_count=0
+                    )
+                    print(f"[TRADER] Posicion recuperada desde Exchange: {position['side']} @ ${position['entry_price']:.2f}")
+
             elif not position and self.current_trade is not None:
                 self.current_trade = None
-        except: pass
+                db.clear_active_position()
+
+            elif not position:
+                # Limpiar posicion huerfana en DB si existe
+                db_pos = db.get_active_position()
+                if db_pos:
+                    db.clear_active_position()
+                    print("[TRADER] Posicion huerfana en DB limpiada")
+
+        except Exception as e:
+            print(f"[WARN] sync_with_exchange: {e}")
 
     def get_stats_summary(self) -> str:
         s = self.daily_stats

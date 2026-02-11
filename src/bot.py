@@ -8,6 +8,8 @@ Ejecutar: poetry run python src/bot.py
 import sys
 import time
 import signal
+import logging
+import numpy as np
 import pandas as pd
 from datetime import datetime
 from pathlib import Path
@@ -18,13 +20,37 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from src.exchange import client
 from src.strategy import strategy, Signal
 from src.trader import trader
+from src.database import db
 from src.websocket_manager import BinanceWebsocketManager
 from config.settings import (
     SYMBOL,
     TIMEFRAME,
     TRADING_MODE,
+    LOG_LEVEL,
+    LOG_FORMAT,
+    LOG_FILE,
     print_config
 )
+
+
+def setup_logging():
+    """Configura logging a archivo + consola."""
+    root_logger = logging.getLogger()
+    root_logger.setLevel(getattr(logging, LOG_LEVEL, logging.INFO))
+
+    formatter = logging.Formatter(LOG_FORMAT)
+
+    # Handler archivo
+    file_handler = logging.FileHandler(str(LOG_FILE), encoding='utf-8')
+    file_handler.setLevel(logging.INFO)
+    file_handler.setFormatter(formatter)
+    root_logger.addHandler(file_handler)
+
+    # Handler consola
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.INFO)
+    console_handler.setFormatter(formatter)
+    root_logger.addHandler(console_handler)
 
 
 class ScalperBot:
@@ -109,14 +135,27 @@ class ScalperBot:
             'volume': candle['volume']
         }])
         row.set_index('timestamp', inplace=True)
-        
+
         self.df_history = pd.concat([self.df_history, row])
         if len(self.df_history) > 1000:
             self.df_history = self.df_history.iloc[-1000:]
-            
+
         self.df_history = strategy.calculate_indicators(self.df_history)
         self.last_candle_time = self.df_history.index[-1]
-        
+
+        # Guardar candle en SQLite
+        try:
+            db.save_candle({
+                'timestamp': str(candle['timestamp']),
+                'open': candle['open'],
+                'high': candle['high'],
+                'low': candle['low'],
+                'close': candle['close'],
+                'volume': candle['volume']
+            })
+        except Exception:
+            pass
+
         print(f"\n[WS] Nueva vela cerrada: {self.last_candle_time}")
         self.process_candle(self.df_history)
 
@@ -143,6 +182,90 @@ class ScalperBot:
             success = trader.open_position(entry_signal, current_price, 0)
             if success:
                 print("[BOT] Posicion abierta exitosamente")
+                self._capture_features(df, current_price)
+
+    def _capture_features(self, df: pd.DataFrame, price: float):
+        """Captura snapshot de features al momento de abrir posicion."""
+        try:
+            last = df.iloc[-1]
+            now = datetime.utcnow()
+
+            # Calcular features derivados
+            ema_200 = last.get('ema_trend', None)
+            ema_dist_pct = ((price - ema_200) / ema_200 * 100) if ema_200 and ema_200 > 0 else None
+
+            bb_lower = last.get('bb_lower', None)
+            bb_upper = last.get('bb_upper', None)
+            bb_range = (bb_upper - bb_lower) if bb_upper and bb_lower and bb_upper > bb_lower else None
+            bb_position = ((price - bb_lower) / bb_range) if bb_range and bb_range > 0 else None
+
+            atr = last.get('atr', None)
+            atr_sma = last.get('atr_sma', None)
+            atr_ratio = (atr / atr_sma) if atr and atr_sma and atr_sma > 0 else None
+
+            # Volume relative
+            vol = last.get('volume', None)
+            vol_sma = df['volume'].rolling(20).mean().iloc[-1] if 'volume' in df.columns and len(df) >= 20 else None
+            vol_relative = (vol / vol_sma) if vol and vol_sma and vol_sma > 0 else None
+
+            # Spread
+            spread = last.get('high', 0) - last.get('low', 0)
+            spread_sma = (df['high'] - df['low']).rolling(20).mean().iloc[-1] if len(df) >= 20 else None
+            spread_relative = (spread / spread_sma) if spread_sma and spread_sma > 0 else None
+
+            # Returns
+            closes = df['close']
+            return_5 = ((closes.iloc[-1] / closes.iloc[-6]) - 1) * 100 if len(closes) > 5 else None
+            return_15 = ((closes.iloc[-1] / closes.iloc[-16]) - 1) * 100 if len(closes) > 15 else None
+            return_60 = ((closes.iloc[-1] / closes.iloc[-61]) - 1) * 100 if len(closes) > 60 else None
+
+            # Racha actual
+            c_wins, c_losses = 0, 0
+            for t in reversed(trader.trade_history):
+                if t.pnl > 0:
+                    if c_losses > 0:
+                        break
+                    c_wins += 1
+                else:
+                    if c_wins > 0:
+                        break
+                    c_losses += 1
+
+            features = {
+                'timestamp': now.isoformat(),
+                'price': price,
+                'ema_200': ema_200,
+                'ema_dist_pct': ema_dist_pct,
+                'bb_lower': bb_lower,
+                'bb_upper': bb_upper,
+                'bb_position': bb_position,
+                'stoch_k': last.get('stoch_k', None),
+                'atr': atr,
+                'atr_sma': atr_sma,
+                'atr_ratio': atr_ratio,
+                'volume': vol,
+                'volume_sma_20': vol_sma,
+                'volume_relative': vol_relative,
+                'spread': spread,
+                'spread_relative': spread_relative,
+                'hour_utc': now.hour,
+                'day_of_week': now.weekday(),
+                'return_5': return_5,
+                'return_15': return_15,
+                'return_60': return_60,
+                'consecutive_wins': c_wins,
+                'consecutive_losses': c_losses,
+                'outcome': ''  # Se llena cuando se cierre el trade
+            }
+
+            # El trade_id sera el proximo ID (aun no existe, se linkea al cerrar)
+            # Usamos el trade count + 1 como estimacion
+            trade_count = db.get_trade_count()
+            db.save_features(features, trade_id=trade_count + 1)
+            print(f"[DB] Features capturados: EMA dist={ema_dist_pct:.2f}% | BB pos={bb_position:.2f} | ATR ratio={atr_ratio:.2f}" if ema_dist_pct and bb_position and atr_ratio else "[DB] Features capturados")
+
+        except Exception as e:
+            print(f"[WARN] Error capturando features: {e}")
 
     def _print_position_status(self, pos_info: dict, current_price: float):
         """Imprime estado de la posicion actual."""
@@ -186,13 +309,17 @@ class ScalperBot:
 
 def main():
     """Punto de entrada principal."""
+    setup_logging()
+    logger = logging.getLogger(__name__)
+
     try:
         ticker = client.get_ticker()
-        print(f"[OK] Conectado a Binance ({TRADING_MODE})")
+        logger.info(f"[OK] Conectado a Binance ({TRADING_MODE})")
+        logger.info(f"[DB] Trades en DB: {db.get_trade_count()} | Candles: {db.get_candle_count()}")
         bot = ScalperBot()
         bot.run()
     except Exception as e:
-        print(f"[ERROR] Main: {e}")
+        logger.error(f"[ERROR] Main: {e}")
         sys.exit(1)
 
 if __name__ == "__main__":
