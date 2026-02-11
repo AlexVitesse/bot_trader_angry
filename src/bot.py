@@ -9,7 +9,6 @@ import sys
 import time
 import signal
 import logging
-import numpy as np
 import pandas as pd
 from datetime import datetime
 from pathlib import Path
@@ -270,6 +269,9 @@ class ScalperBot:
     def _print_position_status(self, pos_info: dict, current_price: float):
         """Imprime estado de la posicion actual."""
         avg_entry = pos_info['avg_price']
+        if avg_entry <= 0 or current_price <= 0:
+            print(f"[POS] {pos_info['side'].upper()} | Avg: ${avg_entry:,.2f} | PnL: N/A | DCA: {pos_info['so_count']}")
+            return
         pnl_pct = ((current_price - avg_entry) / avg_entry * 100) if pos_info['side'] == 'long' else ((avg_entry - current_price) / avg_entry * 100)
         print(f"[POS] {pos_info['side'].upper()} | Avg: ${avg_entry:,.2f} | PnL: {pnl_pct:+.2f}% | DCA: {pos_info['so_count']}")
 

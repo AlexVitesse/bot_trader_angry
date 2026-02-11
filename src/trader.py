@@ -152,6 +152,9 @@ class Trader:
 
     def calculate_base_quantity(self, entry_price: float) -> float:
         """Calcula cantidad inicial basada en BASE_ORDER_MARGIN."""
+        if entry_price <= 0:
+            print(f"[ERROR] entry_price invalido: {entry_price}")
+            return 0.0
         notional = self.grinder_settings['base_margin'] * self.leverage
         quantity = notional / entry_price
         return round(quantity, 3)
@@ -205,6 +208,9 @@ class Trader:
         so_num = trade.safety_orders_count + 1
 
         # Cantidad de la recompra (Martingala)
+        if current_price <= 0:
+            print(f"[ERROR] DCA: current_price invalido: {current_price}")
+            return False
         so_margin = self.grinder_settings['base_margin'] * (self.grinder_settings['martingale'] ** so_num)
         so_quantity = round((so_margin * self.leverage) / current_price, 3)
 
@@ -439,7 +445,7 @@ class Trader:
             if position and self.current_trade is None:
                 # Intentar recuperar de DB primero (tiene datos mas completos)
                 db_pos = db.get_active_position()
-                if db_pos:
+                if db_pos and db_pos.get('avg_price', 0) > 0:
                     self.current_trade = TradeRecord(
                         entry_time=datetime.fromisoformat(db_pos['entry_time']),
                         side=db_pos['side'],
@@ -450,6 +456,9 @@ class Trader:
                     )
                     print(f"[TRADER] Posicion recuperada desde DB: {db_pos['side']} @ ${db_pos['avg_price']:.2f} (DCA: {db_pos.get('safety_orders_count', 0)})")
                 else:
+                    if db_pos:
+                        print(f"[WARN] DB tiene avg_price invalido ({db_pos.get('avg_price')}), usando exchange")
+                        db.clear_active_position()
                     # Fallback: reconstruir desde exchange (sin datos de DCA)
                     self.current_trade = TradeRecord(
                         entry_time=datetime.now(),
