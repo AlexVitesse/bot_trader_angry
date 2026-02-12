@@ -1,206 +1,114 @@
-ROADMAP: BINANCE SCALPER & ML EVOLUTION
-META FINAL: Bot de Trading de Alta Frecuencia (HFT) autonomo potenciado por ML.
+ROADMAP: BOT DE TRADING ML - TRADER PROFESIONAL AUTONOMO
+=========================================================
+META: Bot que analiza el mercado, elige la estrategia correcta, y apuesta
+fuerte cuando tiene confianza alta. Como un trader profesional, pero automatizado.
+
+Ultima actualizacion: 2026-02-12
 
 [ESTADO ACTUAL]
-Fase: FASE 3 - VALIDACION LIVE (EN PROGRESO)
-Proximo Hito: Estabilidad 48h+ en testnet, evaluar resultados.
-Bot corriendo en: Binance Futures Testnet (VM Ubuntu 24.04 24/7)
-Ultima actualizacion: 2026-02-11
+Fase: FASE 3 - ML TRADER PROFESIONAL (EN PROGRESO)
+Proximo Hito: PASO 5 - Paper Trading en Demo (2 semanas)
+Infraestructura: Bot completo + ML integrado + Demo Trading conectado - LISTO.
 
 ---
 
-FASE -1: VALIDACION DE ESTRATEGIA (COMPLETADA)
-[X] Backtest v1.0 - v5.0: Diversas pruebas de Mean Reversion.
-[X] Backtest v6.7 (Smart Metralladora): +43.78% PnL, 83% WR, PF 1.48 (APROBADA)
-    - Backtest corregido: usa high/low intra-vela, orden TP>SL>DCA, comisiones reales
-    - Parametros unificados con settings.py ($12 margen, 10x leverage)
+PROGRESO ML (Investigacion completada):
+  V1: Clasificacion 1m, 32 features          -> AUC 0.53 (random), NO rentable
+  V2: +MTF features + Optuna, 7 labeling     -> AUC 0.60, NO rentable (PF<1)
+  V3: Regresion + walk-forward, 1m           -> Corr 0.05, NO rentable
+  V4: Trend following 4h/daily               -> PRIMER RESULTADO RENTABLE (PF 1.37-1.67)
+  V5: Multi-par (5) + compounding            -> 25% anual, DD 34%
+  V6: Regime detection + 15 pares            -> 262% anual PERO DD 83% (inaceptable)
+  V7: Risk management + trailing stop        -> 322% anual, DD 10%, PF 1.37, Sharpe 4.05
 
-ESTRATEGIA ACTUAL (v6.7 - SMART METRALLADORA):
-  - Tipo: Grinder de Alta Frecuencia (Trend Following Mean Reversion)
-  - Par: BTC/USDT Futures | Timeframe: 1m
-  - Entrada: Filtro EMA 200 + Bollinger Bands + StochRSI.
-  - Gestion: DCA (Grinder) - Max 2 Safety Orders (Martingale x2).
-  - Apalancamiento: 10x | Margen Base: $12 | TP: 0.6% | SL: 1.5%.
-  - Modo: Agresivo (filtros ATR y Rolling WR disponibles pero desactivados).
-
-AUDITORIA DE CODIGO (2026-02-10):
-[X] Fix validate_config() - referencia a variable eliminada (ATR_SL_MULTIPLIER)
-[X] Fix evaluacion TP/DCA/SL - SL ahora se evalua ANTES de DCA
-[X] Fix loop principal - ya no llama update_position con high=low=price
-[X] Verificacion de balance antes de ejecutar DCA
-[X] Reconexion WS con backoff exponencial (5s-5min, max 10 intentos)
-[X] Eliminacion de estado duplicado Strategy/Trader
-[X] Tests corregidos (test_bot.py, strategy __main__)
-[X] Protecciones implementadas (Rolling WR + ATR regime filter) - desactivadas modo agresivo
+LECCIONES CLAVE:
+  - 1 minuto NO funciona: ruido > senal, edge arbitrado, costos altos
+  - 4h/daily SI funciona: TA fue disenado para estos timeframes
+  - Multi-par multiplica oportunidades (11-15 pares)
+  - Regime detection mejora retorno (BULL=solo LONG, BEAR=solo SHORT)
+  - SIN risk management el bot es un apostador, no un trader
+  - Compounding amplifica TODO -> flat sizing es mas estable
+  - Trailing stop es clave: +$1,360 extra capturados vs TP fijo
+  - ATR adaptativo causa kill switch rapido -> TP/SL fijo es mejor
+  - Position cap necesario para evitar numeros fantasiosos
 
 ---
 
-FASE 0: CIMIENTOS DE INGENIERIA (COMPLETADA)
-[X] Entorno Python (Poetry) + Librerias (pandas_ta, websocket-client, requests).
-[X] Repositorio Git inicializado.
+FASE 0-2: INFRAESTRUCTURA (COMPLETADA)
+[X] Conexion Binance (REST + WebSocket)
+[X] Motor de trading (DCA, TP/SL, ordenes)
+[X] Base de datos SQLite (trades, features, candles, posicion)
+[X] Telegram alerts (trades, kill switch, resumen diario)
+[X] Kill switches basicos (3 losses consecutivas, 20% DD diario)
+[X] Deploy en VPS (systemd, logrotate)
 
-FASE 1: LA TUBERIA DE DATOS (COMPLETADA)
-[X] Conexion a Binance via Websocket (Tiempo Real).
-[X] Descargador de historial masivo (fetch_history.py).
+---
 
-FASE 2: EL MOTOR DE TRADING v1.0 (COMPLETADA)
-[X] Modulo de Ejecucion con soporte para DCA/Safety Orders.
-[X] Paper Trading activo en Testnet.
-[X] Backtest corregido y validado con parametros reales.
-[X] Kill switches: 3 consecutive losses, 20% daily loss.
+FASE 3: ML TRADER PROFESIONAL
 
-FASE 2.5: PERSISTENCIA DE DATOS (COMPLETADA)
-[X] SQLite: Tabla trades (entry/exit price, side, pnl, dca_count, duration, exit_reason)
-[X] SQLite: Tabla features (snapshot de indicadores al momento de cada entrada)
-    - EMA 200 dist%, BB position%, StochRSI K/D, ATR, ATR ratio, volumen
-    - Contexto: hora_utc, dia_semana, spread, volatilidad_reciente
-[X] SQLite: Tabla candles (OHLCV 1m para re-entrenar modelo sin depender de Parquet)
-[X] SQLite: Tabla active_position (estado de posicion abierta para recovery tras reinicio)
-[X] Modulo src/database.py: CRUD + queries de entrenamiento (get_training_data())
-[X] Logging real a archivo (bot.log) - setup_logging() en bot.py
-[X] Feature capture automatico: guardar indicadores en cada open_position()
-[X] Migracion: trade_history se carga desde SQLite al iniciar (_load_trade_history)
-[X] Recovery de posicion: sync_with_exchange() prioriza DB sobre exchange
-[X] Test: CRUD verificado (insert, read, update, delete en todas las tablas)
+  PASO 1 - Investigacion ML (COMPLETADO)
+  [X] 7 versiones probadas (V1-V7)
+  [X] Timeframe optimo: 4h
+  [X] Modelo: LightGBM regresion (predice retorno futuro 5 velas = 20h)
+  [X] 35 features: retornos, volatilidad, momentum, tendencia, volumen, ADX, temporal
+  [X] Regime detection: BTC daily -> BULL/BEAR/RANGE
+  [X] Walk-forward: 4/4 folds rentables en todos los tests
 
-  ML Data Collection (COMPLETADA)
-  [X] Taker buy volume + quote volume en candles (WS + REST)
-  [X] Taker buy ratio en features (% de volumen que son compras)
-  [X] Funding rate cacheado cada 1h, guardado en features
-  [X] Long/Short ratio global cada 5 min, guardado en features
-  [X] Open Interest cada 5 min, guardado en features
-  [X] Migracion automatica de DB existente (ALTER TABLE safe)
+  PASO 2 - V7: Risk Management Profesional (COMPLETADO)
+  [X] Max 3 posiciones concurrentes (evitar correlacion)
+  [X] Max drawdown 20% -> pausar bot (kill switch de portafolio)
+  [X] Max perdida diaria 5% -> pausar ese dia
+  [X] Trailing stop: dejar correr ganancias (+$1,360 capturados)
+  [X] Position sizing: flat $50 notional por trade
+  [X] Confidence scaling: modelo seguro = mas riesgo, modelo dudoso = menos
+  [X] Filtro MIN_TRAIN_CANDLES: omitir pares con datos insuficientes
 
-FASE 2.7: ROBUSTEZ OPERATIVA (Pre-requisito Live)
-  Objetivo: Asegurar que el bot sobrevive en produccion 24/7 sin supervision.
+  PASO 3 - Validacion Rigurosa (COMPLETADO - todos los criterios superados)
+  [X] Walk-forward 4+ folds, TODOS rentables -> 4/4 (PF 1.54, 1.71, 1.87, 1.27)
+  [X] Max DD < 25% en backtest -> 10.2%
+  [X] PF > 1.2 neto (con comisiones 0.04% + slippage 0.01%) -> 1.37
+  [X] Retorno anual > 30% -> 322.7%
+  [X] Sharpe ratio > 1.0 -> 4.05
+  [X] Funcionar en BULL, BEAR y RANGE -> BULL +$760, BEAR +$252, RANGE +$997
 
-  Slippage & Validacion del Edge (COMPLETADA)
-  [X] SLIPPAGE_PCT = 0.01% en settings.py
-  [X] Backtest con slippage: 0.01% -> PF 1.29 (+35.9%), 0.02% -> PF 1.23 (+27.6%)
-  [X] PF >= 1.20 con slippage pesimista -> NO necesita ajustar TP
-  [X] Impacto documentado: -8.9pp (0.01%) a -17.2pp (0.02%) en retorno
+  CONFIG GANADORA: FLAT + Trailing Stop
+    $100 -> $2,109 en 2.1 anos | 322% anual | DD 10% | Sharpe 4.05
+    4,471 trades | WR 51% | 21/26 meses positivos (81%)
+    11 pares: BTC ETH SOL BNB XRP DOGE ADA AVAX LINK DOT NEAR
 
-  Position Sizing Dinamico (COMPLETADA)
-  [X] POSITION_SIZE_PCT = 0.12 (12% del balance), MIN_ORDER_MARGIN = $12
-  [X] Implementado en trader.py (_get_dynamic_margin) y backtest
-  [X] Backtest: +44.79% dinamico vs +43.78% fijo (efecto crece con mas capital)
+  PASO 4 - Integracion en Bot Live (COMPLETADO)
+  [X] src/ml_strategy.py: cerebro ML (features, predicciones, regime detection)
+  [X] src/portfolio_manager.py: multi-posicion, sizing, trailing, kill switch
+  [X] src/ml_bot.py: loop principal (30s check, 4h senales, Telegram)
+  [X] ml_export_models.py: entrenamiento y exportacion de 11 modelos
+  [X] Binance Demo Trading API conectada (demo-fapi.binance.com)
+  [X] Balance real demo: $4,506 USDT | 11 modelos cargados
+  [X] Regime detection funcionando (BEAR detectado correctamente)
+  [X] Status log cada 10 min, resumen diario 23:55 UTC
 
-  Alertas de Telegram (COMPLETADA)
-  [X] Modulo src/telegram_alerts.py: envio async via threads (no bloquea trading)
-  [X] Alertas: apertura/cierre trade, DCA, kill switch, WS desconexion, error critico
-  [X] Resumen diario automatico a las 23:55 UTC
-  [X] Comando /status: TelegramPoller con long-polling escucha comandos
-  [X] Alerta de inicio de bot con balance y modo
-  [X] Config: TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID en .env
+  PASO 5 - Paper Trading en Demo (EN PROGRESO - INICIADO 2026-02-12)
+  [ ] Minimo 2 semanas en demo con dinero virtual ($4,506)
+  [ ] Verificar que abre/cierra trades correctamente
+  [ ] Verificar trailing stop funciona en live
+  [ ] Comparar resultados live vs backtest
+  [ ] Criterio para ir a real: PF > 1.2, DD < 20%, > 30 trades
+  [ ] Monitorear logs diariamente los primeros dias
 
-FASE 3: VALIDACION LIVE LOCAL (Primer contacto con dinero real)
-  Pre-requisitos: Fase 2.5 + 2.7 completadas, 48h+ estable en testnet.
-  Objetivo: Confirmar que la estrategia es rentable en real ANTES de invertir en infra.
-  Ejecutar desde PC local (aceptar riesgo de desconexion temporal).
+---
 
-  [ ] Validar estabilidad del Websocket 48h+ continuas en testnet
-  [ ] Verificar sync_with_exchange() funciona correctamente tras reinicio
-  [ ] Despliegue con capital real MINIMO: $100 USDT
-  [ ] Monitoreo primera semana: revisar logs + Telegram diariamente
-  [ ] Evaluar resultados reales vs backtest despues de 2-4 semanas (~100+ trades)
-  [ ] Decision: si es rentable -> Fase 3.5 (VPS). Si no -> ajustar estrategia.
+FASE 4: DINERO REAL
+  Pre-requisito: Fase 3 PASO 5 exitoso.
+  [ ] Capital inicial: $200-500 (lo minimo para probar)
+  [ ] Primeras 2 semanas: sizing ultra conservador (1% riesgo)
+  [ ] Si rentable: escalar gradualmente sizing
+  [ ] VPS 24/7 (Oracle Free Tier o Hetzner $4.50/mes)
+  [ ] Reentrenamiento mensual del modelo
 
-  PROYECCION DE RENTABILIDAD (referencia, NO garantia):
-  Capital minimo viable: $100 (margen $12 + colchon para DCA)
-  Con $10: NO VIABLE (margen minimo $12 para cumplir $100 notional en Binance)
-  Con $100 margen fijo $12: ~$17-43/mes (pesimista-optimista)
-  Con $200 margen fijo $12: mismo PnL absoluto, pero mas colchon de seguridad
-  Con $200 + sizing dinamico (12%): ~$34-86/mes (escala con balance)
-  NOTA: Backtest es optimista. Esperar 30-50% menos en live por slippage y latencia.
+---
 
-FASE 3.5: MIGRACION A VPS (Solo si Fase 3 es rentable)
-  Objetivo: Operar 24/7 sin depender del PC local.
-  Decision basada en: resultados reales de Fase 3 (minimo 2 semanas de datos).
-
-  [ ] Contratar VPS (opciones por costo):
-      - Oracle Cloud Free Tier: $0/mes (ARM 4 cores, 24GB RAM, 10TB transfer) - RECOMENDADO
-      - AWS Lightsail: $3.50/mes (1 core, 512MB RAM, 1TB transfer)
-      - Hetzner CX22: $4.50/mes (2 cores, 4GB RAM, 20TB transfer)
-      - Contabo VPS S: $5.50/mes (4 cores, 8GB RAM, ilimitado)
-      NOTA: Bot usa <5 GB/mes de datos, cualquier plan sobra.
-  [ ] Setup: Ubuntu 22.04+ | Python 3.12 | Poetry | Git clone del repo
-  [ ] Configurar bot como servicio systemd (auto-reinicio si crashea)
-  [ ] Configurar logrotate para bot.log (evitar que llene disco)
-  [ ] Firewall: solo SSH + outbound HTTPS (Binance API + Telegram)
-  [ ] Backup automatico de SQLite (cron diario -> cloud storage o local)
-  [ ] Validar estabilidad 48h+ en VPS antes de mover capital completo
-
-  Dashboard Visual (proceso separado, ~20MB RAM extra)
-  [ ] Implementar dashboard estilo Binance (detalle completo en docs/dashboard_plan.txt)
-  [ ] FastAPI + TradingView Lightweight Charts, lee SQLite read-only
-  [ ] Chart de velas con EMA 200 + Bollinger Bands overlay
-  [ ] Panel: precio en vivo, posicion activa, PnL, stats, historial de trades
-  [ ] Servicio systemd separado en puerto 8080
-
-FASE 4A: ML PREDICTOR - FILTRO DE ENTRADAS (Modelo Propio)
-  Objetivo: Reducir falsas entradas prediciendo P(win) antes de abrir posicion.
-  Modelo: XGBoost o LightGBM (tabular, <1ms prediccion, $0 costo, local).
-  Requisito: Minimo ~500 trades etiquetados (WIN/LOSS) con features.
-
-  PASO 1 - Recoleccion de datos (~2-4 semanas de bot corriendo)
-  [ ] Acumular trades con features en SQLite (automatico desde Fase 2.5)
-  [ ] Monitorear calidad de datos: sin NaN, features consistentes
-  [ ] Meta: 500+ trades etiquetados con features completos
-
-  PASO 2 - Feature Engineering (src/ml/features.py)
-  [ ] Extraer features del DataFrame al momento de senal:
-      - Distancia precio vs EMA 200 (%)
-      - Posicion dentro de Bollinger Bands (0-1)
-      - StochRSI K y D
-      - ATR / ATR_SMA ratio (regimen de volatilidad)
-      - Volumen relativo (vol / vol_sma_20)
-      - Spread (high-low) relativo
-      - Hora UTC, dia de la semana (ciclico: sin/cos encoding)
-      - Retorno ultimas 5, 15, 60 velas
-      - Racha actual (wins/losses consecutivas)
-  [ ] Analisis de correlacion: descartar features redundantes
-  [ ] Normalizacion / scaling donde sea necesario
-
-  PASO 3 - Entrenamiento del Modelo (src/ml/trainer.py)
-  [ ] Split temporal: 70% train / 15% validation / 15% test (NO random, SIEMPRE cronologico)
-  [ ] Entrenar XGBoost clasificador binario (WIN=1, LOSS=0)
-  [ ] Optimizar hiperparametros con Optuna o grid search
-  [ ] Metricas clave: Precision, Recall, F1, AUC-ROC
-  [ ] Validar que no hay overfitting: test performance ~= validation
-  [ ] Guardar modelo entrenado (joblib/pickle) en models/
-
-  PASO 4 - Backtest con ML Filter (src/ml/backtest_ml.py)
-  [ ] Re-correr backtest historico PERO filtrando entradas con P(win) < threshold
-  [ ] Encontrar threshold optimo: maximizar PnL manteniendo suficientes trades
-  [ ] Comparar metricas: WR, PF, Max DD, Sharpe con vs sin ML filter
-  [ ] El filtro debe mejorar PF sin reducir trades mas de 30-40%
-
-  PASO 5 - Integracion en Bot Live (src/ml/predictor.py)
-  [ ] Modulo predictor: carga modelo, recibe features, retorna P(win)
-  [ ] Integrar en bot.py: antes de open_position(), consultar predictor
-  [ ] Si P(win) < threshold -> skip entrada (log motivo)
-  [ ] Threshold configurable en settings.py (ML_CONFIDENCE_THRESHOLD)
-  [ ] Fallback: si modelo falla, operar sin filtro (log warning)
-
-  PASO 6 - Reentrenamiento Continuo
-  [ ] Script de reentrenamiento semanal/mensual con datos nuevos
-  [ ] Comparar modelo nuevo vs anterior (champion/challenger)
-  [ ] Solo reemplazar si modelo nuevo es mejor en metricas clave
-  [ ] Alertar si performance del modelo degrada significativamente
-
-FASE 4B: ANALISTA LLM - MACRO FILTER (Opcional, Largo Plazo)
-  Objetivo: Pausar bot automaticamente en eventos macro (FOMC, hacks, crash).
-  Modelo: API de Claude/GPT para analisis de texto (no para trades individuales).
-  Frecuencia: Cada 1-4 horas (NO por trade - seria lento y caro).
-
-  [ ] Conectar API de noticias crypto (CryptoPanic, CoinGecko news, Twitter/X)
-  [ ] Enviar resumen a LLM: "Hay algun evento que haga peligroso operar BTC ahora?"
-  [ ] LLM responde: SAFE / CAUTION / DANGER con razon
-  [ ] Si DANGER -> pausar bot hasta proximo chequeo
-  [ ] Logging de decisiones del LLM para auditar despues
-
-FASE 5: OPTIMIZACION Y ESCALADO (Largo Plazo)
-[ ] Multi-par: expandir a ETH/USDT, SOL/USDT con misma estrategia.
-[ ] Migracion a VPS mas potente si latencia es problema.
-[ ] Reescribir modulos criticos en Rust o C++ si Python es lento.
-[ ] Arbitraje entre Exchanges (anadir segundo Exchange).
+FASE 5: ESCALADO (Largo Plazo)
+  [ ] Mas pares (20-30 de los mas liquidos)
+  [ ] Features avanzados: funding rate real-time, open interest, liquidaciones
+  [ ] Analista LLM: pausar bot en eventos macro (FOMC, hacks, crash)
+  [ ] Multi-exchange (Binance + Bybit para mas liquidez)
+  [ ] Infraestructura: si latencia importa, reescribir en Rust/C++

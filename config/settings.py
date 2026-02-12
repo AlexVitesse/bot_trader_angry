@@ -120,6 +120,50 @@ TARGET_PROFIT_FACTOR = 1.20     # 1.20 minimo aceptable
 TARGET_RR_RATIO = 2.0           # 2:1 minimo aceptable
 
 
+# =============================================================================
+# ML TRADER PROFESIONAL (Fase 3 - V7)
+# =============================================================================
+MODELS_DIR = PROJECT_ROOT / "models"
+MODELS_DIR.mkdir(exist_ok=True)
+
+ML_DB_FILE = DATA_DIR / "ml_bot.db"
+
+ML_PAIRS = [
+    'BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'BNB/USDT', 'XRP/USDT',
+    'DOGE/USDT', 'ADA/USDT', 'AVAX/USDT', 'LINK/USDT', 'DOT/USDT',
+    'NEAR/USDT',
+]
+
+ML_TIMEFRAME = '4h'
+ML_HORIZON = 5              # Predecir retorno 5 velas adelante (20h)
+ML_SIGNAL_THRESHOLD = 0.7   # Confianza minima para senal
+
+# Risk Management
+ML_MAX_CONCURRENT = 3       # Max posiciones simultaneas
+ML_MAX_DD_PCT = 0.20        # 20% DD -> kill switch
+ML_MAX_DAILY_LOSS_PCT = 0.05  # 5% daily loss -> pausar
+ML_RISK_PER_TRADE = 0.02    # 2% capital at risk
+ML_MAX_NOTIONAL = 300.0     # Cap notional por trade
+
+# Leverage por regimen
+ML_LEVERAGE = {'BULL': 5, 'BEAR': 4, 'RANGE': 3}
+
+# TP/SL fijos (ganador en backtest - ATR causaba kill switch)
+ML_TP_PCT = 0.03            # 3% TP
+ML_SL_PCT = 0.015           # 1.5% SL
+
+# Trailing Stop
+ML_TRAILING_ACTIVATION = 0.5  # Activar al 50% del TP (1.5% profit)
+ML_TRAILING_LOCK = 0.4        # Proteger 40% de ganancia desde peak
+
+# Max hold (velas de 4h)
+ML_MAX_HOLD = {'BULL': 30, 'BEAR': 30, 'RANGE': 15}
+
+# Timing
+ML_CHECK_INTERVAL = 30      # Segundos entre checks de posiciones
+ML_CANDLE_HOURS = [0, 4, 8, 12, 16, 20]  # 4h candle close hours UTC
+
+
 def validate_config() -> bool:
     """Valida que la configuracion este completa."""
     errors = []
