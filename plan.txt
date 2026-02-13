@@ -130,6 +130,8 @@ FASE 5: V8 - DATA ALTERNATIVA (~Abril 2026)
   [ ] Fear & Greed Index como feature (sentimiento general crypto)
   [ ] Reentrenar modelos V8 con nuevos features
   [ ] Backtest V8 vs V7: debe superar PF 1.37 y DD < 15%
+  [ ] Si backtest V8 gana: correr V8 en paralelo con V7 en demo (rama separada)
+  [ ] Comparar resultados reales V7 vs V8 durante 1-2 semanas
   Ya tenemos: ml_data_collector.py recolecta funding rate, OI, L/S ratio
 
 ---
