@@ -24,7 +24,7 @@ from config.settings import (
 )
 from src.ml_strategy import MLStrategy
 from src.portfolio_manager import PortfolioManager
-from src.telegram_alerts import send_alert, TelegramPoller
+from src.telegram_alerts import send_alert, send_document, TelegramPoller
 
 logger = logging.getLogger('ml_bot')
 
@@ -198,6 +198,7 @@ class MLBot:
         self.tg_poller = TelegramPoller(callbacks={
             '/status': self._cmd_status,
             '/resume': self._cmd_resume,
+            '/log': self._cmd_log,
         })
         self.tg_poller.start()
 
@@ -241,6 +242,15 @@ class MLBot:
             send_alert("🚫 Bot en KILL SWITCH - no se puede reanudar por Telegram")
         else:
             send_alert("✅ Bot ya esta operando normalmente")
+
+    def _cmd_log(self):
+        """Responde al comando /log - envia el archivo de log por Telegram."""
+        log_file = LOGS_DIR / "ml_bot.log"
+        if log_file.exists():
+            size_kb = log_file.stat().st_size / 1024
+            send_document(str(log_file), f"📄 Log ({size_kb:.0f} KB)")
+        else:
+            send_alert("⚠️ Archivo de log no encontrado")
 
     def _shutdown(self):
         """Limpieza al cerrar."""

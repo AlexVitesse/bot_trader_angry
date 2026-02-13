@@ -45,6 +45,32 @@ def send_alert(text: str):
     t.start()
 
 
+def _send_document(file_path: str, caption: str = ""):
+    """Envia un archivo via Telegram API (bloqueante, llamar desde thread)."""
+    if not TELEGRAM_ENABLED:
+        return
+    try:
+        with open(file_path, 'rb') as f:
+            response = requests.post(
+                f"{TELEGRAM_API_URL}/sendDocument",
+                data={"chat_id": TELEGRAM_CHAT_ID, "caption": caption},
+                files={"document": (f.name.split('/')[-1].split('\\')[-1], f)},
+                timeout=30,
+            )
+        if response.status_code != 200:
+            logger.warning(f"[TG] Error enviando archivo: {response.status_code}")
+    except Exception as e:
+        logger.warning(f"[TG] No se pudo enviar archivo: {e}")
+
+
+def send_document(file_path: str, caption: str = ""):
+    """Envia archivo en un thread separado (no bloquea el bot)."""
+    if not TELEGRAM_ENABLED:
+        return
+    t = threading.Thread(target=_send_document, args=(file_path, caption), daemon=True)
+    t.start()
+
+
 # =====================================================================
 # ALERTAS ESPECIFICAS
 # =====================================================================
