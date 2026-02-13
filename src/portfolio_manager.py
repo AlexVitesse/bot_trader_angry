@@ -198,7 +198,8 @@ class PortfolioManager:
     # SYNC & BALANCE
     # =========================================================================
     def sync_positions(self):
-        """Recupera posiciones desde DB tras reinicio."""
+        """Recupera posiciones desde DB y reconcilia con exchange."""
+        # --- Paso 1: Leer posiciones guardadas en DB local ---
         conn = self._get_conn()
         try:
             rows = conn.execute("SELECT * FROM ml_positions").fetchall()
@@ -217,12 +218,15 @@ class PortfolioManager:
                     bars=r['bars'], max_hold=r['max_hold'],
                 )
                 self.positions[pos.pair] = pos
-                logger.info(f"[PM] Posicion recuperada: {pos.pair} {pos.side} "
+                logger.info(f"[PM] Posicion recuperada (DB): {pos.pair} {pos.side} "
                             f"@ ${pos.entry_price:,.2f}")
         finally:
             conn.close()
 
-        # Recuperar state
+        # --- Paso 2: Reconciliar con posiciones reales en exchange ---
+        self._reconcile_with_exchange()
+
+        # --- Paso 3: Recuperar state ---
         bal = self._get_state('balance')
         if bal:
             self.balance = float(bal)
@@ -240,6 +244,59 @@ class PortfolioManager:
 
         logger.info(f"[PM] {len(self.positions)} posiciones activas, "
                     f"balance=${self.balance:.2f}")
+
+    def _reconcile_with_exchange(self):
+        """Detecta posiciones abiertas en exchange que no estan en DB.
+        Previene duplicados al migrar de maquina o si la DB se pierde."""
+        try:
+            exchange_positions = self.exchange.fetch_positions()
+        except Exception as e:
+            logger.warning(f"[PM] Error obteniendo posiciones de exchange: {e}")
+            return
+
+        for ep in exchange_positions:
+            contracts = float(ep.get('contracts', 0) or 0)
+            if contracts == 0:
+                continue
+
+            # Normalizar symbol: "SOL/USDT:USDT" -> "SOL/USDT"
+            symbol = ep.get('symbol', '')
+            pair = symbol.split(':')[0] if ':' in symbol else symbol
+
+            if pair in self.positions:
+                # Ya la tenemos en DB, todo bien
+                continue
+
+            # Posicion en exchange SIN registro en DB -> adoptarla
+            side_str = ep.get('side', 'long')  # "long" o "short"
+            direction = 1 if side_str == 'long' else -1
+            entry_price = float(ep.get('entryPrice', 0) or 0)
+            leverage = int(ep.get('leverage', 3) or 3)
+            notional = contracts * entry_price
+
+            # Calcular TP/SL con valores por defecto
+            if direction == 1:
+                tp_price = entry_price * (1 + ML_TP_PCT)
+                sl_price = entry_price * (1 - ML_SL_PCT)
+            else:
+                tp_price = entry_price * (1 - ML_TP_PCT)
+                sl_price = entry_price * (1 + ML_SL_PCT)
+
+            pos = Position(
+                pair=pair, side=side_str, direction=direction,
+                entry_price=entry_price, quantity=contracts,
+                notional=notional, leverage=leverage,
+                tp_price=tp_price, sl_price=sl_price,
+                tp_pct=ML_TP_PCT, sl_pct=ML_SL_PCT,
+                atr_pct=0.02,  # Default conservador
+                regime='RANGE', confidence=0.0,
+                peak_price=entry_price, max_hold=30,
+            )
+
+            self.positions[pair] = pos
+            self._save_position(pos)
+            logger.info(f"[PM] Posicion ADOPTADA de exchange: {pair} {side_str.upper()} "
+                        f"@ ${entry_price:,.2f} | Qty={contracts} | Lev={leverage}x")
 
     def refresh_balance(self):
         """Actualiza balance desde exchange."""
