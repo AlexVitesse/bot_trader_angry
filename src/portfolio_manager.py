@@ -246,14 +246,17 @@ class PortfolioManager:
                     f"balance=${self.balance:.2f}")
 
     def _reconcile_with_exchange(self):
-        """Detecta posiciones abiertas en exchange que no estan en DB.
-        Previene duplicados al migrar de maquina o si la DB se pierde."""
+        """Reconcilia posiciones entre DB local y exchange real.
+        - Adopta posiciones en exchange que no estan en DB (migracion)
+        - Elimina posiciones en DB que ya no existen en exchange (cierre manual)"""
         try:
             exchange_positions = self.exchange.fetch_positions()
         except Exception as e:
             logger.warning(f"[PM] Error obteniendo posiciones de exchange: {e}")
             return
 
+        # Construir set de pares con posicion abierta en exchange
+        exchange_pairs = set()
         for ep in exchange_positions:
             contracts = float(ep.get('contracts', 0) or 0)
             if contracts == 0:
@@ -262,6 +265,7 @@ class PortfolioManager:
             # Normalizar symbol: "SOL/USDT:USDT" -> "SOL/USDT"
             symbol = ep.get('symbol', '')
             pair = symbol.split(':')[0] if ':' in symbol else symbol
+            exchange_pairs.add(pair)
 
             if pair in self.positions:
                 # Ya la tenemos en DB, todo bien
@@ -297,6 +301,13 @@ class PortfolioManager:
             self._save_position(pos)
             logger.info(f"[PM] Posicion ADOPTADA de exchange: {pair} {side_str.upper()} "
                         f"@ ${entry_price:,.2f} | Qty={contracts} | Lev={leverage}x")
+
+        # Eliminar posiciones en DB que ya no existen en exchange (cierre manual/externo)
+        stale = [p for p in self.positions if p not in exchange_pairs]
+        for pair in stale:
+            logger.info(f"[PM] Posicion {pair} cerrada externamente - eliminando de DB")
+            del self.positions[pair]
+            self._delete_position(pair)
 
     def refresh_balance(self):
         """Actualiza balance desde exchange."""
