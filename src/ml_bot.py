@@ -229,8 +229,9 @@ class MLBot:
         """Responde al comando /resume de Telegram - reanuda el bot pausado."""
         if self.portfolio.paused:
             self.portfolio.paused = False
+            self.portfolio.daily_pnl = 0.0  # Reset para que check_risk() no re-pause
             self._pause_notified = False
-            logger.info("[BOT] Reanudado via comando /resume")
+            logger.info("[BOT] Reanudado via comando /resume (daily_pnl reset)")
             send_alert(
                 f"▶️ <b>BOT REANUDADO</b>\n"
                 f"━━━━━━━━━━━━━━━\n"
