@@ -20,7 +20,7 @@ from config.settings import (
     TRADING_MODE, BINANCE_API_KEY, BINANCE_API_SECRET,
     ML_PAIRS, ML_CHECK_INTERVAL, ML_CANDLE_HOURS, ML_LEVERAGE,
     ML_DB_FILE, MODELS_DIR, TELEGRAM_ENABLED, LOG_LEVEL,
-    LOGS_DIR, INITIAL_CAPITAL,
+    LOGS_DIR, INITIAL_CAPITAL, ML_MAX_DAILY_LOSS_PCT,
 )
 from src.ml_strategy import MLStrategy
 from src.portfolio_manager import PortfolioManager
@@ -42,6 +42,8 @@ class MLBot:
         self.last_regime_date = None   # Fecha de ultimo regime update
         self.last_status_log = 0       # Timestamp de ultimo status log
         self.last_daily_summary = None # Fecha de ultimo resumen diario
+        self.last_heartbeat = 0        # Timestamp de ultimo heartbeat
+        self.recent_errors = []        # Errores desde ultimo heartbeat
 
     def _init_exchange_public(self) -> ccxt.Exchange:
         """Cliente ccxt sin auth para datos de mercado."""
@@ -125,13 +127,16 @@ class MLBot:
                 logger.info("[BOT] Detenido por usuario")
                 self.running = False
             except Exception as e:
-                logger.error(f"[BOT] Error en loop: {e}", exc_info=True)
+                error_msg = f"{type(e).__name__}: {e}"
+                logger.error(f"[BOT] Error en loop: {error_msg}", exc_info=True)
+                self.recent_errors.append(error_msg)
                 time.sleep(60)
 
         self._shutdown()
 
     def _startup(self):
         """Inicializacion del bot."""
+        self._start_time = time.time()
         logger.info("=" * 60)
         logger.info("ML TRADER PROFESIONAL - INICIO")
         logger.info("=" * 60)
@@ -165,14 +170,16 @@ class MLBot:
 
         # 6. Telegram
         regime = self.strategy.regime
+        regime_emoji = {'BULL': '🟢🐂', 'BEAR': '🔴🐻', 'RANGE': '🟡↔️'}.get(regime, '⚪')
         n_pos = len(self.portfolio.positions)
         send_alert(
-            f"<b>ML BOT INICIADO</b>\n"
-            f"Modo: {TRADING_MODE}\n"
-            f"Regime: {regime}\n"
-            f"Modelos: {count}\n"
-            f"Posiciones: {n_pos}\n"
-            f"Balance: ${self.portfolio.balance:,.2f}"
+            f"🚀 <b>ML BOT INICIADO</b>\n"
+            f"━━━━━━━━━━━━━━━\n"
+            f"📊 Modo: {TRADING_MODE.upper()}\n"
+            f"{regime_emoji} Regime: {regime}\n"
+            f"🧠 Modelos: {count}\n"
+            f"📈 Posiciones: {n_pos}\n"
+            f"💰 Balance: <b>${self.portfolio.balance:,.2f}</b>"
         )
 
         logger.info("=" * 60)
@@ -183,10 +190,11 @@ class MLBot:
         logger.info("[BOT] Cerrando bot...")
         status = self.portfolio.get_status()
         send_alert(
-            f"<b>ML BOT DETENIDO</b>\n"
-            f"Balance: ${status['balance']:,.2f}\n"
-            f"Posiciones abiertas: {status['positions']}\n"
-            f"Trades hoy: {status['total_trades']}"
+            f"🛑 <b>ML BOT DETENIDO</b>\n"
+            f"━━━━━━━━━━━━━━━\n"
+            f"💰 Balance: <b>${status['balance']:,.2f}</b>\n"
+            f"📈 Posiciones: {status['positions']}\n"
+            f"📋 Trades hoy: {status['total_trades']}"
         )
 
     # =========================================================================
@@ -254,15 +262,43 @@ class MLBot:
             )
 
             if success:
-                side = 'LONG' if signal['direction'] == 1 else 'SHORT'
-                send_alert(
-                    f"<b>TRADE ABIERTO</b>\n"
-                    f"Par: {signal['pair']}\n"
-                    f"Side: {side}\n"
-                    f"Precio: ${signal['price']:,.2f}\n"
-                    f"Confianza: {signal['confidence']:.2f}\n"
-                    f"Regime: {self.strategy.regime}"
-                )
+                pos = self.portfolio.positions.get(signal['pair'])
+                if pos:
+                    side = 'LONG' if signal['direction'] == 1 else 'SHORT'
+                    side_emoji = '🟢' if signal['direction'] == 1 else '🔴'
+                    conf_bar = '🔥' if signal['confidence'] > 2.0 else '⚡' if signal['confidence'] > 1.5 else '📊'
+                    margin = pos.notional / pos.leverage
+                    action = 'COMPRANDO' if signal['direction'] == 1 else 'VENDIENDO'
+                    coin = signal['pair'].split('/')[0]
+                    # Explicacion educativa
+                    if signal['direction'] == 1:
+                        explain = f"📖 Compra {pos.quantity} {coin} esperando que SUBA"
+                        tp_dir = '↗️ sube'
+                        sl_dir = '↘️ baja'
+                    else:
+                        explain = f"📖 Vende {pos.quantity} {coin} esperando que BAJE"
+                        tp_dir = '↘️ baja'
+                        sl_dir = '↗️ sube'
+                    send_alert(
+                        f"{side_emoji} <b>TRADE ABIERTO - {action}</b>\n"
+                        f"━━━━━━━━━━━━━━━\n"
+                        f"💎 {signal['pair']} → <b>{side}</b>\n"
+                        f"\n"
+                        f"📥 <b>Entrada</b>\n"
+                        f"   Precio: ${pos.entry_price:,.2f}\n"
+                        f"   Cantidad: {pos.quantity} {coin}\n"
+                        f"   Notional: ${pos.notional:,.2f}\n"
+                        f"   Margen: ${margin:,.2f} ({pos.leverage}x leverage)\n"
+                        f"\n"
+                        f"🎯 <b>Objetivos</b>\n"
+                        f"   TP: ${pos.tp_price:,.2f} (si {tp_dir} {pos.tp_pct:.1%})\n"
+                        f"   SL: ${pos.sl_price:,.2f} (si {sl_dir} {pos.sl_pct:.1%})\n"
+                        f"   Max hold: {pos.max_hold} velas ({pos.max_hold * 4}h)\n"
+                        f"\n"
+                        f"{conf_bar} Confianza: {signal['confidence']:.2f}\n"
+                        f"📊 Regime: {self.strategy.regime}\n"
+                        f"{explain}"
+                    )
 
     # =========================================================================
     # POSITION MONITORING
@@ -272,24 +308,86 @@ class MLBot:
         closed_trades = self.portfolio.update_positions()
 
         for trade in closed_trades:
-            emoji = "+" if trade['pnl'] > 0 else ""
+            win = trade['pnl'] > 0
+            result_emoji = '✅' if win else '❌'
+            reason_emoji = {'TP': '🎯', 'SL': '🛡️', 'TRAIL': '📐', 'TIMEOUT': '⏰'}.get(trade['exit_reason'], '📌')
+            reason_text = {
+                'TP': 'Take Profit (objetivo alcanzado)',
+                'SL': 'Stop Loss (limite de perdida)',
+                'TRAIL': 'Trailing Stop (proteccion de ganancia)',
+                'TIMEOUT': 'Timeout (tiempo maximo alcanzado)',
+            }.get(trade['exit_reason'], trade['exit_reason'])
+
+            # Calcular detalles
+            coin = trade['symbol'].split('/')[0]
+            price_change = trade['exit_price'] - trade['entry_price']
+            price_change_pct = price_change / trade['entry_price']
+            # Gross PnL: para long ganas si sube, para short ganas si baja
+            if trade['side'] == 'long':
+                gross_pnl = trade['notional'] * price_change_pct
+            else:
+                gross_pnl = trade['notional'] * (-price_change_pct)
+            margin = trade['notional'] / trade['leverage']
+
+            # Duracion
+            try:
+                entry_dt = datetime.fromisoformat(trade['entry_time'])
+                exit_dt = datetime.fromisoformat(trade['exit_time'])
+                duration = exit_dt - entry_dt
+                hours = duration.total_seconds() / 3600
+                if hours >= 24:
+                    dur_str = f"{hours / 24:.1f} dias"
+                else:
+                    dur_str = f"{hours:.1f} horas"
+            except Exception:
+                dur_str = "N/A"
+
+            # Explicacion educativa
+            if trade['side'] == 'long':
+                if win:
+                    explain = f"📖 Compro a ${trade['entry_price']:,.2f} y vendio mas caro"
+                else:
+                    explain = f"📖 Compro a ${trade['entry_price']:,.2f} pero bajo"
+            else:
+                if win:
+                    explain = f"📖 Vendio a ${trade['entry_price']:,.2f} y recompro mas barato"
+                else:
+                    explain = f"📖 Vendio a ${trade['entry_price']:,.2f} pero subio"
+
             send_alert(
-                f"<b>TRADE CERRADO</b>\n"
-                f"Par: {trade['symbol']}\n"
-                f"Side: {trade['side'].upper()}\n"
-                f"Entry: ${trade['entry_price']:,.2f}\n"
-                f"Exit: ${trade['exit_price']:,.2f}\n"
-                f"PnL: <b>${trade['pnl']:{emoji}.2f}</b>\n"
-                f"Razon: {trade['exit_reason']}\n"
-                f"Balance: ${self.portfolio.balance:,.2f}"
+                f"{result_emoji} <b>TRADE CERRADO</b>\n"
+                f"━━━━━━━━━━━━━━━\n"
+                f"💎 {trade['symbol']} <b>{trade['side'].upper()}</b>\n"
+                f"\n"
+                f"📥 <b>Entrada → Salida</b>\n"
+                f"   Entry: ${trade['entry_price']:,.2f}\n"
+                f"   Exit:  ${trade['exit_price']:,.2f}\n"
+                f"   Cambio: {price_change_pct:+.2%} (${price_change:+,.2f})\n"
+                f"\n"
+                f"💰 <b>Resultado</b>\n"
+                f"   Notional: ${trade['notional']:,.2f} ({trade['leverage']}x)\n"
+                f"   PnL bruto: ${gross_pnl:+,.2f}\n"
+                f"   Comisiones: -${trade['commission']:.2f}\n"
+                f"   <b>PnL neto: ${trade['pnl']:+,.2f}</b>\n"
+                f"\n"
+                f"⏱️ Duracion: {dur_str}\n"
+                f"{reason_emoji} {reason_text}\n"
+                f"\n"
+                f"💰 Balance: <b>${self.portfolio.balance:,.2f}</b>\n"
+                f"{explain}"
             )
 
     # =========================================================================
     # PERIODIC TASKS
     # =========================================================================
     def _periodic_tasks(self):
-        """Logging periodico y resumen diario."""
+        """Logging periodico, heartbeat y resumen diario."""
         now = time.time()
+
+        # Heartbeat cada 2 horas por Telegram
+        if now - self.last_heartbeat >= 7200:
+            self.last_heartbeat = now
+            self._send_heartbeat()
 
         # Status log cada 10 minutos
         if now - self.last_status_log >= 600:
@@ -298,7 +396,7 @@ class MLBot:
             logger.info(
                 f"[STATUS] Balance=${status['balance']:.2f} | "
                 f"DD={status['dd']:.1%} | "
-                f"Pos={status['positions']}/{ML_LEVERAGE} | "
+                f"Pos={status['positions']}/3 | "
                 f"DailyPnL=${status['daily_pnl']:+.2f} | "
                 f"Regime={self.strategy.regime}"
             )
@@ -314,45 +412,96 @@ class MLBot:
                 self.last_daily_summary = today
                 self._send_daily_summary()
 
-    def _send_daily_summary(self):
-        """Envia resumen diario por Telegram."""
+    def _send_heartbeat(self):
+        """Envia heartbeat cada 2h por Telegram para monitoreo remoto."""
         status = self.portfolio.get_status()
-        trades_today = [t for t in self.portfolio.trade_log
-                        if t['exit_time'].startswith(datetime.now(timezone.utc).strftime('%Y-%m-%d'))]
+        uptime_h = (time.time() - self._start_time) / 3600 if hasattr(self, '_start_time') else 0
+        trades_today = self.portfolio.get_today_trades_from_db()
+        total_pnl = sum(t['pnl'] for t in trades_today)
+
+        # Contador de demo: 2 semanas desde 2026-02-12 -> fin 2026-02-26
+        # TODO: Borrar este contador despues del 2026-02-26 (ver plan.txt)
+        demo_end = datetime(2026, 2, 26, tzinfo=timezone.utc)
+        days_left = (demo_end - datetime.now(timezone.utc)).days
+        if days_left > 0:
+            demo_str = f"📅 Demo: {days_left} dias restantes"
+        elif days_left == 0:
+            demo_str = "📅 Demo: ULTIMO DIA - revisar resultados!"
+        else:
+            demo_str = "📅 Demo: FINALIZADA - revisar resultados!"
+
+        if self.recent_errors:
+            errors_str = "\n".join(f"  ⚠️ {e[:80]}" for e in self.recent_errors[-5:])
+            n_errors = len(self.recent_errors)
+            send_alert(
+                f"🔴 <b>BOT ERRORES ({n_errors})</b>\n"
+                f"━━━━━━━━━━━━━━━\n"
+                f"{errors_str}\n"
+                f"\n"
+                f"💰 Balance: ${status['balance']:,.2f}\n"
+                f"📈 Pos: {status['positions']}/3\n"
+                f"📊 Regime: {self.strategy.regime}\n"
+                f"⏱️ Uptime: {uptime_h:.1f}h\n"
+                f"{demo_str}"
+            )
+            self.recent_errors.clear()
+        else:
+            pnl_emoji = '📈' if total_pnl >= 0 else '📉'
+            send_alert(
+                f"🟢 <b>BOT TODO OK</b>\n"
+                f"━━━━━━━━━━━━━━━\n"
+                f"💰 Balance: ${status['balance']:,.2f}\n"
+                f"📈 Pos: {status['positions']}/3\n"
+                f"{pnl_emoji} PnL hoy: ${total_pnl:+,.2f} ({len(trades_today)} trades)\n"
+                f"📊 Regime: {self.strategy.regime}\n"
+                f"⚠️ DD: {status['dd']:.1%}\n"
+                f"⏱️ Uptime: {uptime_h:.1f}h\n"
+                f"{demo_str}"
+            )
+
+    def _send_daily_summary(self):
+        """Envia resumen diario por Telegram (consulta DB, sobrevive reinicios)."""
+        status = self.portfolio.get_status()
+        trades_today = self.portfolio.get_today_trades_from_db()
         wins = sum(1 for t in trades_today if t['pnl'] > 0)
         losses = len(trades_today) - wins
         wr = (wins / len(trades_today) * 100) if trades_today else 0
+        total_pnl = sum(t['pnl'] for t in trades_today)
 
+        pnl_emoji = '📈' if total_pnl >= 0 else '📉'
         send_alert(
-            f"<b>RESUMEN DIARIO</b>\n"
-            f"Trades: {len(trades_today)} | W:{wins} L:{losses}\n"
-            f"Win Rate: {wr:.0f}%\n"
-            f"PnL hoy: ${status['daily_pnl']:+.2f}\n"
-            f"Balance: ${status['balance']:,.2f}\n"
-            f"DD: {status['dd']:.1%}\n"
-            f"Regime: {self.strategy.regime}\n"
-            f"Posiciones: {status['positions']}"
+            f"📊 <b>RESUMEN DIARIO</b>\n"
+            f"━━━━━━━━━━━━━━━\n"
+            f"📋 Trades: {len(trades_today)} | ✅ {wins} ❌ {losses}\n"
+            f"🎯 Win Rate: {wr:.0f}%\n"
+            f"{pnl_emoji} PnL hoy: <b>${total_pnl:+,.2f}</b>\n"
+            f"💰 Balance: <b>${status['balance']:,.2f}</b>\n"
+            f"⚠️ DD: {status['dd']:.1%}\n"
+            f"📊 Regime: {self.strategy.regime}\n"
+            f"📈 Posiciones: {status['positions']}"
         )
 
     def _on_kill_switch(self):
         """Maneja kill switch."""
         status = self.portfolio.get_status()
         send_alert(
-            f"<b>KILL SWITCH ACTIVADO</b>\n"
-            f"DD: {status['dd']:.1%} >= 20%\n"
-            f"Balance: ${status['balance']:,.2f}\n"
-            f"Peak: ${status['peak']:,.2f}\n"
-            f"Bot DETENIDO"
+            f"🚨🚨🚨 <b>KILL SWITCH ACTIVADO</b>\n"
+            f"━━━━━━━━━━━━━━━\n"
+            f"📉 DD: {status['dd']:.1%} >= 20%\n"
+            f"💰 Balance: ${status['balance']:,.2f}\n"
+            f"🏔️ Peak: ${status['peak']:,.2f}\n"
+            f"🛑 Bot DETENIDO"
         )
         logger.critical("[BOT] KILL SWITCH - Bot detenido")
 
     def _on_pause(self):
         """Maneja pausa por daily loss."""
         send_alert(
-            f"<b>BOT PAUSADO</b>\n"
-            f"Daily loss: ${self.portfolio.daily_pnl:.2f}\n"
-            f"Limite: {ML_LEVERAGE}% de capital\n"
-            f"Reanuda manana automaticamente"
+            f"⏸️ <b>BOT PAUSADO</b>\n"
+            f"━━━━━━━━━━━━━━━\n"
+            f"📉 Daily loss: ${self.portfolio.daily_pnl:.2f}\n"
+            f"🛡️ Limite: {ML_MAX_DAILY_LOSS_PCT:.0%} de capital\n"
+            f"🔄 Reanuda manana automaticamente"
         )
         logger.warning("[BOT] Pausado por daily loss limit")
 

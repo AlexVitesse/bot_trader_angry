@@ -93,22 +93,93 @@ FASE 3: ML TRADER PROFESIONAL
   [ ] Comparar resultados live vs backtest
   [ ] Criterio para ir a real: PF > 1.2, DD < 20%, > 30 trades
   [ ] Monitorear logs diariamente los primeros dias
+  [ ] 26 Feb: Borrar contador de demo en _send_heartbeat() (ml_bot.py linea ~398)
 
 ---
 
-FASE 4: DINERO REAL
-  Pre-requisito: Fase 3 PASO 5 exitoso.
+FASE 4: DINERO REAL (~Marzo 2026)
+  Pre-requisito: Fase 3 PASO 5 exitoso (PF > 1.2, DD < 20%, > 30 trades en demo).
+
+  Comandos Telegram (control remoto sin SSH):
+  [ ] /status - Balance, posiciones abiertas, PnL del dia, regime actual
+  [ ] /positions - Detalle de cada posicion (par, side, entry, PnL%, trailing)
+  [ ] /close [par] - Cerrar posicion especifica manualmente
+  [ ] /close_all - Cerrar todas las posiciones (emergencia)
+  [ ] /pause - Pausar bot (no abre nuevos trades, mantiene posiciones)
+  [ ] /resume - Reanudar bot
+  [ ] /stats - Resumen: trades hoy, WR, PF, mejor/peor trade
+  [ ] /config - Ver config actual (leverage, TP/SL, max concurrent)
+  [ ] /regime - Regime actual + datos BTC (EMA20/50, ret20d)
+  [ ] Autenticacion: solo responde a TELEGRAM_CHAT_ID autorizado
+
+  Capital y Sizing:
   [ ] Capital inicial: $200-500 (lo minimo para probar)
   [ ] Primeras 2 semanas: sizing ultra conservador (1% riesgo)
-  [ ] Si rentable: escalar gradualmente sizing
+  [ ] Si rentable 2 semanas: subir a 2% riesgo
+  [ ] Si rentable 1 mes: escalar gradualmente sizing
   [ ] VPS 24/7 (Oracle Free Tier o Hetzner $4.50/mes)
   [ ] Reentrenamiento mensual del modelo
 
 ---
 
-FASE 5: ESCALADO (Largo Plazo)
+FASE 5: V8 - DATA ALTERNATIVA (~Abril 2026)
+  Objetivo: Agregar datos que la mayoria de bots NO usan.
+  [ ] Funding Rate como feature (sentimiento de mercado, datos de Binance API)
+  [ ] Open Interest como feature (acumulacion de posiciones apalancadas)
+  [ ] Long/Short Ratio como feature (indicador contrarian)
+  [ ] Fear & Greed Index como feature (sentimiento general crypto)
+  [ ] Reentrenar modelos V8 con nuevos features
+  [ ] Backtest V8 vs V7: debe superar PF 1.37 y DD < 15%
+  Ya tenemos: ml_data_collector.py recolecta funding rate, OI, L/S ratio
+
+---
+
+FASE 6: MULTI-TIMEFRAME + MULTI-ESTRATEGIA (~Mayo-Junio 2026)
+  Objetivo: Adaptarse al mercado como un trader profesional.
+
+  Multi-Timeframe:
+  [ ] Agregar features de Daily (contexto macro: tendencia, volatilidad)
+  [ ] Agregar features de 1h (timing fino: momentum intradía)
+  [ ] Modelo recibe contexto de 3 timeframes: 1h + 4h + daily
+  [ ] Backtest MTF vs V8: medir mejora
+
+  Multi-Estrategia (adaptar segun mercado como trader profesional):
+  Modelos especializados:
+  [ ] Modelo A: Trend Following (actual V7) - para tendencias claras BULL/BEAR
+      - Seguir momentum, dejar correr ganancias con trailing stop
+      - Funciona mejor cuando ADX > 25 (tendencia fuerte)
+  [ ] Modelo B: Mean Reversion - para mercados laterales RANGE
+      - Comprar en soporte (BB inferior), vender en resistencia (BB superior)
+      - TP mas pequeno pero WR mas alto, funciona cuando ADX < 20
+  [ ] Modelo C: Momentum/Breakout - para inicio de tendencia nueva
+      - Detectar cuando el precio rompe un rango, entrar rapido
+      - Funciona en transiciones RANGE->BULL o RANGE->BEAR
+
+  Meta-Modelo (el "cerebro" que elige):
+  [ ] Entrenar modelo clasificador que predice: cual estrategia sera rentable?
+      Input: features de mercado (volatilidad, ADX, regime, volumen, OI)
+      Output: probabilidad de exito de cada estrategia (A, B o C)
+  [ ] El meta-modelo evalua cada 4h y asigna peso a cada estrategia
+      Ejemplo: mercado lateral -> 70% Mean Reversion, 20% Trend, 10% Breakout
+  [ ] Cada estrategia genera senales independientes, el meta-modelo decide cual ejecutar
+  [ ] Backtest multi-estrategia vs V7 single: debe superar PF y reducir DD
+  [ ] Walk-forward del meta-modelo: evitar overfitting en la seleccion
+
+---
+
+FASE 7: ESCALADO AVANZADO (Largo Plazo)
   [ ] Mas pares (20-30 de los mas liquidos)
-  [ ] Features avanzados: funding rate real-time, open interest, liquidaciones
-  [ ] Analista LLM: pausar bot en eventos macro (FOMC, hacks, crash)
+  [ ] Correlacion DXY / S&P500 como features macro
+  [ ] Analista LLM: pausar bot en eventos macro (FOMC, CPI, hacks, crash)
   [ ] Multi-exchange (Binance + Bybit para mas liquidez)
+  [ ] Dashboard web para monitoreo visual
   [ ] Infraestructura: si latencia importa, reescribir en Rust/C++
+
+---
+
+TIMELINE ESTIMADO:
+  Feb 12 - Feb 26: Paper trading demo (PASO 5 actual)
+  Mar 2026: Dinero real conservador ($200-500)
+  Abr 2026: V8 con data alternativa (funding, OI)
+  May-Jun 2026: Multi-timeframe + multi-estrategia
+  Jul+ 2026: Escalado avanzado

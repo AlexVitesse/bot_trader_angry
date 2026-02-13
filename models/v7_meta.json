@@ -1,0 +1,113 @@
+{
+  "trained_at": "2026-02-12T18:14:25.700962",
+  "pairs": [
+    "BTC/USDT",
+    "ETH/USDT",
+    "SOL/USDT",
+    "BNB/USDT",
+    "XRP/USDT",
+    "DOGE/USDT",
+    "ADA/USDT",
+    "AVAX/USDT",
+    "LINK/USDT",
+    "DOT/USDT",
+    "NEAR/USDT"
+  ],
+  "feature_cols": [
+    "ret_1",
+    "ret_3",
+    "ret_5",
+    "ret_10",
+    "ret_20",
+    "atr14",
+    "atr_r",
+    "vol5",
+    "vol20",
+    "rsi14",
+    "rsi7",
+    "srsi_k",
+    "macd_h",
+    "roc5",
+    "roc20",
+    "ema8_d",
+    "ema21_d",
+    "ema55_d",
+    "ema100_d",
+    "ema200_d",
+    "ema8_sl",
+    "ema55_sl",
+    "bb_pos",
+    "bb_w",
+    "vr",
+    "spr",
+    "body",
+    "adx",
+    "dip",
+    "dim",
+    "h_s",
+    "h_c",
+    "d_s",
+    "d_c"
+  ],
+  "pred_stds": {
+    "BTC/USDT": 0.0033701517513425633,
+    "ETH/USDT": 0.010786887974015771,
+    "SOL/USDT": 0.008089441210478259,
+    "BNB/USDT": 0.006253628191725637,
+    "XRP/USDT": 0.010126330250181432,
+    "DOGE/USDT": 0.009020161132380931,
+    "ADA/USDT": 0.013350670628826783,
+    "AVAX/USDT": 0.007616966879466979,
+    "LINK/USDT": 0.008749848040091384,
+    "DOT/USDT": 0.007636701586488278,
+    "NEAR/USDT": 0.009362526126334916
+  },
+  "horizon": 5,
+  "n_trials": 40,
+  "stats": {
+    "BTC/USDT": {
+      "corr": 0.3861174771180847,
+      "n_samples": 13199
+    },
+    "ETH/USDT": {
+      "corr": 0.6963081459470738,
+      "n_samples": 13199
+    },
+    "SOL/USDT": {
+      "corr": 0.44087492411523127,
+      "n_samples": 11863
+    },
+    "BNB/USDT": {
+      "corr": 0.428535918584743,
+      "n_samples": 13199
+    },
+    "XRP/USDT": {
+      "corr": 0.5849458915504854,
+      "n_samples": 13199
+    },
+    "DOGE/USDT": {
+      "corr": 0.48636455449399907,
+      "n_samples": 13199
+    },
+    "ADA/USDT": {
+      "corr": 0.6797347938559053,
+      "n_samples": 13199
+    },
+    "AVAX/USDT": {
+      "corr": 0.29861250907305426,
+      "n_samples": 11611
+    },
+    "LINK/USDT": {
+      "corr": 0.5632352385735582,
+      "n_samples": 13199
+    },
+    "DOT/USDT": {
+      "corr": 0.6479260735552337,
+      "n_samples": 11817
+    },
+    "NEAR/USDT": {
+      "corr": 0.6310380257213539,
+      "n_samples": 11479
+    }
+  }
+}

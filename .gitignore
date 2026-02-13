@@ -40,3 +40,6 @@ Thumbs.db
 
 # Jupyter
 .ipynb_checkpoints/
+
+# ML Models (binary, re-generated with ml_export_models.py)
+models/*.pkl

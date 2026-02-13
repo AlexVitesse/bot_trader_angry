@@ -230,6 +230,14 @@ class PortfolioManager:
         if peak:
             self.peak_balance = float(peak)
 
+        # Restaurar daily_pnl desde DB (sobrevive reinicios)
+        today_trades = self.get_today_trades_from_db()
+        if today_trades:
+            self.daily_pnl = sum(t['pnl'] for t in today_trades)
+            self.daily_date = datetime.now(timezone.utc).strftime('%Y-%m-%d')
+            logger.info(f"[PM] Daily PnL restaurado: ${self.daily_pnl:+.2f} "
+                        f"({len(today_trades)} trades hoy)")
+
         logger.info(f"[PM] {len(self.positions)} posiciones activas, "
                     f"balance=${self.balance:.2f}")
 
@@ -484,7 +492,8 @@ class PortfolioManager:
             fill_price = float(order.get('average', exit_price))
         except Exception as e:
             logger.error(f"[PM] Error cerrando {pair}: {e}")
-            fill_price = exit_price
+            # No borrar la posicion - reintentar en el proximo ciclo
+            return None
 
         # Calcular PnL
         if pos.direction == 1:
@@ -573,6 +582,19 @@ class PortfolioManager:
             self.daily_pnl = 0.0
 
         return True
+
+    def get_today_trades_from_db(self) -> list:
+        """Obtiene trades de hoy desde la DB (sobrevive reinicios)."""
+        today = datetime.now(timezone.utc).strftime('%Y-%m-%d')
+        conn = self._get_conn()
+        try:
+            rows = conn.execute(
+                "SELECT * FROM ml_trades WHERE exit_time LIKE ?",
+                (f"{today}%",)
+            ).fetchall()
+            return [dict(r) for r in rows]
+        finally:
+            conn.close()
 
     def get_status(self) -> dict:
         """Retorna estado actual del portfolio."""
