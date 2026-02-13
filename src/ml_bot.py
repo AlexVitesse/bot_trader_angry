@@ -24,7 +24,7 @@ from config.settings import (
 )
 from src.ml_strategy import MLStrategy
 from src.portfolio_manager import PortfolioManager
-from src.telegram_alerts import send_alert
+from src.telegram_alerts import send_alert, TelegramPoller
 
 logger = logging.getLogger('ml_bot')
 
@@ -44,6 +44,7 @@ class MLBot:
         self.last_daily_summary = None # Fecha de ultimo resumen diario
         self.last_heartbeat = 0        # Timestamp de ultimo heartbeat
         self.recent_errors = []        # Errores desde ultimo heartbeat
+        self._pause_notified = False   # Evitar spam de notificacion de pausa
 
     def _init_exchange_public(self) -> ccxt.Exchange:
         """Cliente ccxt sin auth para datos de mercado."""
@@ -115,8 +116,19 @@ class MLBot:
                     if self.portfolio.killed:
                         self._on_kill_switch()
                         break
-                    elif self.portfolio.paused:
+                    elif self.portfolio.paused and not self._pause_notified:
                         self._on_pause()
+                        self._pause_notified = True
+                elif self._pause_notified and not self.portfolio.paused:
+                    # Bot reanudado (nuevo dia o comando /resume)
+                    self._pause_notified = False
+                    send_alert(
+                        f"▶️ <b>BOT REANUDADO</b>\n"
+                        f"━━━━━━━━━━━━━━━\n"
+                        f"💰 Balance: ${self.portfolio.balance:,.2f}\n"
+                        f"📊 Regime: {self.strategy.regime}\n"
+                        f"🔄 Operando normalmente"
+                    )
 
                 # 4. Tareas periodicas
                 self._periodic_tasks()
@@ -182,8 +194,53 @@ class MLBot:
             f"💰 Balance: <b>${self.portfolio.balance:,.2f}</b>"
         )
 
+        # 7. Iniciar Telegram poller para comandos
+        self.tg_poller = TelegramPoller(callbacks={
+            '/status': self._cmd_status,
+            '/resume': self._cmd_resume,
+        })
+        self.tg_poller.start()
+
         logger.info("=" * 60)
         logger.info("[BOT] Listo. Esperando senales...")
+
+    def _cmd_status(self):
+        """Responde al comando /status de Telegram."""
+        status = self.portfolio.get_status()
+        uptime_h = (time.time() - self._start_time) / 3600
+        trades_today = self.portfolio.get_today_trades_from_db()
+        total_pnl = sum(t['pnl'] for t in trades_today)
+        pnl_emoji = '📈' if total_pnl >= 0 else '📉'
+        paused_str = "\n⏸️ <b>PAUSADO</b> - usa /resume" if self.portfolio.paused else ""
+        send_alert(
+            f"📊 <b>STATUS</b>\n"
+            f"━━━━━━━━━━━━━━━\n"
+            f"💰 Balance: ${status['balance']:,.2f}\n"
+            f"📈 Pos: {status['positions']}/3\n"
+            f"{pnl_emoji} PnL hoy: ${total_pnl:+,.2f} ({len(trades_today)} trades)\n"
+            f"📊 Regime: {self.strategy.regime}\n"
+            f"⚠️ DD: {status['dd']:.1%}\n"
+            f"⏱️ Uptime: {uptime_h:.1f}h"
+            f"{paused_str}"
+        )
+
+    def _cmd_resume(self):
+        """Responde al comando /resume de Telegram - reanuda el bot pausado."""
+        if self.portfolio.paused:
+            self.portfolio.paused = False
+            self._pause_notified = False
+            logger.info("[BOT] Reanudado via comando /resume")
+            send_alert(
+                f"▶️ <b>BOT REANUDADO</b>\n"
+                f"━━━━━━━━━━━━━━━\n"
+                f"💰 Balance: ${self.portfolio.balance:,.2f}\n"
+                f"📊 Regime: {self.strategy.regime}\n"
+                f"🔄 Operando normalmente"
+            )
+        elif self.portfolio.killed:
+            send_alert("🚫 Bot en KILL SWITCH - no se puede reanudar por Telegram")
+        else:
+            send_alert("✅ Bot ya esta operando normalmente")
 
     def _shutdown(self):
         """Limpieza al cerrar."""

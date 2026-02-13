@@ -160,12 +160,13 @@ def alert_status(balance: float, in_position: bool, side: str,
 # =====================================================================
 
 class TelegramPoller:
-    """Escucha comandos de Telegram en background."""
+    """Escucha comandos de Telegram en background.
+    Comandos soportados: /status, /resume"""
 
-    def __init__(self, status_callback=None):
+    def __init__(self, callbacks: dict = None):
         self.running = False
         self.last_update_id = 0
-        self.status_callback = status_callback
+        self.callbacks = callbacks or {}
 
     def start(self):
         if not TELEGRAM_ENABLED:
@@ -173,12 +174,13 @@ class TelegramPoller:
         self.running = True
         t = threading.Thread(target=self._poll_loop, daemon=True)
         t.start()
-        logger.info("[TG] Poller de comandos iniciado")
+        logger.info("[TG] Poller de comandos iniciado (/status, /resume)")
 
     def stop(self):
         self.running = False
 
     def _poll_loop(self):
+        import time as _time
         while self.running:
             try:
                 response = requests.get(
@@ -191,13 +193,16 @@ class TelegramPoller:
                     for update in data.get("result", []):
                         self.last_update_id = update["update_id"]
                         msg = update.get("message", {})
-                        text = msg.get("text", "")
-                        if text == "/status" and self.status_callback:
-                            self.status_callback()
+                        text = (msg.get("text", "") or "").strip()
+                        cmd = text.split()[0] if text else ""
+                        if cmd in self.callbacks:
+                            try:
+                                self.callbacks[cmd]()
+                            except Exception as e:
+                                logger.warning(f"[TG] Error ejecutando {cmd}: {e}")
             except Exception as e:
                 logger.warning(f"[TG] Error en polling: {e}")
-                import time
-                time.sleep(5)
+                _time.sleep(5)
 
 
 if __name__ == "__main__":
