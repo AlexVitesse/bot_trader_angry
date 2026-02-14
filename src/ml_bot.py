@@ -10,6 +10,8 @@ Ejecutar: poetry run python -m src.ml_bot
 import sys
 import time
 import logging
+import subprocess
+import threading
 import ccxt
 from pathlib import Path
 from datetime import datetime, timezone
@@ -219,7 +221,8 @@ class MLBot:
             '/resume': self._cmd_resume,
             '/log': self._cmd_log,
             '/backup': self._cmd_backup,
-            '/update': self._cmd_update,
+            '/pull': self._cmd_pull,
+            '/install': self._cmd_install,
             '/restart': self._cmd_restart,
             '/retrain': self._cmd_retrain,
         })
@@ -304,19 +307,51 @@ class MLBot:
             send_alert(f"⚠️ Error en backup: {e}")
             logger.warning(f"[BOT] Error en backup: {e}")
 
-    def _cmd_update(self):
-        """Responde al comando /update - git pull + restart via wrapper."""
-        n_pos = len(self.portfolio.positions)
-        send_alert(
-            f"🔄 <b>ACTUALIZANDO BOT</b>\n"
-            f"━━━━━━━━━━━━━━━\n"
-            f"📥 Cerrando bot para git pull...\n"
-            f"📈 Posiciones abiertas: {n_pos} (SL en exchange activos)\n"
-            f"🔄 Reiniciara automaticamente"
-        )
-        logger.info("[BOT] Update solicitado via /update - exit code 42")
-        self._exit_code = 42
-        self.running = False
+    def _cmd_pull(self):
+        """Responde al comando /pull - ejecuta git pull en background."""
+        send_alert("📥 Ejecutando git pull...")
+        logger.info("[BOT] Pull solicitado via /pull")
+        project_root = str(Path(__file__).parent.parent)
+
+        def _do_pull():
+            try:
+                result = subprocess.run(
+                    ['git', 'pull'], capture_output=True, text=True,
+                    timeout=60, cwd=project_root,
+                )
+                output = (result.stdout.strip() or result.stderr.strip() or "Sin output")[:500]
+                ok = result.returncode == 0
+                emoji = "✅" if ok else "❌"
+                send_alert(f"{emoji} <b>GIT PULL</b>\n<code>{output}</code>")
+                logger.info(f"[BOT] git pull: rc={result.returncode} {output[:100]}")
+            except Exception as e:
+                send_alert(f"❌ Error en git pull: {e}")
+                logger.error(f"[BOT] git pull error: {e}")
+
+        threading.Thread(target=_do_pull, daemon=True).start()
+
+    def _cmd_install(self):
+        """Responde al comando /install - ejecuta poetry install en background."""
+        send_alert("📦 Ejecutando poetry install...")
+        logger.info("[BOT] Install solicitado via /install")
+        project_root = str(Path(__file__).parent.parent)
+
+        def _do_install():
+            try:
+                result = subprocess.run(
+                    ['poetry', 'install'], capture_output=True, text=True,
+                    timeout=300, cwd=project_root,
+                )
+                output = (result.stdout.strip() or result.stderr.strip() or "Sin output")[:500]
+                ok = result.returncode == 0
+                emoji = "✅" if ok else "❌"
+                send_alert(f"{emoji} <b>POETRY INSTALL</b>\n<code>{output}</code>")
+                logger.info(f"[BOT] poetry install: rc={result.returncode} {output[:100]}")
+            except Exception as e:
+                send_alert(f"❌ Error en poetry install: {e}")
+                logger.error(f"[BOT] poetry install error: {e}")
+
+        threading.Thread(target=_do_install, daemon=True).start()
 
     def _cmd_restart(self):
         """Responde al comando /restart - reinicia el bot via wrapper."""
@@ -332,7 +367,7 @@ class MLBot:
         self.running = False
 
     def _cmd_retrain(self):
-        """Responde al comando /retrain - reentrenar modelos via wrapper."""
+        """Responde al comando /retrain - ejecuta ml_export_models.py en background."""
         n_pos = len(self.portfolio.positions)
         if n_pos > 0:
             send_alert(
@@ -342,15 +377,34 @@ class MLBot:
             )
             return
         send_alert(
-            f"🧠 <b>REENTRENANDO MODELOS</b>\n"
-            f"━━━━━━━━━━━━━━━\n"
-            f"📥 git pull + pip install + retrain...\n"
-            f"⏱️ Esto puede tardar varios minutos\n"
-            f"🔄 Reiniciara automaticamente al terminar"
+            f"🧠 Ejecutando ml_export_models.py...\n"
+            f"⏱️ Esto puede tardar varios minutos"
         )
-        logger.info("[BOT] Retrain solicitado via /retrain - exit code 44")
-        self._exit_code = 44
-        self.running = False
+        logger.info("[BOT] Retrain solicitado via /retrain")
+        project_root = str(Path(__file__).parent.parent)
+
+        def _do_retrain():
+            try:
+                result = subprocess.run(
+                    [sys.executable, 'ml_export_models.py'],
+                    capture_output=True, text=True,
+                    timeout=1800, cwd=project_root,
+                )
+                ok = result.returncode == 0
+                emoji = "✅" if ok else "❌"
+                # Last 500 chars of output (most relevant part)
+                output = result.stdout.strip() or result.stderr.strip() or "Sin output"
+                output = output[-500:]
+                send_alert(f"{emoji} <b>RETRAIN</b>\n<code>{output}</code>")
+                logger.info(f"[BOT] retrain: rc={result.returncode}")
+            except subprocess.TimeoutExpired:
+                send_alert("❌ <b>RETRAIN TIMEOUT</b>\nSuperados 30 minutos")
+                logger.error("[BOT] retrain timeout (30min)")
+            except Exception as e:
+                send_alert(f"❌ Error en retrain: {e}")
+                logger.error(f"[BOT] retrain error: {e}")
+
+        threading.Thread(target=_do_retrain, daemon=True).start()
 
     def _shutdown(self):
         """Limpieza al cerrar."""

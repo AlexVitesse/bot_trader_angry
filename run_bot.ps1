@@ -1,13 +1,11 @@
 # =============================================================
-# ML Bot Wrapper - Auto-restart, update, and retrain handler
+# ML Bot Wrapper - Auto-restart on crash or /restart command
 # =============================================================
 # Usage: powershell -ExecutionPolicy Bypass -File run_bot.ps1
 #
 # Exit codes from bot:
-#   0  = Normal stop (user pressed Ctrl+C)
-#   42 = Update requested (/update) -> git pull + pip install + restart
-#   43 = Restart requested (/restart) -> just restart
-#   44 = Retrain requested (/retrain) -> retrain models + restart
+#   0  = Normal stop (Ctrl+C)
+#   43 = /restart  -> restart bot
 #   *  = Crash -> wait 30s + restart
 # =============================================================
 
@@ -27,32 +25,8 @@ while ($true) {
         Write-Host "[WRAPPER] Bot detenido normalmente. Saliendo."
         break
     }
-    elseif ($exitCode -eq 42) {
-        Write-Host "[WRAPPER] Update solicitado. Ejecutando git pull..."
-        git pull
-        Write-Host "[WRAPPER] Instalando dependencias..."
-        pip install -e . 2>$null
-        Write-Host "[WRAPPER] Reiniciando bot..."
-    }
     elseif ($exitCode -eq 43) {
-        Write-Host "[WRAPPER] Restart solicitado."
-        Write-Host "[WRAPPER] Reiniciando bot..."
-    }
-    elseif ($exitCode -eq 44) {
-        Write-Host "[WRAPPER] Retrain solicitado. Actualizando codigo primero..."
-        git pull
-        Write-Host "[WRAPPER] Instalando dependencias..."
-        pip install -e . 2>$null
-        Write-Host "[WRAPPER] Reentrenando modelos..."
-        python -u ml_export_models.py
-        $retrainCode = $LASTEXITCODE
-        if ($retrainCode -eq 0) {
-            Write-Host "[WRAPPER] Reentrenamiento exitoso."
-        }
-        else {
-            Write-Host "[WRAPPER] ERROR en reentrenamiento (codigo $retrainCode)."
-        }
-        Write-Host "[WRAPPER] Reiniciando bot..."
+        Write-Host "[WRAPPER] Restart solicitado. Reiniciando bot..."
     }
     else {
         Write-Host "[WRAPPER] Bot crasheo (codigo $exitCode). Reiniciando en 30s..."
