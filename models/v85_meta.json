@@ -1,0 +1,18 @@
+{
+  "trained_at": "2026-02-14T07:06:33.381478",
+  "conviction_feature_cols": [
+    "cs_conf",
+    "cs_pred_mag",
+    "cs_macro_score",
+    "cs_risk_off",
+    "cs_regime_bull",
+    "cs_regime_bear",
+    "cs_regime_range",
+    "cs_atr_pct",
+    "cs_n_open",
+    "cs_pred_sign"
+  ],
+  "conviction_pred_std": 0.38724316877880344,
+  "corr": 0.23769305199279608,
+  "n_features": 10
+}

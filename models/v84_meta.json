@@ -1,0 +1,30 @@
+{
+  "trained_at": "2026-02-14T07:05:46.666290",
+  "macro_feature_cols": [
+    "dxy_ret_5d",
+    "dxy_ret_20d",
+    "dxy_vs_ema50",
+    "dxy_vol_20d",
+    "gold_ret_5d",
+    "gold_ret_20d",
+    "gold_vs_ema50",
+    "gold_vol_20d",
+    "spy_ret_5d",
+    "spy_ret_20d",
+    "spy_vs_ema50",
+    "spy_vol_20d",
+    "tnx_ret_5d",
+    "tnx_ret_20d",
+    "tnx_vs_ema50",
+    "tnx_vol_20d",
+    "ethbtc_ret_5d",
+    "ethbtc_ret_20d",
+    "ethbtc_vs_ema50",
+    "ethbtc_vol_20d",
+    "dxy_spy_diverge",
+    "gold_spy_ratio",
+    "dxy_gold_diverge"
+  ],
+  "auc": 0.7959054834054833,
+  "n_macro_features": 23
+}

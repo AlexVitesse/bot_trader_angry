@@ -268,7 +268,39 @@ class PortfolioManager:
             exchange_pairs.add(pair)
 
             if pair in self.positions:
-                # Ya la tenemos en DB, todo bien
+                # Verify entry price matches exchange (source of truth)
+                db_entry = self.positions[pair].entry_price
+                ex_entry = float(ep.get('entryPrice', 0) or 0)
+                if ex_entry > 0 and abs(db_entry - ex_entry) / ex_entry > 0.01:
+                    # Entry price mismatch >1% - DB is stale, update from exchange
+                    logger.warning(
+                        f"[PM] {pair}: entry price mismatch! "
+                        f"DB=${db_entry:,.2f} vs Exchange=${ex_entry:,.2f} - "
+                        f"actualizando desde exchange"
+                    )
+                    old_pos = self.positions[pair]
+                    side_str = ep.get('side', old_pos.side)
+                    direction = 1 if side_str == 'long' else -1
+                    leverage = int(ep.get('leverage', old_pos.leverage) or old_pos.leverage)
+                    ep_notional = contracts * ex_entry
+                    if direction == 1:
+                        tp_price = ex_entry * (1 + ML_TP_PCT)
+                        sl_price = ex_entry * (1 - ML_SL_PCT)
+                    else:
+                        tp_price = ex_entry * (1 - ML_TP_PCT)
+                        sl_price = ex_entry * (1 + ML_SL_PCT)
+                    updated = Position(
+                        pair=pair, side=side_str, direction=direction,
+                        entry_price=ex_entry, quantity=contracts,
+                        notional=ep_notional, leverage=leverage,
+                        tp_price=tp_price, sl_price=sl_price,
+                        tp_pct=ML_TP_PCT, sl_pct=ML_SL_PCT,
+                        atr_pct=old_pos.atr_pct, regime=old_pos.regime,
+                        confidence=old_pos.confidence,
+                        peak_price=ex_entry, max_hold=old_pos.max_hold,
+                    )
+                    self.positions[pair] = updated
+                    self._save_position(updated)
                 continue
 
             # Posicion en exchange SIN registro en DB -> adoptarla
@@ -341,20 +373,22 @@ class PortfolioManager:
         return True
 
     def open_position(self, pair: str, direction: int, confidence: float,
-                      regime: str, price: float, atr_pct: float) -> bool:
-        """Abre una nueva posicion."""
+                      regime: str, price: float, atr_pct: float,
+                      sizing_mult: float = 1.0) -> bool:
+        """Abre una nueva posicion. sizing_mult from V8.4 macro intelligence."""
         if not self.can_open(pair, direction):
             return False
 
         lev = ML_LEVERAGE.get(regime, 3)
         side = 'long' if direction == 1 else 'short'
 
-        # Sizing: risk-based
+        # Sizing: risk-based with V8.4 macro multiplier
         risk_pct = ML_RISK_PER_TRADE
         if confidence > 2.0:
             risk_pct = 0.03
         elif confidence > 1.5:
             risk_pct = 0.025
+        risk_pct *= sizing_mult
 
         risk_amt = INITIAL_CAPITAL * risk_pct  # FLAT sizing
         notional = risk_amt / ML_SL_PCT if ML_SL_PCT > 0 else risk_amt
@@ -374,6 +408,49 @@ class PortfolioManager:
         quantity = notional / price
 
         try:
+            # Safety check: verify no open position on exchange before placing order
+            # Prevents duplicates if local state is out of sync
+            try:
+                exchange_positions = self.exchange.fetch_positions([pair])
+                for ep in exchange_positions:
+                    contracts = float(ep.get('contracts', 0) or 0)
+                    if contracts > 0:
+                        symbol = ep.get('symbol', '')
+                        ep_pair = symbol.split(':')[0] if ':' in symbol else symbol
+                        if ep_pair == pair:
+                            logger.warning(
+                                f"[PM] DUPLICADO EVITADO: {pair} ya tiene posicion "
+                                f"abierta en exchange ({contracts} contracts) - "
+                                f"adoptando en vez de abrir nueva"
+                            )
+                            # Adopt the existing position instead
+                            side_str = ep.get('side', 'long')
+                            ep_dir = 1 if side_str == 'long' else -1
+                            ep_entry = float(ep.get('entryPrice', 0) or 0)
+                            ep_lev = int(ep.get('leverage', 3) or 3)
+                            ep_notional = contracts * ep_entry
+                            if ep_dir == 1:
+                                ep_tp = ep_entry * (1 + ML_TP_PCT)
+                                ep_sl = ep_entry * (1 - ML_SL_PCT)
+                            else:
+                                ep_tp = ep_entry * (1 - ML_TP_PCT)
+                                ep_sl = ep_entry * (1 + ML_SL_PCT)
+                            adopted = Position(
+                                pair=pair, side=side_str, direction=ep_dir,
+                                entry_price=ep_entry, quantity=contracts,
+                                notional=ep_notional, leverage=ep_lev,
+                                tp_price=ep_tp, sl_price=ep_sl,
+                                tp_pct=ML_TP_PCT, sl_pct=ML_SL_PCT,
+                                atr_pct=atr_pct, regime=regime,
+                                confidence=confidence,
+                                peak_price=ep_entry, max_hold=max_hold,
+                            )
+                            self.positions[pair] = adopted
+                            self._save_position(adopted)
+                            return False  # Don't send "trade opened" alert
+            except Exception as e:
+                logger.warning(f"[PM] Error en safety check de {pair}: {e} - continuando")
+
             # Set leverage
             symbol_ccxt = pair
             self.exchange.set_leverage(lev, symbol_ccxt)
@@ -638,10 +715,12 @@ class PortfolioManager:
             self.daily_pnl = 0.0
             self.daily_date = today
 
-        if self.daily_pnl < -(INITIAL_CAPITAL * ML_MAX_DAILY_LOSS_PCT):
+        daily_limit = INITIAL_CAPITAL * ML_MAX_DAILY_LOSS_PCT
+        if self.daily_pnl < -daily_limit:
+            if not self.paused:
+                logger.warning(f"[PM] PAUSA: daily loss ${self.daily_pnl:.2f} >= "
+                               f"{ML_MAX_DAILY_LOSS_PCT:.0%} de capital (${daily_limit:.2f})")
             self.paused = True
-            logger.warning(f"[PM] PAUSA: daily loss ${self.daily_pnl:.2f} >= "
-                           f"{ML_MAX_DAILY_LOSS_PCT:.0%} de capital")
             return False
 
         # Reset pause al dia siguiente
