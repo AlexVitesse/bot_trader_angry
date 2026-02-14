@@ -217,6 +217,7 @@ class MLBot:
 
         # 7. Iniciar Telegram poller para comandos
         self.tg_poller = TelegramPoller(callbacks={
+            '/help': self._cmd_help,
             '/status': self._cmd_status,
             '/resume': self._cmd_resume,
             '/log': self._cmd_log,
@@ -230,6 +231,29 @@ class MLBot:
 
         logger.info("=" * 60)
         logger.info("[BOT] Listo. Esperando senales...")
+
+    def _cmd_help(self):
+        """Responde al comando /help - lista de comandos disponibles."""
+        send_alert(
+            f"📋 <b>COMANDOS DISPONIBLES</b>\n"
+            f"━━━━━━━━━━━━━━━\n"
+            f"<b>Monitoreo:</b>\n"
+            f"  /status - Estado del bot\n"
+            f"  /log - Descargar archivo de log\n"
+            f"  /backup - Descargar backup de BD\n"
+            f"\n"
+            f"<b>Control:</b>\n"
+            f"  /resume - Reanudar si esta pausado\n"
+            f"  /restart - Reiniciar el bot\n"
+            f"\n"
+            f"<b>DevOps (sin detener bot):</b>\n"
+            f"  /pull - git pull (descargar cambios)\n"
+            f"  /install - poetry install (deps)\n"
+            f"  /retrain - Reentrenar modelos ML\n"
+            f"\n"
+            f"💡 Flujo tipico de update:\n"
+            f"  /pull -> /install -> /restart"
+        )
 
     def _cmd_status(self):
         """Responde al comando /status de Telegram."""
