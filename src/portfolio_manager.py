@@ -376,6 +376,49 @@ class PortfolioManager:
         quantity = notional / price
 
         try:
+            # Safety check: verify no open position on exchange before placing order
+            # Prevents duplicates if local state is out of sync
+            try:
+                exchange_positions = self.exchange.fetch_positions([pair])
+                for ep in exchange_positions:
+                    contracts = float(ep.get('contracts', 0) or 0)
+                    if contracts > 0:
+                        symbol = ep.get('symbol', '')
+                        ep_pair = symbol.split(':')[0] if ':' in symbol else symbol
+                        if ep_pair == pair:
+                            logger.warning(
+                                f"[PM] DUPLICADO EVITADO: {pair} ya tiene posicion "
+                                f"abierta en exchange ({contracts} contracts) - "
+                                f"adoptando en vez de abrir nueva"
+                            )
+                            # Adopt the existing position instead
+                            side_str = ep.get('side', 'long')
+                            ep_dir = 1 if side_str == 'long' else -1
+                            ep_entry = float(ep.get('entryPrice', 0) or 0)
+                            ep_lev = int(ep.get('leverage', 3) or 3)
+                            ep_notional = contracts * ep_entry
+                            if ep_dir == 1:
+                                ep_tp = ep_entry * (1 + ML_TP_PCT)
+                                ep_sl = ep_entry * (1 - ML_SL_PCT)
+                            else:
+                                ep_tp = ep_entry * (1 - ML_TP_PCT)
+                                ep_sl = ep_entry * (1 + ML_SL_PCT)
+                            adopted = Position(
+                                pair=pair, side=side_str, direction=ep_dir,
+                                entry_price=ep_entry, quantity=contracts,
+                                notional=ep_notional, leverage=ep_lev,
+                                tp_price=ep_tp, sl_price=ep_sl,
+                                tp_pct=ML_TP_PCT, sl_pct=ML_SL_PCT,
+                                atr_pct=atr_pct, regime=regime,
+                                confidence=confidence,
+                                peak_price=ep_entry, max_hold=max_hold,
+                            )
+                            self.positions[pair] = adopted
+                            self._save_position(adopted)
+                            return False  # Don't send "trade opened" alert
+            except Exception as e:
+                logger.warning(f"[PM] Error en safety check de {pair}: {e} - continuando")
+
             # Set leverage
             symbol_ccxt = pair
             self.exchange.set_leverage(lev, symbol_ccxt)
