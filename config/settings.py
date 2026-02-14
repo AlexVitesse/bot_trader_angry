@@ -141,7 +141,7 @@ ML_SIGNAL_THRESHOLD = 0.7   # Confianza minima para senal
 # Risk Management
 ML_MAX_CONCURRENT = 3       # Max posiciones simultaneas
 ML_MAX_DD_PCT = 0.20        # 20% DD -> kill switch
-ML_MAX_DAILY_LOSS_PCT = 0.05  # 5% daily loss -> pausar
+ML_MAX_DAILY_LOSS_PCT = 0.20  # 20% daily loss -> pausar (backtest max DD ~$20/$100)
 ML_RISK_PER_TRADE = 0.02    # 2% capital at risk
 ML_MAX_NOTIONAL = 300.0     # Cap notional por trade
 

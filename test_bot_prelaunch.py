@@ -578,8 +578,9 @@ def test_exchange_no_dup():
     mock_exchange.fetch_positions.return_value = []
     mock_exchange.set_leverage.return_value = None
     mock_exchange.amount_to_precision.return_value = '0.001'
+    mock_exchange.price_to_precision.return_value = '93575.0'
     mock_exchange.create_order.return_value = {
-        'average': 95000, 'filled': 0.001,
+        'average': 95000, 'filled': 0.001, 'id': 'test_order_123',
     }
 
     with tempfile.NamedTemporaryFile(suffix='.db', delete=False) as f:
@@ -592,7 +593,8 @@ def test_exchange_no_dup():
         )
         assert result is True, 'Should succeed when no duplicate'
         assert 'BTC/USDT' in pm.positions
-        assert mock_exchange.create_order.call_count == 1
+        # 2 calls: market order + SL STOP_MARKET order
+        assert mock_exchange.create_order.call_count == 2
     finally:
         db_path.unlink(missing_ok=True)
 
@@ -904,6 +906,9 @@ def test_db_persistence():
         'entryPrice': 200,
         'leverage': 3,
     }]
+    mock_exchange.price_to_precision.return_value = '210.0'
+    mock_exchange.cancel_order.return_value = None
+    mock_exchange.create_order.return_value = {'id': 'sl_order_test'}
 
     with tempfile.NamedTemporaryFile(suffix='.db', delete=False) as f:
         db_path = Path(f.name)

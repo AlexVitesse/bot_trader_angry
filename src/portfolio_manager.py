@@ -46,6 +46,7 @@ class Position:
     entry_time: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     bars: int = 0
     max_hold: int = 30
+    sl_order_id: Optional[str] = None
 
 
 class PortfolioManager:
@@ -124,6 +125,12 @@ class PortfolioManager:
                 );
             """)
             conn.commit()
+            # Migration: add sl_order_id column if missing
+            try:
+                conn.execute("ALTER TABLE ml_positions ADD COLUMN sl_order_id TEXT")
+                conn.commit()
+            except Exception:
+                pass  # Column already exists
         finally:
             conn.close()
 
@@ -135,15 +142,15 @@ class PortfolioManager:
                     (symbol, entry_time, side, direction, entry_price, quantity,
                      notional, leverage, tp_price, sl_price, tp_pct, sl_pct, atr_pct,
                      trail_active, trail_sl, peak_price, regime, confidence, bars,
-                     max_hold, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     max_hold, sl_order_id, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 pos.pair, pos.entry_time.isoformat(), pos.side, pos.direction,
                 pos.entry_price, pos.quantity, pos.notional, pos.leverage,
                 pos.tp_price, pos.sl_price, pos.tp_pct, pos.sl_pct, pos.atr_pct,
                 1 if pos.trail_active else 0, pos.trail_sl, pos.peak_price,
                 pos.regime, pos.confidence, pos.bars, pos.max_hold,
-                datetime.now(timezone.utc).isoformat()
+                pos.sl_order_id, datetime.now(timezone.utc).isoformat()
             ))
             conn.commit()
         finally:
@@ -216,6 +223,7 @@ class PortfolioManager:
                     confidence=r['confidence'],
                     entry_time=datetime.fromisoformat(r['entry_time']),
                     bars=r['bars'], max_hold=r['max_hold'],
+                    sl_order_id=r.get('sl_order_id'),
                 )
                 self.positions[pos.pair] = pos
                 logger.info(f"[PM] Posicion recuperada (DB): {pos.pair} {pos.side} "
@@ -225,6 +233,19 @@ class PortfolioManager:
 
         # --- Paso 2: Reconciliar con posiciones reales en exchange ---
         self._reconcile_with_exchange()
+
+        # --- Paso 2.5: Colocar SL orders en exchange para todas las posiciones ---
+        for pair, pos in self.positions.items():
+            # Cancel any stale SL order from previous session
+            if pos.sl_order_id:
+                self._cancel_exchange_sl(pair, pos.sl_order_id)
+                pos.sl_order_id = None
+            # Place fresh SL order
+            effective_sl = pos.trail_sl if (pos.trail_active and pos.trail_sl) else pos.sl_price
+            sl_id = self._place_exchange_sl(pair, pos.side, pos.quantity, effective_sl)
+            if sl_id:
+                pos.sl_order_id = sl_id
+                self._save_position(pos)
 
         # --- Paso 3: Recuperar state ---
         bal = self._get_state('balance')
@@ -334,12 +355,136 @@ class PortfolioManager:
             logger.info(f"[PM] Posicion ADOPTADA de exchange: {pair} {side_str.upper()} "
                         f"@ ${entry_price:,.2f} | Qty={contracts} | Lev={leverage}x")
 
-        # Eliminar posiciones en DB que ya no existen en exchange (cierre manual/externo)
+        # Posiciones en DB que ya no existen en exchange (cerradas por SL/manual/externo)
         stale = [p for p in self.positions if p not in exchange_pairs]
         for pair in stale:
-            logger.info(f"[PM] Posicion {pair} cerrada externamente - eliminando de DB")
-            del self.positions[pair]
-            self._delete_position(pair)
+            self._handle_stale_position(pair)
+
+    # =========================================================================
+    # EXCHANGE SL ORDERS
+    # =========================================================================
+    def _place_exchange_sl(self, pair: str, pos_side: str, quantity: float,
+                           stop_price: float) -> Optional[str]:
+        """Place a STOP_MARKET order on exchange as safety net SL."""
+        try:
+            close_side = 'sell' if pos_side == 'long' else 'buy'
+            stop_price = float(self.exchange.price_to_precision(pair, stop_price))
+            order = self.exchange.create_order(
+                symbol=pair,
+                type='STOP_MARKET',
+                side=close_side,
+                amount=quantity,
+                params={
+                    'stopPrice': stop_price,
+                    'reduceOnly': True,
+                }
+            )
+            order_id = order.get('id')
+            logger.info(f"[PM] SL order en exchange: {pair} @ ${stop_price:,.2f} "
+                        f"(id={order_id})")
+            return order_id
+        except Exception as e:
+            logger.warning(f"[PM] Error colocando SL en exchange {pair}: {e}")
+            return None
+
+    def _cancel_exchange_sl(self, pair: str, order_id: str):
+        """Cancel existing SL order on exchange."""
+        if not order_id:
+            return
+        try:
+            self.exchange.cancel_order(order_id, pair)
+            logger.debug(f"[PM] SL order cancelada: {pair} (id={order_id})")
+        except Exception:
+            pass  # Order might already be filled or cancelled
+
+    def _get_exchange_sl_fill(self, pair: str, pos) -> Optional[float]:
+        """Check if position was closed by exchange SL. Returns fill price or None."""
+        try:
+            exchange_positions = self.exchange.fetch_positions([pair])
+            for ep in exchange_positions:
+                contracts = float(ep.get('contracts', 0) or 0)
+                if contracts > 0:
+                    symbol = ep.get('symbol', '')
+                    ep_pair = symbol.split(':')[0] if ':' in symbol else symbol
+                    if ep_pair == pair:
+                        return None  # Position still open - real error
+        except Exception:
+            return None
+
+        # Position gone from exchange - try to get SL fill price
+        if pos.sl_order_id:
+            try:
+                order = self.exchange.fetch_order(pos.sl_order_id, pair)
+                if order.get('status') == 'closed':
+                    avg = float(order.get('average', 0) or 0)
+                    if avg > 0:
+                        return avg
+            except Exception:
+                pass
+
+        # Fallback: use effective SL price
+        return pos.trail_sl if (pos.trail_active and pos.trail_sl) else pos.sl_price
+
+    def _handle_stale_position(self, pair: str):
+        """Record and clean up a position closed externally (e.g., by exchange SL)."""
+        pos = self.positions[pair]
+        fill_price = None
+        reason = 'EXTERNAL'
+
+        # Try to get fill price from our SL order
+        if pos.sl_order_id:
+            try:
+                order = self.exchange.fetch_order(pos.sl_order_id, pair)
+                if order.get('status') == 'closed':
+                    fill_price = float(order.get('average', 0) or 0)
+                    if fill_price > 0:
+                        reason = 'SL'
+            except Exception:
+                pass
+
+        # Fallback: use effective SL price
+        if not fill_price or fill_price <= 0:
+            effective_sl = pos.trail_sl if (pos.trail_active and pos.trail_sl) else pos.sl_price
+            fill_price = effective_sl
+            reason = 'SL'
+
+        # Calculate PnL
+        if pos.direction == 1:
+            gross_pnl_pct = (fill_price - pos.entry_price) / pos.entry_price
+        else:
+            gross_pnl_pct = (pos.entry_price - fill_price) / pos.entry_price
+
+        commission = pos.notional * (COMMISSION_RATE + SLIPPAGE_PCT) * 2
+        pnl = pos.notional * gross_pnl_pct - commission
+
+        # Record trade
+        trade = {
+            'symbol': pair,
+            'entry_time': pos.entry_time.isoformat(),
+            'exit_time': datetime.now(timezone.utc).isoformat(),
+            'side': pos.side,
+            'entry_price': pos.entry_price,
+            'exit_price': fill_price,
+            'quantity': pos.quantity,
+            'notional': pos.notional,
+            'leverage': pos.leverage,
+            'pnl': pnl,
+            'exit_reason': reason,
+            'regime': pos.regime,
+            'confidence': pos.confidence,
+            'commission': commission,
+        }
+        self._save_trade(trade)
+        self.trade_log.append(trade)
+
+        # Clean up
+        del self.positions[pair]
+        self._delete_position(pair)
+
+        emoji = '+' if pnl > 0 else ''
+        logger.info(f"[PM] CERRADO (exchange) {pair} {pos.side.upper()} | "
+                    f"${pos.entry_price:,.2f} -> ${fill_price:,.2f} | "
+                    f"PnL: ${pnl:{emoji}.2f} | Razon: {reason}")
 
     def refresh_balance(self):
         """Actualiza balance desde exchange."""
@@ -496,6 +641,12 @@ class PortfolioManager:
             self.positions[pair] = pos
             self._save_position(pos)
 
+            # Place SL order on exchange as safety net
+            sl_id = self._place_exchange_sl(pair, side, filled_qty, sl_price)
+            if sl_id:
+                pos.sl_order_id = sl_id
+                self._save_position(pos)
+
             margin = actual_notional / lev
             logger.info(f"[PM] ABIERTO {pair} {side.upper()} @ ${fill_price:,.2f} | "
                         f"Qty={filled_qty} | Notional=${actual_notional:.0f} | "
@@ -569,8 +720,15 @@ class PortfolioManager:
             if exit_price and exit_reason:
                 to_close.append((pair, exit_price, exit_reason))
             else:
-                # Update trailing stop
+                # Update trailing stop and sync exchange SL if changed
+                old_eff_sl = pos.trail_sl if (pos.trail_active and pos.trail_sl) else pos.sl_price
                 self._update_trailing(pos, price)
+                new_eff_sl = pos.trail_sl if (pos.trail_active and pos.trail_sl) else pos.sl_price
+                if abs(new_eff_sl - old_eff_sl) / old_eff_sl > 0.001:
+                    self._cancel_exchange_sl(pair, pos.sl_order_id)
+                    sl_id = self._place_exchange_sl(pair, pos.side, pos.quantity, new_eff_sl)
+                    if sl_id:
+                        pos.sl_order_id = sl_id
                 self._save_position(pos)
 
         # Cerrar posiciones
@@ -623,6 +781,10 @@ class PortfolioManager:
         if pos is None:
             return None
 
+        # Cancel exchange SL order first
+        if pos.sl_order_id:
+            self._cancel_exchange_sl(pair, pos.sl_order_id)
+
         try:
             # Orden de cierre
             close_side = 'sell' if pos.direction == 1 else 'buy'
@@ -636,9 +798,12 @@ class PortfolioManager:
 
             fill_price = float(order.get('average', exit_price))
         except Exception as e:
-            logger.error(f"[PM] Error cerrando {pair}: {e}")
-            # No borrar la posicion - reintentar en el proximo ciclo
-            return None
+            # Check if exchange already closed it via SL
+            fill_price = self._get_exchange_sl_fill(pair, pos)
+            if fill_price is None:
+                logger.error(f"[PM] Error cerrando {pair}: {e}")
+                return None
+            reason = 'SL'
 
         # Calcular PnL
         if pos.direction == 1:
