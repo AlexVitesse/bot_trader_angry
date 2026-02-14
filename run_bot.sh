@@ -40,7 +40,11 @@ while true; do
         echo "[WRAPPER] Reiniciando bot..."
 
     elif [ $EXIT_CODE -eq 44 ]; then
-        echo "[WRAPPER] Retrain solicitado. Reentrenando modelos..."
+        echo "[WRAPPER] Retrain solicitado. Actualizando codigo primero..."
+        git pull
+        echo "[WRAPPER] Instalando dependencias..."
+        pip install -e . 2>/dev/null || pip install -r requirements.txt 2>/dev/null || true
+        echo "[WRAPPER] Reentrenando modelos..."
         python -u ml_export_models.py
         RETRAIN_CODE=$?
         if [ $RETRAIN_CODE -eq 0 ]; then

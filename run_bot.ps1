@@ -39,7 +39,11 @@ while ($true) {
         Write-Host "[WRAPPER] Reiniciando bot..."
     }
     elseif ($exitCode -eq 44) {
-        Write-Host "[WRAPPER] Retrain solicitado. Reentrenando modelos..."
+        Write-Host "[WRAPPER] Retrain solicitado. Actualizando codigo primero..."
+        git pull
+        Write-Host "[WRAPPER] Instalando dependencias..."
+        pip install -e . 2>$null
+        Write-Host "[WRAPPER] Reentrenando modelos..."
         python -u ml_export_models.py
         $retrainCode = $LASTEXITCODE
         if ($retrainCode -eq 0) {

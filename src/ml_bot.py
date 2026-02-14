@@ -344,7 +344,7 @@ class MLBot:
         send_alert(
             f"🧠 <b>REENTRENANDO MODELOS</b>\n"
             f"━━━━━━━━━━━━━━━\n"
-            f"📥 Cerrando bot para reentrenar...\n"
+            f"📥 git pull + pip install + retrain...\n"
             f"⏱️ Esto puede tardar varios minutos\n"
             f"🔄 Reiniciara automaticamente al terminar"
         )
