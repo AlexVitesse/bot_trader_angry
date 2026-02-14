@@ -1,8 +1,14 @@
 """
-ML Strategy - Motor de Senales
-==============================
-Carga modelos LightGBM entrenados, computa features de velas 4h,
-detecta regimen de mercado (BULL/BEAR/RANGE), y genera senales de trading.
+ML Strategy - Motor de Senales V8.4
+====================================
+V7 base: LightGBM per-pair models, regime detection, trailing stops.
+V8.4 adds: Macro intelligence (adaptive threshold + ML sizing + soft risk-off).
+
+Macro layer:
+  1. MacroScorer (LightGBM): predicts daily "macro quality for crypto" [0,1]
+  2. Adaptive Threshold: adjusts confidence threshold by macro score
+  3. ML Sizing: scales position size by macro score [0.3x to 1.8x]
+  4. Soft Risk-Off: reduces sizing on extreme macro days (not regime override)
 """
 
 import json
@@ -17,33 +23,44 @@ from datetime import datetime, timezone
 from config.settings import (
     MODELS_DIR, ML_PAIRS, ML_SIGNAL_THRESHOLD, ML_TIMEFRAME,
     ML_LEVERAGE, ML_RISK_PER_TRADE,
+    ML_V84_ENABLED, ML_ADAPTIVE_THRESH_MIN, ML_ADAPTIVE_THRESH_MAX,
+    ML_SIZING_MIN, ML_SIZING_MAX, ML_RISKOFF_ENABLED,
 )
 
 logger = logging.getLogger(__name__)
 
 
 class MLStrategy:
-    """Genera senales de trading usando modelos ML."""
+    """Genera senales de trading usando modelos ML + macro intelligence."""
 
     def __init__(self):
         self.models = {}        # {pair: lgb model}
         self.pred_stds = {}     # {pair: float} para confidence
-        self.feature_cols = []  # columnas de features
+        self.feature_cols = []  # columnas de features V7
         self.regime = 'RANGE'
         self.regime_updated = None
         self.pairs = []         # pares con modelo cargado
 
+        # V8.4 Macro
+        self.macro_scorer = None
+        self.macro_fcols = []
+        self.macro_score = 0.5      # neutral default
+        self.risk_off_mult = 1.0    # no reduction default
+        self.macro_updated = None
+        self.v84_enabled = ML_V84_ENABLED
+
     def load_models(self) -> int:
         """Carga modelos desde disco. Retorna cantidad cargada."""
-        # Intentar cargar metadata
+        # V7 metadata
         meta_path = MODELS_DIR / 'v7_meta.json'
         if meta_path.exists():
             with open(meta_path) as f:
                 meta = json.load(f)
             self.feature_cols = meta.get('feature_cols', [])
             self.pred_stds = meta.get('pred_stds', {})
-            logger.info(f"[ML] Metadata cargada: {len(self.feature_cols)} features")
+            logger.info(f"[ML] V7 metadata: {len(self.feature_cols)} features")
 
+        # V7 per-pair models
         count = 0
         for pair in ML_PAIRS:
             safe = pair.replace('/', '_')
@@ -56,8 +73,34 @@ class MLStrategy:
                 logger.warning(f"[ML] Sin modelo para {pair}")
 
         self.pairs = list(self.models.keys())
+
+        # V8.4 MacroScorer
+        if self.v84_enabled:
+            self._load_macro_model()
+
         logger.info(f"[ML] {count} modelos cargados")
         return count
+
+    def _load_macro_model(self):
+        """Carga MacroScorer model y metadata."""
+        scorer_path = MODELS_DIR / 'v84_macro_scorer.pkl'
+        meta_path = MODELS_DIR / 'v84_meta.json'
+
+        if not scorer_path.exists():
+            logger.warning("[ML] V8.4 MacroScorer no encontrado - usando V7 puro")
+            self.v84_enabled = False
+            return
+
+        try:
+            self.macro_scorer = joblib.load(scorer_path)
+            if meta_path.exists():
+                with open(meta_path) as f:
+                    meta = json.load(f)
+                self.macro_fcols = meta.get('macro_feature_cols', [])
+            logger.info(f"[ML] V8.4 MacroScorer cargado ({len(self.macro_fcols)} features)")
+        except Exception as e:
+            logger.error(f"[ML] Error cargando MacroScorer: {e}")
+            self.v84_enabled = False
 
     def update_regime(self, exchange: ccxt.Exchange):
         """Detecta regimen de mercado desde BTC daily."""
@@ -91,6 +134,121 @@ class MLStrategy:
         except Exception as e:
             logger.error(f"[ML] Error actualizando regime: {e}")
 
+    # =========================================================================
+    # V8.4: MACRO INTELLIGENCE
+    # =========================================================================
+    def update_macro(self):
+        """Downloads macro data and computes macro score + risk-off for today.
+
+        Called once per day. Downloads DXY, Gold, SPY, TNX, ETH/BTC via
+        yfinance/ccxt, computes macro features, and scores with MacroScorer.
+        """
+        if not self.v84_enabled or self.macro_scorer is None:
+            self.macro_score = 0.5
+            self.risk_off_mult = 1.0
+            return
+
+        try:
+            from macro_data import download_all_macro, compute_macro_features
+
+            macro = download_all_macro()
+            macro_feat = compute_macro_features(
+                macro.get('dxy'), macro.get('gold'), macro.get('spy'),
+                macro.get('tnx'), macro.get('ethbtc'),
+            )
+
+            if macro_feat is None or len(macro_feat) == 0:
+                logger.warning("[ML] No macro features - using defaults")
+                self.macro_score = 0.5
+                self.risk_off_mult = 1.0
+                return
+
+            # Get today's macro features
+            today_feat = macro_feat.iloc[-1:]
+            cols = [c for c in self.macro_fcols if c in today_feat.columns]
+            if not cols:
+                logger.warning("[ML] Macro feature columns mismatch")
+                self.macro_score = 0.5
+                self.risk_off_mult = 1.0
+                return
+
+            X = today_feat[cols].fillna(0)
+            self.macro_score = float(self.macro_scorer.predict_proba(X)[:, 1][0])
+
+            # Compute risk-off multiplier for today
+            if ML_RISKOFF_ENABLED:
+                self.risk_off_mult = self._compute_risk_off(macro_feat.iloc[-1])
+            else:
+                self.risk_off_mult = 1.0
+
+            self.macro_updated = datetime.now(timezone.utc)
+            logger.info(f"[ML] Macro: score={self.macro_score:.3f} | "
+                        f"risk_off_mult={self.risk_off_mult:.2f}")
+
+        except Exception as e:
+            logger.error(f"[ML] Error updating macro: {e}")
+            self.macro_score = 0.5
+            self.risk_off_mult = 1.0
+
+    def _compute_risk_off(self, row) -> float:
+        """Compute risk-off sizing multiplier for a single day.
+
+        Stricter thresholds than V8.3 (~10% of days vs 21%).
+        Returns multiplier 0.3-1.0 (1.0 = normal).
+        """
+        mult = 1.0
+        dxy5 = row.get('dxy_ret_5d', 0) or 0
+        spy5 = row.get('spy_ret_5d', 0) or 0
+        gsr = row.get('gold_spy_ratio', 0) or 0
+        dxy20 = row.get('dxy_ret_20d', 0) or 0
+        spy20 = row.get('spy_ret_20d', 0) or 0
+
+        # SEVERE: DXY up >2% AND SPY down >2% in 5d
+        if dxy5 > 0.02 and spy5 < -0.02:
+            mult = min(mult, 0.3)
+        elif dxy5 > 0.015 and spy5 < -0.015:
+            mult = min(mult, 0.5)
+
+        # SEVERE: Massive flight to safety
+        if gsr > 0.04:
+            mult = min(mult, 0.3)
+        elif gsr > 0.03:
+            mult = min(mult, 0.5)
+
+        # SEVERE: Dollar surging >3% in 5d
+        if dxy5 > 0.03:
+            mult = min(mult, 0.3)
+
+        # STRUCTURAL: DXY up >4% in 20d AND SPY down >4% in 20d
+        if dxy20 > 0.04 and spy20 < -0.04:
+            mult = min(mult, 0.4)
+
+        return mult
+
+    def get_adaptive_threshold(self) -> float:
+        """Get confidence threshold adjusted by macro score."""
+        if not self.v84_enabled:
+            return ML_SIGNAL_THRESHOLD
+
+        # Linear interpolation: score=0 -> max, score=1 -> min
+        thresh = ML_ADAPTIVE_THRESH_MAX - (ML_ADAPTIVE_THRESH_MAX - ML_ADAPTIVE_THRESH_MIN) * self.macro_score
+        return max(ML_ADAPTIVE_THRESH_MIN, min(ML_ADAPTIVE_THRESH_MAX, thresh))
+
+    def get_sizing_multiplier(self) -> float:
+        """Get combined sizing multiplier (ML + risk-off)."""
+        if not self.v84_enabled:
+            return 1.0
+
+        # ML sizing: score=0 -> min, score=1 -> max
+        ml_mult = ML_SIZING_MIN + (ML_SIZING_MAX - ML_SIZING_MIN) * self.macro_score
+
+        # Combined with risk-off
+        combined = ml_mult * self.risk_off_mult
+        return max(0.2, min(2.0, combined))
+
+    # =========================================================================
+    # V7: FEATURES + SIGNALS
+    # =========================================================================
     def compute_features(self, df: pd.DataFrame) -> pd.DataFrame:
         """Computa features - IDENTICO a V7 training."""
         feat = pd.DataFrame(index=df.index)
@@ -156,15 +314,15 @@ class MLStrategy:
     def generate_signals(self, exchange: ccxt.Exchange, open_pairs: set = None) -> list:
         """Genera senales para todos los pares.
 
-        Args:
-            exchange: ccxt exchange para fetch de candles
-            open_pairs: set de pares ya abiertos (para no duplicar)
-
-        Returns:
-            Lista de dicts: [{'pair', 'direction', 'confidence', 'price', 'atr_pct'}, ...]
+        V8.4: Uses adaptive threshold from macro score.
+        Returns sizing_mult in each signal for portfolio manager.
         """
         if open_pairs is None:
             open_pairs = set()
+
+        # V8.4: adaptive threshold
+        thresh = self.get_adaptive_threshold()
+        sizing_mult = self.get_sizing_multiplier()
 
         signals = []
         for pair in self.pairs:
@@ -183,7 +341,6 @@ class MLStrategy:
                 feat = self.compute_features(df)
                 feat = feat.replace([np.inf, -np.inf], np.nan)
 
-                # Usar columnas del modelo
                 if self.feature_cols:
                     cols = [c for c in self.feature_cols if c in feat.columns]
                 else:
@@ -194,10 +351,8 @@ class MLStrategy:
                 model = self.models[pair]
                 pred = model.predict(last_feat)[0]
 
-                # Confidence = abs(pred) / pred_std
                 ps = self.pred_stds.get(pair, None)
                 if ps is None or ps < 1e-8:
-                    # Estimar pred_std de las ultimas 100 predicciones
                     recent = feat[cols].tail(100).fillna(0)
                     recent_preds = model.predict(recent)
                     ps = np.std(recent_preds)
@@ -206,12 +361,12 @@ class MLStrategy:
                     self.pred_stds[pair] = ps
 
                 conf = abs(pred) / ps
-                if conf < ML_SIGNAL_THRESHOLD:
+                if conf < thresh:
                     continue
 
                 direction = 1 if pred > 0 else -1
 
-                # Filtro de regimen
+                # Regime filter (V7 rules, NO override from V8.4)
                 if self.regime == 'BULL' and direction == -1:
                     continue
                 if self.regime == 'BEAR' and direction == 1:
@@ -226,6 +381,7 @@ class MLStrategy:
                     'prediction': pred,
                     'price': float(df['close'].iloc[-1]),
                     'atr_pct': atr_pct,
+                    'sizing_mult': sizing_mult,
                 })
 
             except Exception as e:

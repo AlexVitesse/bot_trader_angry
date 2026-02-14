@@ -341,20 +341,22 @@ class PortfolioManager:
         return True
 
     def open_position(self, pair: str, direction: int, confidence: float,
-                      regime: str, price: float, atr_pct: float) -> bool:
-        """Abre una nueva posicion."""
+                      regime: str, price: float, atr_pct: float,
+                      sizing_mult: float = 1.0) -> bool:
+        """Abre una nueva posicion. sizing_mult from V8.4 macro intelligence."""
         if not self.can_open(pair, direction):
             return False
 
         lev = ML_LEVERAGE.get(regime, 3)
         side = 'long' if direction == 1 else 'short'
 
-        # Sizing: risk-based
+        # Sizing: risk-based with V8.4 macro multiplier
         risk_pct = ML_RISK_PER_TRADE
         if confidence > 2.0:
             risk_pct = 0.03
         elif confidence > 1.5:
             risk_pct = 0.025
+        risk_pct *= sizing_mult
 
         risk_amt = INITIAL_CAPITAL * risk_pct  # FLAT sizing
         notional = risk_amt / ML_SL_PCT if ML_SL_PCT > 0 else risk_amt
