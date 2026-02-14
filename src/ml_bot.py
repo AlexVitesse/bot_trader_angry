@@ -192,13 +192,15 @@ class MLBot:
         regime = self.strategy.regime
         regime_emoji = {'BULL': '🟢🐂', 'BEAR': '🔴🐻', 'RANGE': '🟡↔️'}.get(regime, '⚪')
         n_pos = len(self.portfolio.positions)
+        extras = []
         if self.strategy.v84_enabled:
-            macro_str = (
-                f"\n🌐 Macro V8.4: score={self.strategy.macro_score:.2f}, "
+            extras.append(
+                f"🌐 Macro V8.4: score={self.strategy.macro_score:.2f}, "
                 f"sizing={self.strategy.get_sizing_multiplier():.2f}x"
             )
-        else:
-            macro_str = ""
+        if self.strategy.v85_enabled:
+            extras.append("🎯 ConvictionScorer V8.5: activo")
+        extra_str = "\n" + "\n".join(extras) if extras else ""
         send_alert(
             f"🚀 <b>ML BOT INICIADO</b>\n"
             f"━━━━━━━━━━━━━━━\n"
@@ -207,7 +209,7 @@ class MLBot:
             f"🧠 Modelos: {count}\n"
             f"📈 Posiciones: {n_pos}\n"
             f"💰 Balance: <b>${self.portfolio.balance:,.2f}</b>"
-            f"{macro_str}"
+            f"{extra_str}"
         )
 
         # 7. Iniciar Telegram poller para comandos
@@ -237,6 +239,7 @@ class MLBot:
             )
         else:
             macro_str = ""
+        conv_str = "\n🎯 ConvictionScorer: activo" if self.strategy.v85_enabled else ""
         send_alert(
             f"📊 <b>STATUS</b>\n"
             f"━━━━━━━━━━━━━━━\n"
@@ -244,7 +247,8 @@ class MLBot:
             f"📈 Pos: {status['positions']}/3\n"
             f"{pnl_emoji} PnL hoy: ${total_pnl:+,.2f} ({len(trades_today)} trades)\n"
             f"📊 Regime: {self.strategy.regime}"
-            f"{macro_str}\n"
+            f"{macro_str}"
+            f"{conv_str}\n"
             f"⚠️ DD: {status['dd']:.1%}\n"
             f"⏱️ Uptime: {uptime_h:.1f}h"
             f"{paused_str}"
@@ -344,9 +348,10 @@ class MLBot:
             for s in signals:
                 side = 'LONG' if s['direction'] == 1 else 'SHORT'
                 sm = s.get('sizing_mult', 1.0)
+                cm = s.get('conviction_mult', 1.0)
                 logger.info(f"  {s['pair']} {side} | conf={s['confidence']:.2f} | "
                             f"pred={s['prediction']:+.4f} | ${s['price']:,.2f} | "
-                            f"sizing={sm:.2f}x")
+                            f"sizing={sm:.2f}x | conv={cm:.2f}x")
         else:
             logger.info("[BOT] Sin senales en este ciclo")
 
@@ -383,18 +388,20 @@ class MLBot:
                         explain = f"📖 Vende {pos.quantity} {coin} esperando que BAJE"
                         tp_dir = '↘️ baja'
                         sl_dir = '↗️ sube'
-                    # V8.4 macro info
+                    # V8.4/V8.5 info
                     sm = signal.get('sizing_mult', 1.0)
+                    cm = signal.get('conviction_mult', 1.0)
+                    intel_parts = []
                     if self.strategy.v84_enabled:
-                        macro_str = (
-                            f"\n"
-                            f"🌐 <b>Macro V8.4</b>\n"
-                            f"   Score: {self.strategy.macro_score:.2f} | "
-                            f"Sizing: {sm:.2f}x | "
-                            f"Thresh: {self.strategy.get_adaptive_threshold():.2f}"
+                        intel_parts.append(
+                            f"🌐 Macro: {self.strategy.macro_score:.2f} | "
+                            f"Th: {self.strategy.get_adaptive_threshold():.2f}"
                         )
-                    else:
-                        macro_str = ""
+                    if self.strategy.v85_enabled:
+                        intel_parts.append(
+                            f"🎯 Conv: {cm:.2f}x | Total: {sm:.2f}x"
+                        )
+                    macro_str = "\n" + "\n".join(intel_parts) if intel_parts else ""
                     send_alert(
                         f"{side_emoji} <b>TRADE ABIERTO - {action}</b>\n"
                         f"━━━━━━━━━━━━━━━\n"
@@ -572,6 +579,7 @@ class MLBot:
                 )
             else:
                 macro_str = ""
+            conv_str = "🎯 Conv: activo\n" if self.strategy.v85_enabled else ""
             send_alert(
                 f"🟢 <b>BOT TODO OK</b>\n"
                 f"━━━━━━━━━━━━━━━\n"
@@ -580,6 +588,7 @@ class MLBot:
                 f"{pnl_emoji} PnL hoy: ${total_pnl:+,.2f} ({len(trades_today)} trades)\n"
                 f"📊 Regime: {self.strategy.regime}\n"
                 f"{macro_str}"
+                f"{conv_str}"
                 f"⚠️ DD: {status['dd']:.1%}\n"
                 f"⏱️ Uptime: {uptime_h:.1f}h\n"
                 f"{demo_str}"

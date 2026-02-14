@@ -186,6 +186,20 @@ ML_SIZING_MAX = 1.8
 ML_RISKOFF_ENABLED = True
 
 
+# =============================================================================
+# V8.5 CONVICTION SCORER
+# =============================================================================
+ML_V85_ENABLED = True       # Feature flag: enable V8.5 conviction scoring
+
+# Skip trades where ConvictionScorer predicts negative PnL
+# Skip if pred_pnl < -SKIP_MULT * pred_std (0.5 = skip clearly bad trades)
+ML_CONVICTION_SKIP_MULT = 0.5
+
+# Conviction sizing range [0.3, 1.8] via sigmoid on predicted PnL
+ML_CONVICTION_SIZING_MIN = 0.3
+ML_CONVICTION_SIZING_MAX = 1.8
+
+
 def validate_config() -> bool:
     """Valida que la configuracion este completa."""
     errors = []

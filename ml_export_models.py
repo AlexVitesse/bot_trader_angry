@@ -4,6 +4,7 @@ ML Export Models - Entrena y exporta modelos para produccion
 Entrena LightGBM en TODOS los datos disponibles y guarda modelos + metadata.
 V7: Per-pair regression models (signal generation)
 V8.4: MacroScorer classifier (macro-aware threshold + sizing)
+V8.5: ConvictionScorer regressor (per-trade PnL prediction -> sizing + filtering)
 
 Ejecutar antes del bot live, y re-ejecutar mensualmente para reentrenamiento.
 
@@ -342,16 +343,147 @@ def train_macro_scorer(all_data, macro_feat, n_trials_v7=15, n_trials_macro=30):
     return model, fcols, auc
 
 
+def train_conviction_scorer(all_data, macro_feat, macro_scorer, macro_fcols,
+                            n_trials_v7=15, n_trials_conv=30):
+    """Train V8.5 ConvictionScorer using nested walk-forward OOS trades.
+
+    Steps:
+    1. Train V7 on early half + run backtest on late half -> OOS trades
+    2. Score each trade with MacroScorer features at entry time
+    3. Train ConvictionScorer regressor on (entry features -> trade PnL)
+
+    Returns: (model, feature_cols, pred_std, corr) or (None, None, None, None).
+    """
+    from ml_train_v7 import (
+        train_all, detect_regime, download_pair as dl_v7,
+    )
+    from ml_train_v85 import (
+        backtest_collect_trade_features, prepare_conviction_data,
+        CONVICTION_FEATURES,
+    )
+    from ml_train_v84 import compute_risk_off_multipliers
+
+    # Download BTC daily for regime detection
+    print('  Descargando BTC daily para regime...')
+    btc_d = dl_v7('BTC/USDT', '1d')
+    if btc_d is None:
+        print('  ERROR: No se pudo descargar BTC daily')
+        return None, None, None, None
+
+    regime = detect_regime(btc_d)
+
+    # Find midpoint of available data
+    all_dates = set()
+    for pair, df in all_data.items():
+        all_dates.update(df.index.tolist())
+    all_dates = sorted(all_dates)
+    if len(all_dates) < 3000:
+        print(f'  ERROR: Datos insuficientes ({len(all_dates)} velas)')
+        return None, None, None, None
+
+    mid = all_dates[len(all_dates) // 2].strftime('%Y-%m')
+    print(f'  Nested WF: train [start..{mid}], eval [{mid}..end]')
+
+    # Train V7 on early half
+    print(f'  Entrenando V7 en early half ({n_trials_v7} trials)...')
+    early_models = train_all(all_data, mid, horizon=5, n_trials=n_trials_v7)
+
+    if not early_models:
+        print('  ERROR: No V7 models trained')
+        return None, None, None, None
+
+    # Compute risk-off multipliers
+    ro_mults = compute_risk_off_multipliers(macro_feat)
+
+    # Run backtest collecting per-trade features
+    print('  Corriendo backtest con trade features...')
+    enriched_trades = backtest_collect_trade_features(
+        all_data, regime, early_models,
+        macro_scorer=macro_scorer, macro_feat=macro_feat,
+        macro_fcols=macro_fcols, risk_off_mults=ro_mults,
+    )
+    print(f'  {len(enriched_trades)} OOS trades con features')
+
+    if len(enriched_trades) < 80:
+        print(f'  ERROR: Solo {len(enriched_trades)} trades (min 80)')
+        return None, None, None, None
+
+    # Prepare training data
+    X, y = prepare_conviction_data(enriched_trades)
+    if X is None:
+        print('  ERROR: No se pudo preparar datos de entrenamiento')
+        return None, None, None, None
+
+    fcols = list(X.columns)
+    X_clean = X.fillna(0)
+
+    sp = int(len(X_clean) * 0.8)
+    Xt, Xv = X_clean.iloc[:sp], X_clean.iloc[sp:]
+    yt, yv = y.iloc[:sp], y.iloc[sp:]
+
+    print(f'  {len(y)} trades de entrenamiento | '
+          f'PnL medio: ${y.mean():.2f} | std: ${y.std():.2f}')
+
+    # Optuna optimization
+    def obj(trial):
+        p = {
+            'n_estimators': trial.suggest_int('ne', 50, 300),
+            'max_depth': trial.suggest_int('md', 2, 6),
+            'learning_rate': trial.suggest_float('lr', 0.01, 0.1, log=True),
+            'subsample': trial.suggest_float('ss', 0.6, 1.0),
+            'colsample_bytree': trial.suggest_float('cs', 0.4, 1.0),
+            'min_child_samples': trial.suggest_int('mc', 10, 80),
+            'reg_alpha': trial.suggest_float('ra', 1e-5, 5.0, log=True),
+            'reg_lambda': trial.suggest_float('rl', 1e-5, 5.0, log=True),
+            'num_leaves': trial.suggest_int('nl', 10, 50),
+            'random_state': 42, 'n_jobs': -1, 'verbose': -1,
+        }
+        m = lgb.LGBMRegressor(**p)
+        m.fit(Xt, yt, eval_set=[(Xv, yv)],
+              callbacks=[lgb.early_stopping(20, verbose=False)])
+        pr = m.predict(Xv)
+        corr = np.corrcoef(pr, yv.values)[0, 1]
+        return corr if not np.isnan(corr) else 0.0
+
+    print(f'  Optimizando ConvictionScorer ({n_trials_conv} Optuna trials)...')
+    study = optuna.create_study(direction='maximize')
+    study.optimize(obj, n_trials=n_trials_conv, show_progress_bar=False)
+
+    rename = {'ne': 'n_estimators', 'md': 'max_depth', 'lr': 'learning_rate',
+              'ss': 'subsample', 'cs': 'colsample_bytree', 'mc': 'min_child_samples',
+              'ra': 'reg_alpha', 'rl': 'reg_lambda', 'nl': 'num_leaves'}
+    bp = {rename.get(k, k): v for k, v in study.best_params.items()}
+    bp.update({'random_state': 42, 'n_jobs': -1, 'verbose': -1})
+
+    # Train FINAL model on ALL data
+    model = lgb.LGBMRegressor(**bp)
+    model.fit(X_clean, y, eval_set=[(Xv, yv)],
+              callbacks=[lgb.early_stopping(30, verbose=False)])
+
+    # Compute pred_std for sizing normalization
+    preds_all = model.predict(X_clean)
+    pred_std = float(np.std(preds_all))
+
+    # Evaluate on validation set
+    val_preds = model.predict(Xv)
+    corr = float(np.corrcoef(val_preds, yv.values)[0, 1])
+
+    print(f'  ConvictionScorer corr: {corr:.3f} (optuna best: {study.best_value:.3f})')
+    print(f'  pred_std: {pred_std:.4f}')
+
+    return model, fcols, pred_std, corr
+
+
 def main():
     t0 = time.time()
     print('=' * 60)
-    print('EXPORT MODELOS ML V7 + V8.4 - PRODUCCION')
+    print('EXPORT MODELOS ML V7 + V8.4 + V8.5 - PRODUCCION')
     print('=' * 60)
 
     # =========================================================
-    # [1/4] Download data
+    # [1/5] Download data
     # =========================================================
-    print('\n[1/4] Descargando datos...')
+    print('\n[1/5] Descargando datos...')
     all_data = {}
     for pair in PAIRS:
         df = download_pair(pair, '4h')
@@ -361,9 +493,9 @@ def main():
                   f'{df.index[0].date()} a {df.index[-1].date()}')
 
     # =========================================================
-    # [2/4] Train V7 per-pair models
+    # [2/5] Train V7 per-pair models
     # =========================================================
-    print(f'\n[2/4] Entrenando modelos V7 ({N_TRIALS} Optuna trials)...')
+    print(f'\n[2/5] Entrenando modelos V7 ({N_TRIALS} Optuna trials)...')
     results = {}
     pred_stds = {}
     feature_cols = None
@@ -395,9 +527,12 @@ def main():
     print(f'  V7 metadata guardada: {meta_path}')
 
     # =========================================================
-    # [3/4] Train V8.4 MacroScorer
+    # [3/5] Train V8.4 MacroScorer
     # =========================================================
-    print(f'\n[3/4] Entrenando V8.4 MacroScorer...')
+    print(f'\n[3/5] Entrenando V8.4 MacroScorer...')
+    scorer = None
+    scorer_fcols = []
+    macro_feat = None
     try:
         from macro_data import download_all_macro, compute_macro_features
 
@@ -439,7 +574,44 @@ def main():
         print(f'  ERROR en MacroScorer: {e} - bot usara V7 puro')
 
     # =========================================================
-    # [4/4] Summary
+    # [4/5] Train V8.5 ConvictionScorer
+    # =========================================================
+    print(f'\n[4/5] Entrenando V8.5 ConvictionScorer...')
+    try:
+        if scorer is not None and macro_feat is not None:
+            conv_model, conv_fcols, conv_pred_std, conv_corr = train_conviction_scorer(
+                all_data, macro_feat, scorer, scorer_fcols,
+                n_trials_v7=15,
+                n_trials_conv=30,
+            )
+
+            if conv_model is not None:
+                conv_path = MODELS_DIR / 'v85_conviction_scorer.pkl'
+                joblib.dump(conv_model, conv_path)
+                print(f'  ConvictionScorer guardado: {conv_path}')
+
+                v85_meta = {
+                    'trained_at': datetime.utcnow().isoformat(),
+                    'conviction_feature_cols': conv_fcols,
+                    'conviction_pred_std': conv_pred_std,
+                    'corr': conv_corr,
+                    'n_features': len(conv_fcols),
+                }
+                v85_meta_path = MODELS_DIR / 'v85_meta.json'
+                with open(v85_meta_path, 'w') as f:
+                    json.dump(v85_meta, f, indent=2)
+                print(f'  V8.5 metadata guardada: {v85_meta_path}')
+            else:
+                print('  AVISO: ConvictionScorer no pudo entrenarse - bot usara V8.4')
+        else:
+            print('  AVISO: MacroScorer requerido para ConvictionScorer - bot usara V7/V8.4')
+    except ImportError as e:
+        print(f'  AVISO: Dependencias V8.5 no disponibles ({e}) - bot usara V8.4')
+    except Exception as e:
+        print(f'  ERROR en ConvictionScorer: {e} - bot usara V8.4')
+
+    # =========================================================
+    # [5/5] Summary
     # =========================================================
     elapsed = (time.time() - t0) / 60
     print(f'\n{"=" * 60}')

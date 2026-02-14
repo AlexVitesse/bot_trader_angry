@@ -1,14 +1,15 @@
 """
-ML Strategy - Motor de Senales V8.4
+ML Strategy - Motor de Senales V8.5
 ====================================
 V7 base: LightGBM per-pair models, regime detection, trailing stops.
 V8.4 adds: Macro intelligence (adaptive threshold + ML sizing + soft risk-off).
+V8.5 adds: ConvictionScorer (per-trade PnL prediction -> sizing + filtering).
 
-Macro layer:
-  1. MacroScorer (LightGBM): predicts daily "macro quality for crypto" [0,1]
-  2. Adaptive Threshold: adjusts confidence threshold by macro score
-  3. ML Sizing: scales position size by macro score [0.3x to 1.8x]
-  4. Soft Risk-Off: reduces sizing on extreme macro days (not regime override)
+Pipeline:
+  1. MacroScorer (daily): macro_score [0,1] -> adaptive threshold + ML sizing
+  2. Soft Risk-Off (daily): reduce sizing on extreme macro days
+  3. V7 Signal Models (per 4h candle): confidence + prediction per pair
+  4. ConvictionScorer (per trade): predicts PnL -> skip bad trades + adjust sizing
 """
 
 import json
@@ -19,12 +20,15 @@ import pandas_ta as ta
 import joblib
 import ccxt
 from datetime import datetime, timezone
+from scipy.special import expit  # sigmoid
 
 from config.settings import (
     MODELS_DIR, ML_PAIRS, ML_SIGNAL_THRESHOLD, ML_TIMEFRAME,
     ML_LEVERAGE, ML_RISK_PER_TRADE,
     ML_V84_ENABLED, ML_ADAPTIVE_THRESH_MIN, ML_ADAPTIVE_THRESH_MAX,
     ML_SIZING_MIN, ML_SIZING_MAX, ML_RISKOFF_ENABLED,
+    ML_V85_ENABLED, ML_CONVICTION_SKIP_MULT,
+    ML_CONVICTION_SIZING_MIN, ML_CONVICTION_SIZING_MAX,
 )
 
 logger = logging.getLogger(__name__)
@@ -48,6 +52,12 @@ class MLStrategy:
         self.risk_off_mult = 1.0    # no reduction default
         self.macro_updated = None
         self.v84_enabled = ML_V84_ENABLED
+
+        # V8.5 ConvictionScorer
+        self.conviction_scorer = None
+        self.conviction_fcols = []
+        self.conviction_pred_std = 1.0
+        self.v85_enabled = ML_V85_ENABLED
 
     def load_models(self) -> int:
         """Carga modelos desde disco. Retorna cantidad cargada."""
@@ -78,6 +88,10 @@ class MLStrategy:
         if self.v84_enabled:
             self._load_macro_model()
 
+        # V8.5 ConvictionScorer
+        if self.v85_enabled:
+            self._load_conviction_model()
+
         logger.info(f"[ML] {count} modelos cargados")
         return count
 
@@ -101,6 +115,30 @@ class MLStrategy:
         except Exception as e:
             logger.error(f"[ML] Error cargando MacroScorer: {e}")
             self.v84_enabled = False
+
+    def _load_conviction_model(self):
+        """Carga ConvictionScorer model y metadata."""
+        scorer_path = MODELS_DIR / 'v85_conviction_scorer.pkl'
+        meta_path = MODELS_DIR / 'v85_meta.json'
+
+        if not scorer_path.exists():
+            logger.warning("[ML] V8.5 ConvictionScorer no encontrado - usando V8.4 puro")
+            self.v85_enabled = False
+            return
+
+        try:
+            self.conviction_scorer = joblib.load(scorer_path)
+            if meta_path.exists():
+                with open(meta_path) as f:
+                    meta = json.load(f)
+                self.conviction_fcols = meta.get('conviction_feature_cols', [])
+                self.conviction_pred_std = meta.get('conviction_pred_std', 1.0)
+            logger.info(f"[ML] V8.5 ConvictionScorer cargado "
+                        f"({len(self.conviction_fcols)} features, "
+                        f"pred_std={self.conviction_pred_std:.4f})")
+        except Exception as e:
+            logger.error(f"[ML] Error cargando ConvictionScorer: {e}")
+            self.v85_enabled = False
 
     def update_regime(self, exchange: ccxt.Exchange):
         """Detecta regimen de mercado desde BTC daily."""
@@ -247,6 +285,50 @@ class MLStrategy:
         return max(0.2, min(2.0, combined))
 
     # =========================================================================
+    # V8.5: CONVICTION SCORING
+    # =========================================================================
+    def score_conviction(self, conf, pred_mag, atr_pct, n_open, direction):
+        """Score a trade candidate with ConvictionScorer.
+
+        Returns (skip: bool, conviction_mult: float).
+        skip=True means the trade should be skipped (predicted negative PnL).
+        conviction_mult is the sizing multiplier [0.3, 1.8].
+        """
+        if not self.v85_enabled or self.conviction_scorer is None:
+            return False, 1.0
+
+        features = pd.DataFrame([{
+            'cs_conf': conf,
+            'cs_pred_mag': pred_mag,
+            'cs_macro_score': self.macro_score,
+            'cs_risk_off': self.risk_off_mult,
+            'cs_regime_bull': 1.0 if self.regime == 'BULL' else 0.0,
+            'cs_regime_bear': 1.0 if self.regime == 'BEAR' else 0.0,
+            'cs_regime_range': 1.0 if self.regime == 'RANGE' else 0.0,
+            'cs_atr_pct': atr_pct,
+            'cs_n_open': n_open,
+            'cs_pred_sign': float(direction),
+        }])
+
+        cols = [c for c in self.conviction_fcols if c in features.columns]
+        if not cols:
+            return False, 1.0
+
+        pred_pnl = self.conviction_scorer.predict(features[cols])[0]
+
+        # Skip trades with clearly negative conviction
+        if pred_pnl < -ML_CONVICTION_SKIP_MULT * self.conviction_pred_std:
+            return True, 0.0
+
+        # Map to sizing multiplier via sigmoid
+        z = pred_pnl / self.conviction_pred_std if self.conviction_pred_std > 1e-8 else 0
+        s = expit(z)  # [0, 1]
+        sizing_range = ML_CONVICTION_SIZING_MAX - ML_CONVICTION_SIZING_MIN
+        conv_mult = ML_CONVICTION_SIZING_MIN + sizing_range * s
+
+        return False, conv_mult
+
+    # =========================================================================
     # V7: FEATURES + SIGNALS
     # =========================================================================
     def compute_features(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -315,6 +397,7 @@ class MLStrategy:
         """Genera senales para todos los pares.
 
         V8.4: Uses adaptive threshold from macro score.
+        V8.5: ConvictionScorer filters and adjusts per-trade sizing.
         Returns sizing_mult in each signal for portfolio manager.
         """
         if open_pairs is None:
@@ -322,8 +405,9 @@ class MLStrategy:
 
         # V8.4: adaptive threshold
         thresh = self.get_adaptive_threshold()
-        sizing_mult = self.get_sizing_multiplier()
+        macro_sizing = self.get_sizing_multiplier()
 
+        n_open = len(open_pairs)
         signals = []
         for pair in self.pairs:
             if pair in open_pairs:
@@ -374,6 +458,18 @@ class MLStrategy:
 
                 atr_pct = self.get_atr_pct(df)
 
+                # V8.5: ConvictionScorer per-trade filter + sizing
+                skip, conv_mult = self.score_conviction(
+                    conf, abs(pred), atr_pct, n_open, direction,
+                )
+                if skip:
+                    logger.info(f"[ML] {pair} skipped by ConvictionScorer")
+                    continue
+
+                # Combined sizing: macro * conviction
+                total_sizing = macro_sizing * conv_mult
+                total_sizing = max(0.2, min(2.5, total_sizing))
+
                 signals.append({
                     'pair': pair,
                     'direction': direction,
@@ -381,7 +477,8 @@ class MLStrategy:
                     'prediction': pred,
                     'price': float(df['close'].iloc[-1]),
                     'atr_pct': atr_pct,
-                    'sizing_mult': sizing_mult,
+                    'sizing_mult': total_sizing,
+                    'conviction_mult': conv_mult,
                 })
 
             except Exception as e:
