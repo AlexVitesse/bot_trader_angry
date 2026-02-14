@@ -142,7 +142,7 @@ FASE 3: ML TRADER PROFESIONAL
 FASE 4: DINERO REAL (~Marzo 2026)
   Pre-requisito: Fase 3 PASO 5 exitoso (PF > 1.2, DD < 20%, > 30 trades en demo).
 
-  Comandos Telegram implementados:
+  Comandos Telegram - Trading:
   [X] /status - Balance, posiciones abiertas, PnL del dia, regime actual
   [X] /positions - Detalle de cada posicion (par, side, entry, PnL%, trailing)
   [X] /close [par] - Cerrar posicion especifica manualmente
@@ -154,8 +154,24 @@ FASE 4: DINERO REAL (~Marzo 2026)
   [X] /log - Envia archivo de log por Telegram
   [X] Autenticacion: solo responde a TELEGRAM_CHAT_ID autorizado
 
+  Comandos Telegram - Gestion/DevOps:
+  [X] /backup - Envia backup de la BD SQLite por Telegram
+  [X] /update - git pull + instalar deps + reiniciar bot (exit code 42)
+  [X] /restart - Reiniciar bot sin cambios (exit code 43)
+  [X] /retrain - Reentrenar modelos ML (exit code 44, requiere 0 posiciones)
+
   Comandos Telegram pendientes:
   [ ] /config - Ver config actual (leverage, TP/SL, max concurrent)
+
+  Wrapper Script (run_bot.sh / run_bot.ps1):
+  [X] Auto-restart: si el bot crashea, reinicia en 30 segundos
+  [X] /update: git pull + pip install + restart
+  [X] /restart: reinicio limpio
+  [X] /retrain: ejecuta ml_export_models.py + restart
+  [X] Stop normal (Ctrl+C): no reinicia
+  Uso: En vez de ejecutar ml_bot.py directo, ejecutar el wrapper:
+    Linux:   bash run_bot.sh
+    Windows: powershell -File run_bot.ps1
 
   Capital y Sizing:
   [ ] Capital inicial: $100 (minimo para probar)
@@ -164,12 +180,25 @@ FASE 4: DINERO REAL (~Marzo 2026)
   [ ] Si rentable 1 mes: escalar gradualmente sizing
   [ ] Para aumentar capital: cambiar INITIAL_CAPITAL manualmente en settings.py
   [ ] VPS 24/7 (~$5/mes: Hetzner, DigitalOcean, Contabo, AWS Lightsail)
-  [ ] Reentrenamiento mensual del modelo (ml_export_models.py)
+  [ ] Reentrenamiento mensual del modelo (/retrain o manual: python ml_export_models.py)
 
-  Requerimientos VPS:
-    Minimo: 1 core, 1GB RAM, 500MB disco, 1Mbps red estable
-    Recomendado: 2 cores, 2GB RAM, 2GB SSD, 10Mbps red
-    Ubicacion ideal: Frankfurt, Singapur o Tokyo (cerca de Binance)
+  Deploy en VPS:
+    Requerimientos:
+      Minimo: 1 core, 1GB RAM, 500MB disco, 1Mbps red estable
+      Recomendado: 2 cores, 2GB RAM, 2GB SSD, 10Mbps red
+      Ubicacion ideal: Frankfurt, Singapur o Tokyo (cerca de Binance)
+    Setup:
+      [ ] Clonar repo: git clone <repo_url>
+      [ ] Instalar Python 3.12+
+      [ ] Instalar dependencias: pip install -e .
+      [ ] Configurar .env (API keys, Telegram token)
+      [ ] Ejecutar: bash run_bot.sh (en screen/tmux para que no muera al cerrar SSH)
+      [ ] Para instalar nuevas bibliotecas: /update desde Telegram (hace git pull + pip install)
+    Mantenimiento:
+      [ ] Reentrenar modelos: /retrain desde Telegram (mensual)
+      [ ] Actualizar codigo: /update desde Telegram
+      [ ] Backup BD: /backup desde Telegram (periodico)
+      [ ] Monitoreo: heartbeat cada 2h por Telegram
 
 ---
 
@@ -234,8 +263,11 @@ ARCHIVOS PRINCIPALES:
   config/settings.py       - Toda la configuracion (ML section al final)
   src/ml_bot.py            - Bot principal (loop 30s, senales cada 4h, Telegram)
   src/ml_strategy.py       - Cerebro ML (features, predicciones, regime, macro, conviction)
-  src/portfolio_manager.py - Gestion multi-posicion (sizing, trailing, risk, kill switch)
+  src/portfolio_manager.py - Gestion multi-posicion (sizing, trailing, risk, kill switch, SL exchange)
+  src/telegram_alerts.py   - Alertas + poller de comandos Telegram
   ml_export_models.py      - Entrenamiento y exportacion de modelos (correr mensual)
+  run_bot.sh               - Wrapper Linux: auto-restart, update, retrain
+  run_bot.ps1              - Wrapper Windows: auto-restart, update, retrain
   ml_train_v84.py          - Entrenamiento MacroScorer
   ml_train_v85.py          - Entrenamiento ConvictionScorer
   macro_data.py            - Fetcher de datos macro (DXY, Gold, SPY, TNX, ETH/BTC)

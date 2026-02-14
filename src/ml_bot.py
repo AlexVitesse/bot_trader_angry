@@ -45,6 +45,7 @@ class MLBot:
         self.last_heartbeat = 0        # Timestamp de ultimo heartbeat
         self.recent_errors = []        # Errores desde ultimo heartbeat
         self._pause_notified = False   # Evitar spam de notificacion de pausa
+        self._exit_code = 0            # Exit code for wrapper script
 
     def _init_exchange_public(self) -> ccxt.Exchange:
         """Cliente ccxt sin auth para datos de mercado."""
@@ -217,6 +218,10 @@ class MLBot:
             '/status': self._cmd_status,
             '/resume': self._cmd_resume,
             '/log': self._cmd_log,
+            '/backup': self._cmd_backup,
+            '/update': self._cmd_update,
+            '/restart': self._cmd_restart,
+            '/retrain': self._cmd_retrain,
         })
         self.tg_poller.start()
 
@@ -281,6 +286,71 @@ class MLBot:
             send_document(str(log_file), f"📄 Log ({size_kb:.0f} KB)")
         else:
             send_alert("⚠️ Archivo de log no encontrado")
+
+    def _cmd_backup(self):
+        """Responde al comando /backup - envia backup de la BD por Telegram."""
+        import sqlite3 as _sqlite3
+        backup_path = ML_DB_FILE.parent / 'ml_backup.db'
+        try:
+            src = _sqlite3.connect(str(ML_DB_FILE))
+            dst = _sqlite3.connect(str(backup_path))
+            src.backup(dst)
+            src.close()
+            dst.close()
+            size_kb = backup_path.stat().st_size / 1024
+            send_document(str(backup_path), f"💾 Backup DB ({size_kb:.0f} KB)")
+            backup_path.unlink(missing_ok=True)
+        except Exception as e:
+            send_alert(f"⚠️ Error en backup: {e}")
+            logger.warning(f"[BOT] Error en backup: {e}")
+
+    def _cmd_update(self):
+        """Responde al comando /update - git pull + restart via wrapper."""
+        n_pos = len(self.portfolio.positions)
+        send_alert(
+            f"🔄 <b>ACTUALIZANDO BOT</b>\n"
+            f"━━━━━━━━━━━━━━━\n"
+            f"📥 Cerrando bot para git pull...\n"
+            f"📈 Posiciones abiertas: {n_pos} (SL en exchange activos)\n"
+            f"🔄 Reiniciara automaticamente"
+        )
+        logger.info("[BOT] Update solicitado via /update - exit code 42")
+        self._exit_code = 42
+        self.running = False
+
+    def _cmd_restart(self):
+        """Responde al comando /restart - reinicia el bot via wrapper."""
+        n_pos = len(self.portfolio.positions)
+        send_alert(
+            f"🔄 <b>REINICIANDO BOT</b>\n"
+            f"━━━━━━━━━━━━━━━\n"
+            f"📈 Posiciones abiertas: {n_pos} (SL en exchange activos)\n"
+            f"🔄 Reiniciara en segundos..."
+        )
+        logger.info("[BOT] Restart solicitado via /restart - exit code 43")
+        self._exit_code = 43
+        self.running = False
+
+    def _cmd_retrain(self):
+        """Responde al comando /retrain - reentrenar modelos via wrapper."""
+        n_pos = len(self.portfolio.positions)
+        if n_pos > 0:
+            send_alert(
+                f"⚠️ <b>NO SE PUEDE REENTRENAR</b>\n"
+                f"Hay {n_pos} posiciones abiertas.\n"
+                f"Cierra posiciones primero o espera a que se cierren."
+            )
+            return
+        send_alert(
+            f"🧠 <b>REENTRENANDO MODELOS</b>\n"
+            f"━━━━━━━━━━━━━━━\n"
+            f"📥 Cerrando bot para reentrenar...\n"
+            f"⏱️ Esto puede tardar varios minutos\n"
+            f"🔄 Reiniciara automaticamente al terminar"
+        )
+        logger.info("[BOT] Retrain solicitado via /retrain - exit code 44")
+        self._exit_code = 44
+        self.running = False
 
     def _shutdown(self):
         """Limpieza al cerrar."""
@@ -666,6 +736,7 @@ def main():
     setup_logging()
     bot = MLBot()
     bot.run()
+    sys.exit(bot._exit_code)
 
 
 if __name__ == '__main__':
