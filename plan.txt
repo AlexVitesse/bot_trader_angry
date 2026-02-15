@@ -1,0 +1,312 @@
+ROADMAP: BOT DE TRADING ML - TRADER PROFESIONAL AUTONOMO
+=========================================================
+META: Bot que analiza el mercado, elige la estrategia correcta, y apuesta
+fuerte cuando tiene confianza alta. Como un trader profesional, pero automatizado.
+
+Ultima actualizacion: 2026-02-15
+
+[ESTADO ACTUAL]
+Fase: FASE 3 - ML TRADER PROFESIONAL (EN PROGRESO)
+Proximo Hito: PASO 5 - Paper Trading en Demo (11 dias, PROD 16 Feb - 25 Feb)
+Infraestructura: Bot completo + ML integrado + Demo Trading conectado - LISTO.
+Pipeline ML: 14 modelos (1 MacroScorer + 11 Signals V7 + 1 ConvictionScorer + 1 LossDetector V9)
+Modo: DUAL - V9 ejecuta en exchange, V8.5 corre en shadow para comparacion A/B
+
+---
+
+PROGRESO ML (Investigacion completada):
+  V1: Clasificacion 1m, 32 features          -> AUC 0.53 (random), NO rentable
+  V2: +MTF features + Optuna, 7 labeling     -> AUC 0.60, NO rentable (PF<1)
+  V3: Regresion + walk-forward, 1m           -> Corr 0.05, NO rentable
+  V4: Trend following 4h/daily               -> PRIMER RESULTADO RENTABLE (PF 1.37-1.67)
+  V5: Multi-par (5) + compounding            -> 25% anual, DD 34%
+  V6: Regime detection + 15 pares            -> 262% anual PERO DD 83% (inaceptable)
+  V7: Risk management + trailing stop        -> 322% anual, DD 10%, PF 1.37, Sharpe 4.05
+  V8: Alternative data (funding + F&G)       -> Features integrados en pipeline
+  V8.4: MacroScorer (DXY,Gold,SPY,TNX,ETH/BTC) -> Adaptive threshold + ML sizing + risk-off
+  V8.5: ConvictionScorer (per-trade PnL)     -> Sizing dinamico + filtro de trades malos
+  V9: LossDetector (filtro binario)          -> Filtra trades con P(loss)>0.55, WR 61%->68%
+
+  V9 BACKTEST (walk-forward 4 folds):
+    V8.5 [anterior]:  +687% avg, PF 1.79, DD 10.4%, WR 61%
+    V9 LD55 [actual]: +915% avg, PF 2.37, DD  8.0%, WR 68% (gana 4/4 folds)
+
+  VARIANTES TESTEADAS (6 meses, modelos existentes):
+    V9_Base (3pos, FLAT):     +29.7%, PF 1.12, DD 20.9% -> GANADOR
+    V9_5Pos (5pos, FLAT):     +22.9%, PF 1.15, DD 21.0% -> Peor (kill switch mas rapido)
+    V9_Compound (3pos, var):  +15.3%, PF 1.14, DD 20.2% -> Peor (perdidas se amplifican)
+    Conclusion: Mantener 3 posiciones + FLAT sizing.
+
+LECCIONES CLAVE:
+  - 1 minuto NO funciona: ruido > senal, edge arbitrado, costos altos
+  - 4h/daily SI funciona: TA fue disenado para estos timeframes
+  - Multi-par multiplica oportunidades (11-15 pares)
+  - Regime detection mejora retorno (BULL=solo LONG, BEAR=solo SHORT)
+  - SIN risk management el bot es un apostador, no un trader
+  - Compounding amplifica TODO -> flat sizing es mas estable
+  - Trailing stop es clave: +$1,360 extra capturados vs TP fijo
+  - ATR adaptativo causa kill switch rapido -> TP/SL fijo es mejor
+  - Position cap necesario para evitar numeros fantasiosos
+  - Daily loss limit debe basarse en INITIAL_CAPITAL (capital real), NO en balance testnet
+  - Mas posiciones simultaneas = mas exposicion = kill switch mas rapido
+
+---
+
+FASE 0-2: INFRAESTRUCTURA (COMPLETADA)
+[X] Conexion Binance (REST + WebSocket)
+[X] Motor de trading (DCA, TP/SL, ordenes)
+[X] Base de datos SQLite (trades, features, candles, posicion)
+[X] Telegram alerts (trades, kill switch, resumen diario)
+[X] Kill switches basicos (3 losses consecutivas, 20% DD diario)
+[X] Deploy en VPS (systemd, logrotate)
+
+---
+
+FASE 3: ML TRADER PROFESIONAL
+
+  PASO 1 - Investigacion ML (COMPLETADO)
+  [X] 7 versiones probadas (V1-V7)
+  [X] Timeframe optimo: 4h
+  [X] Modelo: LightGBM regresion (predice retorno futuro 5 velas = 20h)
+  [X] 35 features: retornos, volatilidad, momentum, tendencia, volumen, ADX, temporal
+  [X] Regime detection: BTC daily -> BULL/BEAR/RANGE
+  [X] Walk-forward: 4/4 folds rentables en todos los tests
+
+  PASO 2 - V7: Risk Management Profesional (COMPLETADO)
+  [X] Max 3 posiciones concurrentes (evitar correlacion)
+  [X] Max drawdown 20% -> pausar bot (kill switch de portafolio)
+  [X] Max perdida diaria 5% -> pausar ese dia
+  [X] Trailing stop: dejar correr ganancias (+$1,360 capturados)
+  [X] Position sizing: flat $50 notional por trade (basado en INITIAL_CAPITAL)
+  [X] Confidence scaling: modelo seguro = mas riesgo, modelo dudoso = menos
+  [X] Filtro MIN_TRAIN_CANDLES: omitir pares con datos insuficientes
+
+  PASO 3 - Validacion Rigurosa (COMPLETADO - todos los criterios superados)
+  [X] Walk-forward 4+ folds, TODOS rentables -> 4/4 (PF 1.54, 1.71, 1.87, 1.27)
+  [X] Max DD < 25% en backtest -> 10.2%
+  [X] PF > 1.2 neto (con comisiones 0.04% + slippage 0.01%) -> 1.37
+  [X] Retorno anual > 30% -> 322.7%
+  [X] Sharpe ratio > 1.0 -> 4.05
+  [X] Funcionar en BULL, BEAR y RANGE -> BULL +$760, BEAR +$252, RANGE +$997
+
+  CONFIG GANADORA: FLAT + Trailing Stop
+    $100 -> $2,109 en 2.1 anos | 322% anual | DD 10% | Sharpe 4.05
+    4,471 trades | WR 51% | 21/26 meses positivos (81%)
+    11 pares: BTC ETH SOL BNB XRP DOGE ADA AVAX LINK DOT NEAR
+
+  PASO 4 - Integracion en Bot Live (COMPLETADO)
+  [X] src/ml_strategy.py: cerebro ML (features, predicciones, regime detection)
+  [X] src/portfolio_manager.py: multi-posicion, sizing, trailing, kill switch
+  [X] src/ml_bot.py: loop principal (30s check, 4h senales, Telegram)
+  [X] ml_export_models.py: entrenamiento y exportacion de 14 modelos
+  [X] Binance Demo Trading API conectada (demo-fapi.binance.com)
+  [X] Balance real demo: $4,484 USDT | 14 modelos cargados
+  [X] Regime detection funcionando (BEAR detectado correctamente)
+  [X] Status log cada 10 min, resumen diario 23:55 UTC
+
+  PASO 4.5 - V8-V9 Mejoras Pipeline ML (COMPLETADO)
+  [X] V8: Alternative data features (funding rate + Fear & Greed Index)
+  [X] V8.4: MacroScorer - inteligencia macro diaria
+      - Analiza DXY, Gold, SPY, TNX, ETH/BTC para contexto macro
+      - Adaptive threshold: ajusta umbral de senales segun macro score
+      - ML sizing: factor de tamano basado en condiciones macro
+      - Soft risk-off: reduce exposicion cuando macro es desfavorable (no pausa total)
+  [X] V8.5: ConvictionScorer - prediccion PnL por trade
+      - Predice PnL esperado ANTES de abrir cada trade
+      - Sizing dinamico: mas capital en trades de alta conviccion
+      - Filtro: rechaza trades con PnL esperado negativo
+  [X] V9: LossDetector - filtro binario de trades perdedores
+      - Clasificador LightGBM: predice P(loss) con 21 features
+      - Filtra trades con P(loss) > 0.55
+      - Mejora WR de 61% a 68%, PF de 1.79 a 2.37
+      - Features: conviction, macro, regime, par TA, BTC contexto, hora, TP/SL ratio
+  [X] Dual-mode: V9 ejecuta en exchange, V8.5 shadow para comparacion A/B
+      - ShadowPortfolioManager: paper trading sin interaccion con exchange
+      - Trades separados en BD por columna 'strategy' (v9 / v85_shadow)
+      - PnL separado en Telegram (V9 PnL vs Shadow PnL)
+  [X] Fix: entry price mismatch auto-correction (DB vs Exchange >1%)
+  [X] Fix: daily loss warning spam (solo logea pausa 1 vez)
+  [X] Fix: duplicate position prevention (verifica exchange antes de abrir)
+  [X] Fix: startup SL check (evitar "would immediately trigger")
+  [X] Fix: division by zero guard en trailing stop update
+  [X] Fix: retry con backoff en load_markets() para problemas de red
+  [X] Fix: adjustForTimeDifference para sync reloj con Binance
+
+  PIPELINE COMPLETO (14 modelos):
+    MacroScorer (diario) -> Regime (reglas BTC) -> V7 Signals (4h, 11 pares)
+    -> ConvictionScorer (per-trade) -> LossDetector V9 (filtro) -> PortfolioManager
+
+  3 REGIMENES:
+    BULL  -> Solo LONG  (BTC EMA20 > EMA50 y ret_20d > 0)
+    BEAR  -> Solo SHORT (BTC EMA20 < EMA50 y ret_20d < 0)
+    RANGE -> LONG y SHORT (cualquier otra combinacion)
+
+  TIPO DE TRADER: Swing trader
+    - Timeframe: 4h
+    - Hold time: 1-15 velas (4 horas a ~2.5 dias)
+    - Max 3 posiciones simultaneas
+    - Sizing FLAT basado en INITIAL_CAPITAL (sin interes compuesto)
+
+  PASO 5 - Paper Trading en Demo (EN PROGRESO)
+  Inicio Dev: 2026-02-14 | PROD: 2026-02-16 (Dia 1 de 11) | Fin: 2026-02-25
+  [X] Bot corriendo en dev con V9 + shadow V8.5 (14 Feb)
+  [X] Errores corregidos: timestamp sync, SL startup, sklearn version
+  [X] Modelos re-exportados con sklearn 1.8.0
+  [X] Codigo limpiado: eliminados scripts obsoletos, modelos v5/v6
+  [ ] Lunes 16 Feb: Deploy a PROD (Dia 1 de 11)
+  [ ] Verificar que abre/cierra trades correctamente
+  [ ] Verificar trailing stop funciona en live
+  [ ] Comparar V9 vs V8.5 shadow con compare_live.py
+  [ ] Criterio para ir a real: PF > 1.2, DD < 20%, > 30 trades
+  [ ] Monitorear logs diariamente los primeros dias
+  [ ] 25 Feb: Evaluar resultados, decision de dinero real
+  [ ] Borrar contador de demo en _send_heartbeat() (ml_bot.py)
+
+  BD SCHEMA:
+    ml_trades            - Todos los trades cerrados (col 'strategy': v9 / v85_shadow)
+    ml_positions         - Posiciones reales abiertas (V9, exchange)
+    ml_shadow_positions  - Posiciones shadow abiertas (V8.5, paper)
+    ml_state             - Balance, peak (solo V9 real)
+
+---
+
+FASE 4: DINERO REAL (~25 Feb 2026)
+  Pre-requisito: Fase 3 PASO 5 exitoso (PF > 1.2, DD < 20%, > 30 trades en demo).
+
+  Comandos Telegram - Trading:
+  [X] /status - Balance, posiciones abiertas, V9 PnL del dia, regime actual
+  [X] /positions - Detalle de cada posicion (par, side, entry, PnL%, trailing)
+  [X] /close [par] - Cerrar posicion especifica manualmente
+  [X] /close_all - Cerrar todas las posiciones (emergencia)
+  [X] /pause - Pausar bot (no abre nuevos trades, mantiene posiciones)
+  [X] /resume - Reanudar bot (resetea daily_pnl para evitar re-pausa)
+  [X] /stats - Resumen: trades hoy, WR, PF, mejor/peor trade
+  [X] /regime - Regime actual + datos BTC (EMA20/50, ret20d)
+  [X] /log - Envia archivo de log por Telegram
+  [X] Autenticacion: solo responde a TELEGRAM_CHAT_ID autorizado
+
+  Comandos Telegram - Gestion/DevOps:
+  [X] /backup - Envia backup de la BD SQLite por Telegram
+  [X] /update - git pull + instalar deps + reiniciar bot (exit code 42)
+  [X] /restart - Reiniciar bot sin cambios (exit code 43)
+  [X] /retrain - Reentrenar modelos ML (exit code 44, requiere 0 posiciones)
+
+  Comandos Telegram pendientes:
+  [ ] /config - Ver config actual (leverage, TP/SL, max concurrent)
+
+  Wrapper Script (run_bot.sh / run_bot.ps1):
+  [X] Auto-restart: si el bot crashea, reinicia en 30 segundos
+  [X] /update: git pull + pip install + restart
+  [X] /restart: reinicio limpio
+  [X] /retrain: ejecuta ml_export_models.py + restart
+  [X] Stop normal (Ctrl+C): no reinicia
+  Uso: En vez de ejecutar ml_bot.py directo, ejecutar el wrapper:
+    Linux:   bash run_bot.sh
+    Windows: powershell -File run_bot.ps1
+
+  Capital y Sizing:
+  [ ] Capital inicial: $100 (minimo para probar)
+  [ ] Primeras 2 semanas: sizing ultra conservador (1% riesgo)
+  [ ] Si rentable 2 semanas: subir a 2% riesgo
+  [ ] Si rentable 1 mes: escalar gradualmente sizing
+  [ ] Para aumentar capital: cambiar INITIAL_CAPITAL manualmente en settings.py
+  [ ] VPS 24/7 (~$5/mes: Hetzner, DigitalOcean, Contabo, AWS Lightsail)
+  [ ] Reentrenamiento mensual del modelo (/retrain o manual: python ml_export_models.py)
+
+  Deploy en VPS:
+    Requerimientos:
+      Minimo: 1 core, 1GB RAM, 500MB disco, 1Mbps red estable
+      Recomendado: 2 cores, 2GB RAM, 2GB SSD, 10Mbps red
+      Ubicacion ideal: Frankfurt, Singapur o Tokyo (cerca de Binance)
+    Setup:
+      [ ] Clonar repo: git clone <repo_url>
+      [ ] Instalar Python 3.12+
+      [ ] Instalar dependencias: pip install -e .
+      [ ] Configurar .env (API keys, Telegram token)
+      [ ] Ejecutar: bash run_bot.sh (en screen/tmux para que no muera al cerrar SSH)
+      [ ] Para instalar nuevas bibliotecas: /update desde Telegram (hace git pull + pip install)
+    Mantenimiento:
+      [ ] Reentrenar modelos: /retrain desde Telegram (mensual)
+      [ ] Actualizar codigo: /update desde Telegram
+      [ ] Backup BD: /backup desde Telegram (periodico)
+      [ ] Monitoreo: heartbeat cada 2h por Telegram
+
+---
+
+FASE 5: MULTI-TIMEFRAME + MULTI-ESTRATEGIA (~Abril-Mayo 2026)
+  Objetivo: Adaptarse al mercado como un trader profesional.
+
+  Multi-Timeframe:
+  [ ] Agregar features de Daily (contexto macro: tendencia, volatilidad)
+  [ ] Agregar features de 1h (timing fino: momentum intradia)
+  [ ] Modelo recibe contexto de 3 timeframes: 1h + 4h + daily
+  [ ] Backtest MTF vs V9: medir mejora
+  [ ] CUIDADO: look-ahead bias en MTF -> usar .shift(1) antes de .reindex()
+
+  Multi-Estrategia (adaptar segun mercado como trader profesional):
+  Modelos especializados:
+  [ ] Modelo A: Trend Following (actual V7) - para tendencias claras BULL/BEAR
+  [ ] Modelo B: Mean Reversion - para mercados laterales RANGE
+  [ ] Modelo C: Momentum/Breakout - para inicio de tendencia nueva
+
+  Meta-Modelo (el "cerebro" que elige):
+  [ ] Entrenar modelo clasificador que predice: cual estrategia sera rentable?
+  [ ] El meta-modelo evalua cada 4h y asigna peso a cada estrategia
+  [ ] Backtest multi-estrategia vs V9 single: debe superar PF y reducir DD
+
+---
+
+FASE 6: DATOS AVANZADOS (~Junio 2026)
+  [ ] Open Interest como feature
+  [ ] Long/Short Ratio como feature
+  [ ] Liquidation data
+  [ ] Order book depth / imbalance
+  [ ] ETF flows
+  [ ] Reentrenar modelos con nuevos features
+
+---
+
+FASE 7: ESCALADO AVANZADO (Largo Plazo)
+  [ ] Mas pares (20-30 de los mas liquidos)
+  [ ] Multi-exchange (Binance + Bybit)
+  [ ] Dashboard web para monitoreo visual
+  [ ] Interes compuesto opcional
+  [ ] Analista LLM: pausar bot en eventos macro (FOMC, CPI, hacks, crash)
+
+---
+
+ARCHIVOS PRINCIPALES:
+  config/settings.py              - Toda la configuracion (ML section al final)
+  src/ml_bot.py                   - Bot principal (loop 30s, senales cada 4h, Telegram, dual-mode)
+  src/ml_strategy.py              - Cerebro ML (features, predicciones, regime, macro, conviction, V9)
+  src/portfolio_manager.py        - Gestion multi-posicion (sizing, trailing, risk, kill switch, SL exchange)
+  src/shadow_portfolio_manager.py - Paper trading shadow V8.5 para comparacion A/B
+  src/telegram_alerts.py          - Alertas + poller de comandos Telegram
+  ml_export_models.py             - Entrenamiento y exportacion de 14 modelos (correr mensual)
+  ml_train_v7.py                  - Funciones core: download, features, regime (dependencia de export)
+  ml_train_v84.py                 - Entrenamiento MacroScorer (dependencia de export)
+  ml_train_v85.py                 - Entrenamiento ConvictionScorer (dependencia de export)
+  ml_test_v9_lossdetector.py      - Entrenamiento LossDetector (dependencia de export)
+  macro_data.py                   - Fetcher datos macro (DXY, Gold, SPY, TNX, ETH/BTC) - runtime
+  compare_live.py                 - Comparacion head-to-head V9 vs V8.5 shadow
+  run_bot.sh                      - Wrapper Linux: auto-restart, update, retrain
+  run_bot.ps1                     - Wrapper Windows: auto-restart, update, retrain
+  models/v7_*.pkl                 - Modelos V7 por par (11 archivos)
+  models/v7_meta.json             - Metadata V7 (features, pares, pred_stds)
+  models/v84_macro_scorer.pkl     - Modelo MacroScorer
+  models/v84_meta.json            - Metadata MacroScorer (23 features, AUC 0.84)
+  models/v85_conviction_scorer.pkl - Modelo ConvictionScorer
+  models/v85_meta.json            - Metadata ConvictionScorer (10 features, corr 0.48)
+  models/v9_loss_detector.pkl     - Modelo LossDetector V9
+  models/v9_meta.json             - Metadata LossDetector (21 features, AUC 0.55, thresh 0.55)
+
+---
+
+TIMELINE:
+  Feb 14-15: Dev testing, correccion de errores, limpieza de codigo
+  Feb 16-25: PROD demo 11 dias (V9 + shadow V8.5)
+  Feb 25: Evaluar resultados, decision de dinero real
+  Mar 2026: Dinero real conservador ($100)
+  Abr-May 2026: Multi-timeframe + multi-estrategia
+  Jun 2026: Datos avanzados (OI, liquidaciones, order book)
+  Jul+ 2026: Escalado avanzado
