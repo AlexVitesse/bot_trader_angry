@@ -131,6 +131,12 @@ class PortfolioManager:
                 conn.commit()
             except Exception:
                 pass  # Column already exists
+            # Migration: add strategy column to ml_trades
+            try:
+                conn.execute("ALTER TABLE ml_trades ADD COLUMN strategy TEXT DEFAULT 'v9'")
+                conn.commit()
+            except Exception:
+                pass  # Column already exists
         finally:
             conn.close()
 
@@ -171,14 +177,15 @@ class PortfolioManager:
                 INSERT INTO ml_trades
                     (symbol, entry_time, exit_time, side, entry_price, exit_price,
                      quantity, notional, leverage, pnl, exit_reason, regime,
-                     confidence, commission)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     confidence, commission, strategy)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 trade['symbol'], trade['entry_time'], trade['exit_time'],
                 trade['side'], trade['entry_price'], trade['exit_price'],
                 trade['quantity'], trade['notional'], trade['leverage'],
                 trade['pnl'], trade['exit_reason'], trade['regime'],
                 trade['confidence'], trade['commission'],
+                trade.get('strategy', 'v9'),
             ))
             conn.commit()
         finally:
@@ -240,8 +247,24 @@ class PortfolioManager:
             if pos.sl_order_id:
                 self._cancel_exchange_sl(pair, pos.sl_order_id)
                 pos.sl_order_id = None
-            # Place fresh SL order
+            # Check current price before placing SL (avoid "would immediately trigger")
             effective_sl = pos.trail_sl if (pos.trail_active and pos.trail_sl) else pos.sl_price
+            try:
+                ticker = self.exchange.fetch_ticker(pair)
+                current_price = ticker.get('last', 0)
+                if current_price and effective_sl:
+                    # SL would trigger immediately - let monitoring loop handle it
+                    if pos.direction == 1 and effective_sl >= current_price:
+                        logger.warning(f"[PM] SL {pair} ya superado ({effective_sl:.2f} >= {current_price:.2f}), "
+                                       f"se cerrara en monitoring loop")
+                        continue
+                    if pos.direction == -1 and effective_sl <= current_price:
+                        logger.warning(f"[PM] SL {pair} ya superado ({effective_sl:.2f} <= {current_price:.2f}), "
+                                       f"se cerrara en monitoring loop")
+                        continue
+            except Exception:
+                pass  # If price check fails, try placing SL anyway
+            # Place fresh SL order
             sl_id = self._place_exchange_sl(pair, pos.side, pos.quantity, effective_sl)
             if sl_id:
                 pos.sl_order_id = sl_id
@@ -328,6 +351,9 @@ class PortfolioManager:
             side_str = ep.get('side', 'long')  # "long" o "short"
             direction = 1 if side_str == 'long' else -1
             entry_price = float(ep.get('entryPrice', 0) or 0)
+            if entry_price <= 0:
+                logger.warning(f"[PM] {pair}: entry_price=0, ignorando posicion")
+                continue
             leverage = int(ep.get('leverage', 3) or 3)
             notional = contracts * entry_price
 
@@ -724,7 +750,7 @@ class PortfolioManager:
                 old_eff_sl = pos.trail_sl if (pos.trail_active and pos.trail_sl) else pos.sl_price
                 self._update_trailing(pos, price)
                 new_eff_sl = pos.trail_sl if (pos.trail_active and pos.trail_sl) else pos.sl_price
-                if abs(new_eff_sl - old_eff_sl) / old_eff_sl > 0.001:
+                if old_eff_sl and old_eff_sl > 0 and abs(new_eff_sl - old_eff_sl) / old_eff_sl > 0.001:
                     self._cancel_exchange_sl(pair, pos.sl_order_id)
                     sl_id = self._place_exchange_sl(pair, pos.side, pos.quantity, new_eff_sl)
                     if sl_id:
@@ -895,15 +921,25 @@ class PortfolioManager:
 
         return True
 
-    def get_today_trades_from_db(self) -> list:
-        """Obtiene trades de hoy desde la DB (sobrevive reinicios)."""
+    def get_today_trades_from_db(self, strategy: str = None) -> list:
+        """Obtiene trades de hoy desde la DB (sobrevive reinicios).
+        Si strategy es None, devuelve solo V9 (no shadow).
+        Si strategy='all', devuelve todos.
+        """
         today = datetime.now(timezone.utc).strftime('%Y-%m-%d')
         conn = self._get_conn()
         try:
-            rows = conn.execute(
-                "SELECT * FROM ml_trades WHERE exit_time LIKE ?",
-                (f"{today}%",)
-            ).fetchall()
+            if strategy == 'all':
+                rows = conn.execute(
+                    "SELECT * FROM ml_trades WHERE exit_time LIKE ?",
+                    (f"{today}%",)
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT * FROM ml_trades WHERE exit_time LIKE ? AND "
+                    "(strategy = 'v9' OR strategy IS NULL)",
+                    (f"{today}%",)
+                ).fetchall()
             return [dict(r) for r in rows]
         finally:
             conn.close()

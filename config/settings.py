@@ -199,6 +199,15 @@ ML_CONVICTION_SKIP_MULT = 0.5
 ML_CONVICTION_SIZING_MIN = 0.3
 ML_CONVICTION_SIZING_MAX = 1.8
 
+# =============================================================================
+# V9 LOSS DETECTOR
+# =============================================================================
+ML_V9_ENABLED = True         # Feature flag: enable V9 LossDetector filter
+ML_LOSS_THRESHOLD = 0.55     # Skip trade if P(loss) > this threshold
+
+# Dual-mode: run V8.5 as shadow strategy for comparison
+ML_SHADOW_ENABLED = True     # Enable shadow paper-trading of V8.5
+
 
 def validate_config() -> bool:
     """Valida que la configuracion este completa."""

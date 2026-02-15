@@ -1,0 +1,29 @@
+{
+  "trained_at": "2026-02-15T21:16:22.497322",
+  "loss_feature_cols": [
+    "cs_conf",
+    "cs_pred_mag",
+    "cs_macro_score",
+    "cs_risk_off",
+    "cs_regime_bull",
+    "cs_regime_bear",
+    "cs_regime_range",
+    "cs_atr_pct",
+    "cs_n_open",
+    "cs_pred_sign",
+    "ld_conviction_pred",
+    "ld_pair_rsi14",
+    "ld_pair_bb_pct",
+    "ld_pair_vol_ratio",
+    "ld_pair_ret_5",
+    "ld_pair_ret_20",
+    "ld_btc_ret_5",
+    "ld_btc_rsi14",
+    "ld_btc_vol20",
+    "ld_hour",
+    "ld_tp_sl_ratio"
+  ],
+  "auc": 0.5517396816453022,
+  "n_features": 21,
+  "loss_threshold": 0.55
+}

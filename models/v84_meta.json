@@ -1,5 +1,5 @@
 {
-  "trained_at": "2026-02-14T07:05:46.666290",
+  "trained_at": "2026-02-15T21:11:48.941201",
   "macro_feature_cols": [
     "dxy_ret_5d",
     "dxy_ret_20d",
@@ -25,6 +25,6 @@
     "gold_spy_ratio",
     "dxy_gold_diverge"
   ],
-  "auc": 0.7959054834054833,
+  "auc": 0.8345963276012824,
   "n_macro_features": 23
 }

@@ -23,9 +23,11 @@ from config.settings import (
     ML_PAIRS, ML_CHECK_INTERVAL, ML_CANDLE_HOURS, ML_LEVERAGE,
     ML_DB_FILE, MODELS_DIR, TELEGRAM_ENABLED, LOG_LEVEL,
     LOGS_DIR, INITIAL_CAPITAL, ML_MAX_DAILY_LOSS_PCT,
+    ML_SHADOW_ENABLED, ML_V9_ENABLED, ML_TIMEFRAME,
 )
 from src.ml_strategy import MLStrategy
 from src.portfolio_manager import PortfolioManager
+from src.shadow_portfolio_manager import ShadowPortfolioManager
 from src.telegram_alerts import send_alert, send_document, TelegramPoller
 
 logger = logging.getLogger('ml_bot')
@@ -39,6 +41,8 @@ class MLBot:
         self.exchange = self._init_exchange()
         self.strategy = MLStrategy()
         self.portfolio = PortfolioManager(self.exchange, ML_DB_FILE)
+        self.shadow_enabled = ML_SHADOW_ENABLED and ML_V9_ENABLED
+        self.shadow_portfolio = ShadowPortfolioManager() if self.shadow_enabled else None
         self.running = False
         self.last_4h_candle = None     # Timestamp de ultima vela procesada
         self.last_regime_date = None   # Fecha de ultimo regime update
@@ -63,7 +67,11 @@ class MLBot:
             'apiKey': BINANCE_API_KEY,
             'secret': BINANCE_API_SECRET,
             'enableRateLimit': True,
-            'options': {'defaultType': 'future'},
+            'options': {
+                'defaultType': 'future',
+                'recvWindow': 10000,
+                'adjustForTimeDifference': True,  # sync clock with Binance server
+            },
         }
         exchange = ccxt.binance(config)
         if TRADING_MODE == 'testnet':
@@ -78,7 +86,17 @@ class MLBot:
                     )
             # Pre-load markets from public exchange to avoid
             # spot API calls (sapi) that fail with demo keys
-            self.exchange_public.load_markets()
+            for attempt in range(5):
+                try:
+                    self.exchange_public.load_markets()
+                    break
+                except Exception as e:
+                    if attempt < 4:
+                        wait = 10 * (attempt + 1)
+                        logger.warning(f"[BOT] load_markets intento {attempt+1}/5 fallo: {e} - reintentando en {wait}s")
+                        time.sleep(wait)
+                    else:
+                        raise
             exchange.markets = self.exchange_public.markets
             exchange.markets_by_id = self.exchange_public.markets_by_id
             exchange.currencies = self.exchange_public.currencies
@@ -184,6 +202,11 @@ class MLBot:
         # 3. Recuperar posiciones
         self.portfolio.sync_positions()
 
+        # 3b. Recuperar posiciones shadow
+        if self.shadow_enabled:
+            self.shadow_portfolio.sync_positions()
+            logger.info(f"[BOT] Shadow V8.5: {len(self.shadow_portfolio.positions)} posiciones")
+
         # 4. Actualizar balance
         self.portfolio.refresh_balance()
         logger.info(f"[BOT] Balance: ${self.portfolio.balance:.2f}")
@@ -203,6 +226,12 @@ class MLBot:
             )
         if self.strategy.v85_enabled:
             extras.append("🎯 ConvictionScorer V8.5: activo")
+        if self.strategy.v9_enabled:
+            extras.append("🔬 LossDetector V9: activo")
+        if self.shadow_enabled:
+            extras.append(
+                f"👻 Shadow V8.5: {len(self.shadow_portfolio.positions)} pos"
+            )
         extra_str = "\n" + "\n".join(extras) if extras else ""
         send_alert(
             f"🚀 <b>ML BOT INICIADO</b>\n"
@@ -272,15 +301,25 @@ class MLBot:
         else:
             macro_str = ""
         conv_str = "\n🎯 ConvictionScorer: activo" if self.strategy.v85_enabled else ""
+        v9_str = "\n🔬 LossDetector V9: activo" if self.strategy.v9_enabled else ""
+        shadow_str = ""
+        if self.shadow_enabled:
+            ss = self.shadow_portfolio.get_summary()
+            shadow_str = (
+                f"\n👻 Shadow V8.5: {ss['n_open']} pos | "
+                f"{ss['n_trades']} trades | ${ss['total_pnl']:+,.2f}"
+            )
         send_alert(
             f"📊 <b>STATUS</b>\n"
             f"━━━━━━━━━━━━━━━\n"
             f"💰 Balance: ${status['balance']:,.2f}\n"
             f"📈 Pos: {status['positions']}/3\n"
-            f"{pnl_emoji} PnL hoy: ${total_pnl:+,.2f} ({len(trades_today)} trades)\n"
+            f"{pnl_emoji} V9 PnL hoy: ${total_pnl:+,.2f} ({len(trades_today)}t)\n"
             f"📊 Regime: {self.strategy.regime}"
             f"{macro_str}"
-            f"{conv_str}\n"
+            f"{conv_str}"
+            f"{v9_str}"
+            f"{shadow_str}\n"
             f"⚠️ DD: {status['dd']:.1%}\n"
             f"⏱️ Uptime: {uptime_h:.1f}h"
             f"{paused_str}"
@@ -487,7 +526,14 @@ class MLBot:
         # Actualizar balance
         self.portfolio.refresh_balance()
 
-        # Generar senales
+        # Generar senales (dual-mode si V9 activo)
+        if self.shadow_enabled and self.strategy.v9_enabled:
+            self._on_new_candle_dual()
+        else:
+            self._on_new_candle_single()
+
+    def _on_new_candle_single(self):
+        """Modo legacy: generate_signals sin shadow."""
         open_pairs = set(self.portfolio.positions.keys())
         signals = self.strategy.generate_signals(self.exchange_public, open_pairs)
 
@@ -503,74 +549,137 @@ class MLBot:
         else:
             logger.info("[BOT] Sin senales en este ciclo")
 
-        # Intentar abrir posiciones
         for signal in signals:
-            if not self.portfolio.can_open(signal['pair'], signal['direction']):
-                continue
+            self._execute_v9_signal(signal)
 
-            success = self.portfolio.open_position(
-                pair=signal['pair'],
-                direction=signal['direction'],
-                confidence=signal['confidence'],
-                regime=self.strategy.regime,
-                price=signal['price'],
-                atr_pct=signal['atr_pct'],
-                sizing_mult=signal.get('sizing_mult', 1.0),
-            )
+    def _on_new_candle_dual(self):
+        """Modo dual: V9 ejecuta en exchange, V8.5 ejecuta en shadow."""
+        open_pairs_v9 = set(self.portfolio.positions.keys())
+        open_pairs_shadow = set(self.shadow_portfolio.positions.keys())
 
-            if success:
-                pos = self.portfolio.positions.get(signal['pair'])
-                if pos:
-                    side = 'LONG' if signal['direction'] == 1 else 'SHORT'
-                    side_emoji = '🟢' if signal['direction'] == 1 else '🔴'
-                    conf_bar = '🔥' if signal['confidence'] > 2.0 else '⚡' if signal['confidence'] > 1.5 else '📊'
-                    margin = pos.notional / pos.leverage
-                    action = 'COMPRANDO' if signal['direction'] == 1 else 'VENDIENDO'
-                    coin = signal['pair'].split('/')[0]
-                    # Explicacion educativa
-                    if signal['direction'] == 1:
-                        explain = f"📖 Compra {pos.quantity} {coin} esperando que SUBA"
-                        tp_dir = '↗️ sube'
-                        sl_dir = '↘️ baja'
-                    else:
-                        explain = f"📖 Vende {pos.quantity} {coin} esperando que BAJE"
-                        tp_dir = '↘️ baja'
-                        sl_dir = '↗️ sube'
-                    # V8.4/V8.5 info
-                    sm = signal.get('sizing_mult', 1.0)
-                    cm = signal.get('conviction_mult', 1.0)
-                    intel_parts = []
-                    if self.strategy.v84_enabled:
-                        intel_parts.append(
-                            f"🌐 Macro: {self.strategy.macro_score:.2f} | "
-                            f"Th: {self.strategy.get_adaptive_threshold():.2f}"
-                        )
-                    if self.strategy.v85_enabled:
-                        intel_parts.append(
-                            f"🎯 Conv: {cm:.2f}x | Total: {sm:.2f}x"
-                        )
-                    macro_str = "\n" + "\n".join(intel_parts) if intel_parts else ""
-                    send_alert(
-                        f"{side_emoji} <b>TRADE ABIERTO - {action}</b>\n"
-                        f"━━━━━━━━━━━━━━━\n"
-                        f"💎 {signal['pair']} -> <b>{side}</b>\n"
-                        f"\n"
-                        f"📥 <b>Entrada</b>\n"
-                        f"   Precio: ${pos.entry_price:,.2f}\n"
-                        f"   Cantidad: {pos.quantity} {coin}\n"
-                        f"   Notional: ${pos.notional:,.2f}\n"
-                        f"   Margen: ${margin:,.2f} ({pos.leverage}x leverage)\n"
-                        f"\n"
-                        f"🎯 <b>Objetivos</b>\n"
-                        f"   TP: ${pos.tp_price:,.2f} (si {tp_dir} {pos.tp_pct:.1%})\n"
-                        f"   SL: ${pos.sl_price:,.2f} (si {sl_dir} {pos.sl_pct:.1%})\n"
-                        f"   Max hold: {pos.max_hold} velas ({pos.max_hold * 4}h)\n"
-                        f"\n"
-                        f"{conf_bar} Confianza: {signal['confidence']:.2f}\n"
-                        f"📊 Regime: {self.strategy.regime}"
-                        f"{macro_str}\n"
-                        f"{explain}"
+        # Fetch BTC 4h data once (shared by both strategies)
+        try:
+            btc_ohlcv = self.exchange_public.fetch_ohlcv('BTC/USDT', ML_TIMEFRAME, limit=100)
+            import pandas as pd
+            btc_df = pd.DataFrame(btc_ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+            btc_df['timestamp'] = pd.to_datetime(btc_df['timestamp'], unit='ms')
+            btc_df.set_index('timestamp', inplace=True)
+        except Exception as e:
+            logger.warning(f"[BOT] Error fetching BTC data: {e}")
+            btc_df = None
+
+        v9_signals, v85_signals = self.strategy.generate_dual_signals(
+            self.exchange_public, open_pairs_v9, open_pairs_shadow, btc_df,
+        )
+
+        # Log V9 signals
+        if v9_signals:
+            logger.info(f"[BOT] V9: {len(v9_signals)} senales:")
+            for s in v9_signals:
+                side = 'LONG' if s['direction'] == 1 else 'SHORT'
+                logger.info(f"  [V9] {s['pair']} {side} | conf={s['confidence']:.2f} | "
+                            f"${s['price']:,.2f} | sizing={s.get('sizing_mult', 1.0):.2f}x")
+        else:
+            logger.info("[BOT] V9: sin senales")
+
+        # Log V8.5 shadow signals
+        if v85_signals:
+            logger.info(f"[BOT] V8.5 shadow: {len(v85_signals)} senales:")
+            for s in v85_signals:
+                side = 'LONG' if s['direction'] == 1 else 'SHORT'
+                logger.info(f"  [SHADOW] {s['pair']} {side} | conf={s['confidence']:.2f} | "
+                            f"${s['price']:,.2f}")
+        else:
+            logger.info("[BOT] V8.5 shadow: sin senales")
+
+        # Execute V9 signals on exchange
+        for signal in v9_signals:
+            self._execute_v9_signal(signal)
+
+        # Execute V8.5 signals on shadow portfolio
+        for signal in v85_signals:
+            self._execute_shadow_signal(signal)
+
+    def _execute_v9_signal(self, signal):
+        """Execute a signal on the real portfolio (V9 or legacy)."""
+        if not self.portfolio.can_open(signal['pair'], signal['direction']):
+            return
+
+        success = self.portfolio.open_position(
+            pair=signal['pair'],
+            direction=signal['direction'],
+            confidence=signal['confidence'],
+            regime=self.strategy.regime,
+            price=signal['price'],
+            atr_pct=signal['atr_pct'],
+            sizing_mult=signal.get('sizing_mult', 1.0),
+        )
+
+        if success:
+            pos = self.portfolio.positions.get(signal['pair'])
+            if pos:
+                side = 'LONG' if signal['direction'] == 1 else 'SHORT'
+                side_emoji = '🟢' if signal['direction'] == 1 else '🔴'
+                conf_bar = '🔥' if signal['confidence'] > 2.0 else '⚡' if signal['confidence'] > 1.5 else '📊'
+                margin = pos.notional / pos.leverage
+                action = 'COMPRANDO' if signal['direction'] == 1 else 'VENDIENDO'
+                coin = signal['pair'].split('/')[0]
+                if signal['direction'] == 1:
+                    explain = f"📖 Compra {pos.quantity} {coin} esperando que SUBA"
+                    tp_dir = '↗️ sube'
+                    sl_dir = '↘️ baja'
+                else:
+                    explain = f"📖 Vende {pos.quantity} {coin} esperando que BAJE"
+                    tp_dir = '↘️ baja'
+                    sl_dir = '↗️ sube'
+                sm = signal.get('sizing_mult', 1.0)
+                cm = signal.get('conviction_mult', 1.0)
+                intel_parts = []
+                if self.strategy.v84_enabled:
+                    intel_parts.append(
+                        f"🌐 Macro: {self.strategy.macro_score:.2f} | "
+                        f"Th: {self.strategy.get_adaptive_threshold():.2f}"
                     )
+                if self.strategy.v85_enabled:
+                    intel_parts.append(
+                        f"🎯 Conv: {cm:.2f}x | Total: {sm:.2f}x"
+                    )
+                if self.strategy.v9_enabled:
+                    intel_parts.append("🔬 LossDetector: PASS")
+                macro_str = "\n" + "\n".join(intel_parts) if intel_parts else ""
+                send_alert(
+                    f"{side_emoji} <b>TRADE ABIERTO - {action}</b>\n"
+                    f"━━━━━━━━━━━━━━━\n"
+                    f"💎 {signal['pair']} -> <b>{side}</b>\n"
+                    f"\n"
+                    f"📥 <b>Entrada</b>\n"
+                    f"   Precio: ${pos.entry_price:,.2f}\n"
+                    f"   Cantidad: {pos.quantity} {coin}\n"
+                    f"   Notional: ${pos.notional:,.2f}\n"
+                    f"   Margen: ${margin:,.2f} ({pos.leverage}x leverage)\n"
+                    f"\n"
+                    f"🎯 <b>Objetivos</b>\n"
+                    f"   TP: ${pos.tp_price:,.2f} (si {tp_dir} {pos.tp_pct:.1%})\n"
+                    f"   SL: ${pos.sl_price:,.2f} (si {sl_dir} {pos.sl_pct:.1%})\n"
+                    f"   Max hold: {pos.max_hold} velas ({pos.max_hold * 4}h)\n"
+                    f"\n"
+                    f"{conf_bar} Confianza: {signal['confidence']:.2f}\n"
+                    f"📊 Regime: {self.strategy.regime}"
+                    f"{macro_str}\n"
+                    f"{explain}"
+                )
+
+    def _execute_shadow_signal(self, signal):
+        """Execute a signal on the shadow portfolio (V8.5 paper trading)."""
+        self.shadow_portfolio.open_position(
+            pair=signal['pair'],
+            direction=signal['direction'],
+            confidence=signal['confidence'],
+            regime=self.strategy.regime,
+            price=signal['price'],
+            atr_pct=signal['atr_pct'],
+            sizing_mult=signal.get('sizing_mult', 1.0),
+        )
 
     # =========================================================================
     # POSITION MONITORING
@@ -578,6 +687,26 @@ class MLBot:
     def _monitor_positions(self):
         """Monitorea posiciones abiertas cada 30s."""
         closed_trades = self.portfolio.update_positions()
+
+        # Shadow positions: fetch tickers and update
+        if self.shadow_enabled and self.shadow_portfolio.positions:
+            try:
+                tickers = {}
+                for pair in list(self.shadow_portfolio.positions.keys()):
+                    try:
+                        t = self.exchange_public.fetch_ticker(pair)
+                        tickers[pair] = t['last']
+                    except Exception:
+                        pass
+                shadow_closed = self.shadow_portfolio.update_positions(tickers)
+                for st in shadow_closed:
+                    sign = '+' if st['pnl'] > 0 else ''
+                    logger.info(
+                        f"[SHADOW] Cerrado {st['symbol']} {st['side'].upper()} | "
+                        f"PnL: ${st['pnl']:{sign}.2f} | {st['exit_reason']}"
+                    )
+            except Exception as e:
+                logger.warning(f"[BOT] Error updating shadow positions: {e}")
 
         for trade in closed_trades:
             win = trade['pnl'] > 0
@@ -665,12 +794,16 @@ class MLBot:
         if now - self.last_status_log >= 600:
             self.last_status_log = now
             status = self.portfolio.get_status()
+            shadow_info = ""
+            if self.shadow_enabled:
+                ss = self.shadow_portfolio.get_summary()
+                shadow_info = f" | Shadow: {ss['n_open']}pos ${ss['total_pnl']:+.2f}"
             logger.info(
                 f"[STATUS] Balance=${status['balance']:.2f} | "
                 f"DD={status['dd']:.1%} | "
                 f"Pos={status['positions']}/3 | "
                 f"DailyPnL=${status['daily_pnl']:+.2f} | "
-                f"Regime={self.strategy.regime}"
+                f"Regime={self.strategy.regime}{shadow_info}"
             )
             for p in status['position_details']:
                 logger.info(f"  {p['pair']} {p['side'].upper()} "
@@ -688,12 +821,12 @@ class MLBot:
         """Envia heartbeat cada 2h por Telegram para monitoreo remoto."""
         status = self.portfolio.get_status()
         uptime_h = (time.time() - self._start_time) / 3600 if hasattr(self, '_start_time') else 0
-        trades_today = self.portfolio.get_today_trades_from_db()
+        trades_today = self.portfolio.get_today_trades_from_db()  # Solo V9
         total_pnl = sum(t['pnl'] for t in trades_today)
 
-        # Contador de demo: 2 semanas desde 2026-02-12 -> fin 2026-02-26
-        # TODO: Borrar este contador despues del 2026-02-26 (ver plan.txt)
-        demo_end = datetime(2026, 2, 26, tzinfo=timezone.utc)
+        # Contador de demo: 11 dias desde 2026-02-16 -> fin 2026-02-25
+        # TODO: Borrar este contador despues del 2026-02-25 (ver plan.txt)
+        demo_end = datetime(2026, 2, 25, tzinfo=timezone.utc)
         days_left = (demo_end - datetime.now(timezone.utc)).days
         if days_left > 0:
             demo_str = f"📅 Demo: {days_left} dias restantes"
@@ -728,15 +861,25 @@ class MLBot:
             else:
                 macro_str = ""
             conv_str = "🎯 Conv: activo\n" if self.strategy.v85_enabled else ""
+            v9_str = "🔬 V9 LD: activo\n" if self.strategy.v9_enabled else ""
+            shadow_hb = ""
+            if self.shadow_enabled:
+                ss = self.shadow_portfolio.get_summary()
+                shadow_hb = (
+                    f"👻 Shadow: {ss['n_open']}pos | "
+                    f"{ss['n_trades']}t | ${ss['total_pnl']:+,.2f}\n"
+                )
             send_alert(
                 f"🟢 <b>BOT TODO OK</b>\n"
                 f"━━━━━━━━━━━━━━━\n"
                 f"💰 Balance: ${status['balance']:,.2f}\n"
                 f"📈 Pos: {status['positions']}/3\n"
-                f"{pnl_emoji} PnL hoy: ${total_pnl:+,.2f} ({len(trades_today)} trades)\n"
+                f"{pnl_emoji} V9 PnL hoy: ${total_pnl:+,.2f} ({len(trades_today)}t)\n"
                 f"📊 Regime: {self.strategy.regime}\n"
                 f"{macro_str}"
                 f"{conv_str}"
+                f"{v9_str}"
+                f"{shadow_hb}"
                 f"⚠️ DD: {status['dd']:.1%}\n"
                 f"⏱️ Uptime: {uptime_h:.1f}h\n"
                 f"{demo_str}"
@@ -745,19 +888,30 @@ class MLBot:
     def _send_daily_summary(self):
         """Envia resumen diario por Telegram (consulta DB, sobrevive reinicios)."""
         status = self.portfolio.get_status()
-        trades_today = self.portfolio.get_today_trades_from_db()
+        trades_today = self.portfolio.get_today_trades_from_db()  # Solo V9
         wins = sum(1 for t in trades_today if t['pnl'] > 0)
         losses = len(trades_today) - wins
         wr = (wins / len(trades_today) * 100) if trades_today else 0
         total_pnl = sum(t['pnl'] for t in trades_today)
 
+        # Shadow summary
+        shadow_str = ""
+        if self.shadow_enabled:
+            ss = self.shadow_portfolio.get_summary()
+            shadow_str = (
+                f"\n👻 <b>Shadow V8.5</b>: {ss['n_trades']}t | "
+                f"${ss['total_pnl']:+,.2f} | WR {ss['win_rate']:.0f}%"
+            )
+
         pnl_emoji = '📈' if total_pnl >= 0 else '📉'
         send_alert(
             f"📊 <b>RESUMEN DIARIO</b>\n"
             f"━━━━━━━━━━━━━━━\n"
-            f"📋 Trades: {len(trades_today)} | ✅ {wins} ❌ {losses}\n"
-            f"🎯 Win Rate: {wr:.0f}%\n"
-            f"{pnl_emoji} PnL hoy: <b>${total_pnl:+,.2f}</b>\n"
+            f"🔬 <b>V9</b>: {len(trades_today)}t | "
+            f"✅ {wins} ❌ {losses} | WR {wr:.0f}%\n"
+            f"{pnl_emoji} V9 PnL: <b>${total_pnl:+,.2f}</b>"
+            f"{shadow_str}\n"
+            f"━━━━━━━━━━━━━━━\n"
             f"💰 Balance: <b>${status['balance']:,.2f}</b>\n"
             f"⚠️ DD: {status['dd']:.1%}\n"
             f"📊 Regime: {self.strategy.regime}\n"

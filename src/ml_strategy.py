@@ -1,15 +1,17 @@
 """
-ML Strategy - Motor de Senales V8.5
+ML Strategy - Motor de Senales V9
 ====================================
 V7 base: LightGBM per-pair models, regime detection, trailing stops.
 V8.4 adds: Macro intelligence (adaptive threshold + ML sizing + soft risk-off).
 V8.5 adds: ConvictionScorer (per-trade PnL prediction -> sizing + filtering).
+V9 adds: LossDetector (binary classifier to skip predicted losing trades).
 
 Pipeline:
   1. MacroScorer (daily): macro_score [0,1] -> adaptive threshold + ML sizing
   2. Soft Risk-Off (daily): reduce sizing on extreme macro days
   3. V7 Signal Models (per 4h candle): confidence + prediction per pair
   4. ConvictionScorer (per trade): predicts PnL -> skip bad trades + adjust sizing
+  5. LossDetector (per trade): P(loss) > 0.55 -> skip trade
 """
 
 import json
@@ -29,6 +31,7 @@ from config.settings import (
     ML_SIZING_MIN, ML_SIZING_MAX, ML_RISKOFF_ENABLED,
     ML_V85_ENABLED, ML_CONVICTION_SKIP_MULT,
     ML_CONVICTION_SIZING_MIN, ML_CONVICTION_SIZING_MAX,
+    ML_V9_ENABLED, ML_LOSS_THRESHOLD, ML_SHADOW_ENABLED,
 )
 
 logger = logging.getLogger(__name__)
@@ -58,6 +61,12 @@ class MLStrategy:
         self.conviction_fcols = []
         self.conviction_pred_std = 1.0
         self.v85_enabled = ML_V85_ENABLED
+
+        # V9 LossDetector
+        self.loss_detector = None
+        self.loss_fcols = []
+        self.loss_threshold = ML_LOSS_THRESHOLD
+        self.v9_enabled = ML_V9_ENABLED
 
     def load_models(self) -> int:
         """Carga modelos desde disco. Retorna cantidad cargada."""
@@ -91,6 +100,10 @@ class MLStrategy:
         # V8.5 ConvictionScorer
         if self.v85_enabled:
             self._load_conviction_model()
+
+        # V9 LossDetector
+        if self.v9_enabled:
+            self._load_loss_detector()
 
         logger.info(f"[ML] {count} modelos cargados")
         return count
@@ -139,6 +152,115 @@ class MLStrategy:
         except Exception as e:
             logger.error(f"[ML] Error cargando ConvictionScorer: {e}")
             self.v85_enabled = False
+
+    def _load_loss_detector(self):
+        """Carga V9 LossDetector model y metadata."""
+        scorer_path = MODELS_DIR / 'v9_loss_detector.pkl'
+        meta_path = MODELS_DIR / 'v9_meta.json'
+
+        if not scorer_path.exists():
+            logger.warning("[ML] V9 LossDetector no encontrado - usando V8.5 puro")
+            self.v9_enabled = False
+            return
+
+        try:
+            self.loss_detector = joblib.load(scorer_path)
+            if meta_path.exists():
+                with open(meta_path) as f:
+                    meta = json.load(f)
+                self.loss_fcols = meta.get('loss_feature_cols', [])
+                self.loss_threshold = meta.get('loss_threshold', ML_LOSS_THRESHOLD)
+            logger.info(f"[ML] V9 LossDetector cargado "
+                        f"({len(self.loss_fcols)} features, "
+                        f"threshold={self.loss_threshold})")
+        except Exception as e:
+            logger.error(f"[ML] Error cargando LossDetector: {e}")
+            self.v9_enabled = False
+
+    # =========================================================================
+    # V9: LOSS DETECTOR + PAIR TA + BTC CONTEXT
+    # =========================================================================
+    def compute_pair_ta_live(self, df: pd.DataFrame) -> dict:
+        """Compute pair TA features for LossDetector at current bar."""
+        c = df['close']
+
+        rsi14 = ta.rsi(c, length=14)
+        rsi_val = float(rsi14.iloc[-1]) if rsi14 is not None and len(rsi14) > 0 else 50.0
+
+        bb = ta.bbands(c, length=20, std=2.0)
+        if bb is not None:
+            bbu, bbl = bb.iloc[:, 0], bb.iloc[:, 2]
+            bb_range = bbu - bbl
+            bb_pct_s = np.where(bb_range > 0, (c - bbl) / bb_range, 0.5)
+            bb_val = float(bb_pct_s[-1]) if len(bb_pct_s) > 0 else 0.5
+        else:
+            bb_val = 0.5
+
+        vol_ma = df['volume'].rolling(20).mean()
+        vr = df['volume'] / vol_ma
+        vr_val = float(vr.iloc[-1]) if not np.isnan(vr.iloc[-1]) else 1.0
+
+        ret5 = c.pct_change(5)
+        ret20 = c.pct_change(20)
+
+        return {
+            'ld_pair_rsi14': rsi_val if not np.isnan(rsi_val) else 50.0,
+            'ld_pair_bb_pct': bb_val if not np.isnan(bb_val) else 0.5,
+            'ld_pair_vol_ratio': vr_val,
+            'ld_pair_ret_5': float(ret5.iloc[-1]) if not np.isnan(ret5.iloc[-1]) else 0.0,
+            'ld_pair_ret_20': float(ret20.iloc[-1]) if not np.isnan(ret20.iloc[-1]) else 0.0,
+        }
+
+    def compute_btc_context_live(self, btc_df: pd.DataFrame) -> dict:
+        """Compute BTC context features for LossDetector."""
+        if btc_df is None or len(btc_df) < 25:
+            return {'ld_btc_ret_5': 0.0, 'ld_btc_rsi14': 50.0, 'ld_btc_vol20': 0.02}
+
+        c = btc_df['close']
+        rsi = ta.rsi(c, length=14)
+        vol = c.pct_change().rolling(20).std()
+        ret5 = c.pct_change(5)
+
+        return {
+            'ld_btc_ret_5': float(ret5.iloc[-1]) if not np.isnan(ret5.iloc[-1]) else 0.0,
+            'ld_btc_rsi14': float(rsi.iloc[-1]) if rsi is not None and not np.isnan(rsi.iloc[-1]) else 50.0,
+            'ld_btc_vol20': float(vol.iloc[-1]) if not np.isnan(vol.iloc[-1]) else 0.02,
+        }
+
+    def score_loss_detector(self, signal, pair_ta, btc_ctx, conviction_pred):
+        """Score a trade with LossDetector. Returns True if trade should be SKIPPED."""
+        if not self.v9_enabled or self.loss_detector is None:
+            return False, 0.0
+
+        features = {
+            'cs_conf': signal['confidence'],
+            'cs_pred_mag': abs(signal['prediction']),
+            'cs_macro_score': self.macro_score,
+            'cs_risk_off': self.risk_off_mult,
+            'cs_regime_bull': 1.0 if self.regime == 'BULL' else 0.0,
+            'cs_regime_bear': 1.0 if self.regime == 'BEAR' else 0.0,
+            'cs_regime_range': 1.0 if self.regime == 'RANGE' else 0.0,
+            'cs_atr_pct': signal['atr_pct'],
+            'cs_n_open': signal.get('n_open', 0),
+            'cs_pred_sign': float(signal['direction']),
+            'ld_conviction_pred': conviction_pred,
+            **pair_ta,
+            **btc_ctx,
+            'ld_hour': float(datetime.now(timezone.utc).hour),
+            'ld_tp_sl_ratio': 0.03 / 0.015,
+        }
+
+        df_feat = pd.DataFrame([features])
+        cols = [c for c in self.loss_fcols if c in df_feat.columns]
+        if not cols:
+            return False, 0.0
+
+        p_loss = float(self.loss_detector.predict_proba(df_feat[cols])[0][1])
+
+        if p_loss > self.loss_threshold:
+            return True, p_loss
+
+        return False, p_loss
 
     def update_regime(self, exchange: ccxt.Exchange):
         """Detecta regimen de mercado desde BTC daily."""
@@ -486,3 +608,134 @@ class MLStrategy:
 
         signals.sort(key=lambda x: x['confidence'], reverse=True)
         return signals
+
+    def generate_dual_signals(self, exchange: ccxt.Exchange,
+                              open_pairs_v9: set = None,
+                              open_pairs_shadow: set = None,
+                              btc_df: pd.DataFrame = None) -> tuple:
+        """Generate both V9 and V8.5 shadow signals in a single pass.
+
+        Fetches data once per pair, applies V8.5 pipeline, then V9 LossDetector.
+        Returns (v9_signals, v85_shadow_signals).
+        """
+        if open_pairs_v9 is None:
+            open_pairs_v9 = set()
+        if open_pairs_shadow is None:
+            open_pairs_shadow = set()
+
+        thresh = self.get_adaptive_threshold()
+        macro_sizing = self.get_sizing_multiplier()
+
+        # BTC context (computed once)
+        btc_ctx = self.compute_btc_context_live(btc_df)
+
+        n_open_v9 = len(open_pairs_v9)
+        n_open_shadow = len(open_pairs_shadow)
+
+        v9_signals = []
+        v85_signals = []
+
+        for pair in self.pairs:
+            try:
+                ohlcv = exchange.fetch_ohlcv(pair, ML_TIMEFRAME, limit=500)
+                df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+                df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
+                df.set_index('timestamp', inplace=True)
+                df = df[~df.index.duplicated(keep='first')].sort_index()
+
+                if len(df) < 250:
+                    continue
+
+                feat = self.compute_features(df)
+                feat = feat.replace([np.inf, -np.inf], np.nan)
+
+                if self.feature_cols:
+                    cols = [c for c in self.feature_cols if c in feat.columns]
+                else:
+                    cols = list(feat.columns)
+
+                last_feat = feat[cols].iloc[-1:].fillna(0)
+                model = self.models[pair]
+                pred = model.predict(last_feat)[0]
+
+                ps = self.pred_stds.get(pair, None)
+                if ps is None or ps < 1e-8:
+                    recent = feat[cols].tail(100).fillna(0)
+                    recent_preds = model.predict(recent)
+                    ps = np.std(recent_preds)
+                    if ps < 1e-8:
+                        ps = 0.01
+                    self.pred_stds[pair] = ps
+
+                conf = abs(pred) / ps
+                if conf < thresh:
+                    continue
+
+                direction = 1 if pred > 0 else -1
+
+                if self.regime == 'BULL' and direction == -1:
+                    continue
+                if self.regime == 'BEAR' and direction == 1:
+                    continue
+
+                atr_pct = self.get_atr_pct(df)
+                price = float(df['close'].iloc[-1])
+
+                # V8.5: ConvictionScorer
+                skip, conv_mult = self.score_conviction(
+                    conf, abs(pred), atr_pct, n_open_v9, direction,
+                )
+                if skip:
+                    logger.info(f"[ML] {pair} skipped by ConvictionScorer")
+                    continue
+
+                total_sizing = macro_sizing * conv_mult
+                total_sizing = max(0.2, min(2.5, total_sizing))
+
+                # Get conviction raw prediction for LossDetector
+                conviction_pred = 0.0
+                if self.conviction_scorer is not None:
+                    cs_feat = pd.DataFrame([{
+                        'cs_conf': conf, 'cs_pred_mag': abs(pred),
+                        'cs_macro_score': self.macro_score,
+                        'cs_risk_off': self.risk_off_mult,
+                        'cs_regime_bull': 1.0 if self.regime == 'BULL' else 0.0,
+                        'cs_regime_bear': 1.0 if self.regime == 'BEAR' else 0.0,
+                        'cs_regime_range': 1.0 if self.regime == 'RANGE' else 0.0,
+                        'cs_atr_pct': atr_pct, 'cs_n_open': n_open_v9,
+                        'cs_pred_sign': float(direction),
+                    }])
+                    cs_cols = [c for c in self.conviction_fcols if c in cs_feat.columns]
+                    if cs_cols:
+                        conviction_pred = float(self.conviction_scorer.predict(cs_feat[cs_cols])[0])
+
+                base_signal = {
+                    'pair': pair, 'direction': direction,
+                    'confidence': conf, 'prediction': pred,
+                    'price': price, 'atr_pct': atr_pct,
+                    'sizing_mult': total_sizing,
+                    'conviction_mult': conv_mult,
+                }
+
+                # V8.5 shadow signal (passes ConvictionScorer, no LossDetector)
+                if pair not in open_pairs_shadow:
+                    v85_signals.append(dict(base_signal))
+
+                # V9: Apply LossDetector filter
+                if pair not in open_pairs_v9:
+                    pair_ta = self.compute_pair_ta_live(df)
+                    skip_ld, p_loss = self.score_loss_detector(
+                        {**base_signal, 'n_open': n_open_v9},
+                        pair_ta, btc_ctx, conviction_pred,
+                    )
+                    if skip_ld:
+                        logger.info(f"[ML] {pair} skipped by LossDetector (P={p_loss:.3f})")
+                        continue
+                    v9_signals.append(dict(base_signal))
+
+            except Exception as e:
+                logger.warning(f"[ML] Error generando senal {pair}: {e}")
+
+        v9_signals.sort(key=lambda x: x['confidence'], reverse=True)
+        v85_signals.sort(key=lambda x: x['confidence'], reverse=True)
+        return v9_signals, v85_signals

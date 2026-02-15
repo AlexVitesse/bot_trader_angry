@@ -5,6 +5,7 @@ Entrena LightGBM en TODOS los datos disponibles y guarda modelos + metadata.
 V7: Per-pair regression models (signal generation)
 V8.4: MacroScorer classifier (macro-aware threshold + sizing)
 V8.5: ConvictionScorer regressor (per-trade PnL prediction -> sizing + filtering)
+V9: LossDetector classifier (binary filter for losing trades)
 
 Ejecutar antes del bot live, y re-ejecutar mensualmente para reentrenamiento.
 
@@ -474,16 +475,105 @@ def train_conviction_scorer(all_data, macro_feat, macro_scorer, macro_fcols,
     return model, fcols, pred_std, corr
 
 
+def train_loss_detector_export(all_data, macro_feat, macro_scorer, macro_fcols,
+                                conv_scorer, conv_fcols, conv_pred_std,
+                                n_trials_v7=15, n_trials_ld=25):
+    """Train V9 LossDetector using nested walk-forward OOS trades.
+
+    Steps:
+    1. Train V7 on early half
+    2. Pre-compute pair TA and BTC context
+    3. Run V8.5 backtest with collect_mode=True -> enriched trades
+    4. Train LossDetector binary classifier (P(loss))
+    5. Re-train final model on all collected trades
+
+    Returns: (model, feature_cols, auc) or (None, None, None).
+    """
+    from ml_train_v7 import (
+        train_all, detect_regime, download_pair as dl_v7,
+    )
+    from ml_train_v84 import compute_risk_off_multipliers
+    from ml_test_v9_lossdetector import (
+        precompute_pair_ta, compute_btc_context,
+        backtest_v85_with_lossdetector, train_loss_detector,
+        LOSS_FEATURES,
+    )
+    from ml_train_v85 import conviction_to_sizing
+
+    # Download BTC daily for regime detection
+    print('  Descargando BTC daily para regime...')
+    btc_d = dl_v7('BTC/USDT', '1d')
+    if btc_d is None:
+        print('  ERROR: No se pudo descargar BTC daily')
+        return None, None, None
+
+    regime = detect_regime(btc_d)
+
+    # Find midpoint of available data
+    all_dates = set()
+    for pair, df in all_data.items():
+        all_dates.update(df.index.tolist())
+    all_dates = sorted(all_dates)
+    if len(all_dates) < 3000:
+        print(f'  ERROR: Datos insuficientes ({len(all_dates)} velas)')
+        return None, None, None
+
+    mid = all_dates[len(all_dates) // 2].strftime('%Y-%m')
+    print(f'  Nested WF: train [start..{mid}], eval [{mid}..end]')
+
+    # Train V7 on early half
+    print(f'  Entrenando V7 en early half ({n_trials_v7} trials)...')
+    early_models = train_all(all_data, mid, horizon=5, n_trials=n_trials_v7)
+
+    if not early_models:
+        print('  ERROR: No V7 models trained')
+        return None, None, None
+
+    # Pre-compute pair TA and BTC context
+    pair_ta = precompute_pair_ta(all_data)
+    btc_ctx = compute_btc_context(all_data['BTC/USDT'])
+    ro_mults = compute_risk_off_multipliers(macro_feat)
+
+    # Run V8.5 backtest with collect_mode to gather LossDetector training data
+    print('  Corriendo V8.5 backtest con collect_mode...')
+    enriched_trades, _, _, _ = backtest_v85_with_lossdetector(
+        all_data, regime, early_models,
+        pair_ta, btc_ctx,
+        macro_scorer=macro_scorer, macro_feat=macro_feat,
+        macro_fcols=macro_fcols, risk_off_mults=ro_mults,
+        conviction_scorer=conv_scorer, conviction_fcols=conv_fcols,
+        conviction_pred_std=conv_pred_std,
+        loss_detector=None,
+        collect_mode=True,
+        max_notional=300,
+    )
+    print(f'  {len(enriched_trades)} OOS trades enriquecidos')
+
+    if len(enriched_trades) < 80:
+        print(f'  ERROR: Solo {len(enriched_trades)} trades (min 80)')
+        return None, None, None
+
+    # Train LossDetector
+    print(f'  Entrenando LossDetector ({n_trials_ld} Optuna trials)...')
+    model, fcols, auc = train_loss_detector(enriched_trades, n_trials=n_trials_ld)
+
+    if model is None:
+        print('  ERROR: LossDetector no pudo entrenarse')
+        return None, None, None
+
+    return model, fcols, auc
+
+
 def main():
     t0 = time.time()
     print('=' * 60)
-    print('EXPORT MODELOS ML V7 + V8.4 + V8.5 - PRODUCCION')
+    print('EXPORT MODELOS ML V7 + V8.4 + V8.5 + V9 - PRODUCCION')
     print('=' * 60)
 
     # =========================================================
-    # [1/5] Download data
+    # [1/6] Download data
     # =========================================================
-    print('\n[1/5] Descargando datos...')
+    print('\n[1/6] Descargando datos...')
     all_data = {}
     for pair in PAIRS:
         df = download_pair(pair, '4h')
@@ -493,9 +583,9 @@ def main():
                   f'{df.index[0].date()} a {df.index[-1].date()}')
 
     # =========================================================
-    # [2/5] Train V7 per-pair models
+    # [2/6] Train V7 per-pair models
     # =========================================================
-    print(f'\n[2/5] Entrenando modelos V7 ({N_TRIALS} Optuna trials)...')
+    print(f'\n[2/6] Entrenando modelos V7 ({N_TRIALS} Optuna trials)...')
     results = {}
     pred_stds = {}
     feature_cols = None
@@ -527,9 +617,9 @@ def main():
     print(f'  V7 metadata guardada: {meta_path}')
 
     # =========================================================
-    # [3/5] Train V8.4 MacroScorer
+    # [3/6] Train V8.4 MacroScorer
     # =========================================================
-    print(f'\n[3/5] Entrenando V8.4 MacroScorer...')
+    print(f'\n[3/6] Entrenando V8.4 MacroScorer...')
     scorer = None
     scorer_fcols = []
     macro_feat = None
@@ -574,9 +664,12 @@ def main():
         print(f'  ERROR en MacroScorer: {e} - bot usara V7 puro')
 
     # =========================================================
-    # [4/5] Train V8.5 ConvictionScorer
+    # [4/6] Train V8.5 ConvictionScorer
     # =========================================================
-    print(f'\n[4/5] Entrenando V8.5 ConvictionScorer...')
+    print(f'\n[4/6] Entrenando V8.5 ConvictionScorer...')
+    conv_model = None
+    conv_fcols = []
+    conv_pred_std = 1.0
     try:
         if scorer is not None and macro_feat is not None:
             conv_model, conv_fcols, conv_pred_std, conv_corr = train_conviction_scorer(
@@ -611,7 +704,45 @@ def main():
         print(f'  ERROR en ConvictionScorer: {e} - bot usara V8.4')
 
     # =========================================================
-    # [5/5] Summary
+    # [5/6] Train V9 LossDetector
+    # =========================================================
+    print(f'\n[5/6] Entrenando V9 LossDetector...')
+    try:
+        if conv_model is not None and scorer is not None and macro_feat is not None:
+            ld_model, ld_fcols, ld_auc = train_loss_detector_export(
+                all_data, macro_feat, scorer, scorer_fcols,
+                conv_model, conv_fcols, conv_pred_std,
+                n_trials_v7=15,
+                n_trials_ld=25,
+            )
+
+            if ld_model is not None:
+                ld_path = MODELS_DIR / 'v9_loss_detector.pkl'
+                joblib.dump(ld_model, ld_path)
+                print(f'  LossDetector guardado: {ld_path}')
+
+                v9_meta = {
+                    'trained_at': datetime.utcnow().isoformat(),
+                    'loss_feature_cols': ld_fcols,
+                    'auc': ld_auc,
+                    'n_features': len(ld_fcols),
+                    'loss_threshold': 0.55,
+                }
+                v9_meta_path = MODELS_DIR / 'v9_meta.json'
+                with open(v9_meta_path, 'w') as f:
+                    json.dump(v9_meta, f, indent=2)
+                print(f'  V9 metadata guardada: {v9_meta_path}')
+            else:
+                print('  AVISO: LossDetector no pudo entrenarse - bot usara V8.5')
+        else:
+            print('  AVISO: ConvictionScorer requerido para LossDetector - bot usara V8.5')
+    except ImportError as e:
+        print(f'  AVISO: Dependencias V9 no disponibles ({e}) - bot usara V8.5')
+    except Exception as e:
+        print(f'  ERROR en LossDetector: {e} - bot usara V8.5')
+
+    # =========================================================
+    # [6/6] Summary
     # =========================================================
     elapsed = (time.time() - t0) / 60
     print(f'\n{"=" * 60}')
