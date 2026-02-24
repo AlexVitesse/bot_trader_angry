@@ -205,7 +205,7 @@ class MLBot:
         # 3b. Recuperar posiciones shadow
         if self.shadow_enabled:
             self.shadow_portfolio.sync_positions()
-            logger.info(f"[BOT] Shadow V8.5: {len(self.shadow_portfolio.positions)} posiciones")
+            logger.info(f"[BOT] Shadow V9: {len(self.shadow_portfolio.positions)} posiciones")
 
         # 4. Actualizar balance
         self.portfolio.refresh_balance()
@@ -225,12 +225,12 @@ class MLBot:
                 f"sizing={self.strategy.get_sizing_multiplier():.2f}x"
             )
         if self.strategy.v85_enabled:
-            extras.append("🎯 ConvictionScorer V8.5: activo")
+            extras.append("🎯 V8.5 ConvictionScorer: PROD")
         if self.strategy.v9_enabled:
-            extras.append("🔬 LossDetector V9: activo")
+            extras.append("🔬 V9 LossDetector: shadow")
         if self.shadow_enabled:
             extras.append(
-                f"👻 Shadow V8.5: {len(self.shadow_portfolio.positions)} pos"
+                f"👻 Shadow V9: {len(self.shadow_portfolio.positions)} pos"
             )
         extra_str = "\n" + "\n".join(extras) if extras else ""
         send_alert(
@@ -300,13 +300,13 @@ class MLBot:
             )
         else:
             macro_str = ""
-        conv_str = "\n🎯 ConvictionScorer: activo" if self.strategy.v85_enabled else ""
-        v9_str = "\n🔬 LossDetector V9: activo" if self.strategy.v9_enabled else ""
+        conv_str = "\n🎯 V8.5 ConvictionScorer: PROD" if self.strategy.v85_enabled else ""
+        v9_str = "\n🔬 V9 LossDetector: shadow" if self.strategy.v9_enabled else ""
         shadow_str = ""
         if self.shadow_enabled:
             ss = self.shadow_portfolio.get_summary()
             shadow_str = (
-                f"\n👻 Shadow V8.5: {ss['n_open']} pos | "
+                f"\n👻 Shadow V9: {ss['n_open']} pos | "
                 f"{ss['n_trades']} trades | ${ss['total_pnl']:+,.2f}"
             )
         send_alert(
@@ -901,7 +901,7 @@ class MLBot:
         if self.shadow_enabled:
             ss = self.shadow_portfolio.get_summary()
             shadow_str = (
-                f"\n👻 <b>Shadow V8.5</b>: {ss['n_trades']}t | "
+                f"\n👻 <b>Shadow V9</b>: {ss['n_trades']}t | "
                 f"${ss['total_pnl']:+,.2f} | WR {ss['win_rate']:.0f}%"
             )
 
