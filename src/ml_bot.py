@@ -799,7 +799,7 @@ class MLBot:
             shadow_info = ""
             if self.shadow_enabled:
                 ss = self.shadow_portfolio.get_summary()
-                shadow_info = f" | Shadow: {ss['n_open']}pos ${ss['total_pnl']:+.2f}"
+                shadow_info = f" | Shadow V9: {ss['n_open']}pos ${ss['total_pnl']:+.2f}"
             logger.info(
                 f"[STATUS] Balance=${status['balance']:.2f} | "
                 f"DD={status['dd']:.1%} | "
@@ -862,13 +862,13 @@ class MLBot:
                 )
             else:
                 macro_str = ""
-            conv_str = "🎯 Conv: activo\n" if self.strategy.v85_enabled else ""
-            v9_str = "🔬 V9 LD: activo\n" if self.strategy.v9_enabled else ""
+            conv_str = "🎯 V8.5: PROD\n" if self.strategy.v85_enabled else ""
+            v9_str = "🔬 V9 LD: shadow\n" if self.strategy.v9_enabled else ""
             shadow_hb = ""
             if self.shadow_enabled:
                 ss = self.shadow_portfolio.get_summary()
                 shadow_hb = (
-                    f"👻 Shadow: {ss['n_open']}pos | "
+                    f"👻 Shadow V9: {ss['n_open']}pos | "
                     f"{ss['n_trades']}t | ${ss['total_pnl']:+,.2f}\n"
                 )
             send_alert(
