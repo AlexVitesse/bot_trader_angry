@@ -1,17 +1,18 @@
 """
-ML Strategy - Motor de Senales V9
+ML Strategy - Motor de Senales V9.5
 ====================================
 V7 base: LightGBM per-pair models, regime detection, trailing stops.
 V8.4 adds: Macro intelligence (adaptive threshold + ML sizing + soft risk-off).
 V8.5 adds: ConvictionScorer (per-trade PnL prediction -> sizing + filtering).
 V9 adds: LossDetector (binary classifier to skip predicted losing trades).
+V9.5 adds: Per-pair LossDetector (11 individual models, optimized thresholds).
 
 Pipeline:
   1. MacroScorer (daily): macro_score [0,1] -> adaptive threshold + ML sizing
   2. Soft Risk-Off (daily): reduce sizing on extreme macro days
   3. V7 Signal Models (per 4h candle): confidence + prediction per pair
   4. ConvictionScorer (per trade): predicts PnL -> skip bad trades + adjust sizing
-  5. LossDetector (per trade): P(loss) > 0.55 -> skip trade
+  5. LossDetector V9.5 (per trade): Per-pair P(loss) > threshold -> skip trade
 """
 
 import json
@@ -62,11 +63,17 @@ class MLStrategy:
         self.conviction_pred_std = 1.0
         self.v85_enabled = ML_V85_ENABLED
 
-        # V9 LossDetector
+        # V9 LossDetector (generic - deprecated, kept for fallback)
         self.loss_detector = None
         self.loss_fcols = []
         self.loss_threshold = ML_LOSS_THRESHOLD
         self.v9_enabled = ML_V9_ENABLED
+
+        # V9.5 Per-pair LossDetector
+        self.v95_enabled = False  # Auto-enabled if v95 models found
+        self.v95_loss_detectors = {}  # {pair: model}
+        self.v95_thresholds = {}      # {pair: threshold}
+        self.v95_fcols = []           # Feature columns (same for all pairs)
 
     def load_models(self) -> int:
         """Carga modelos desde disco. Retorna cantidad cargada."""
@@ -101,8 +108,11 @@ class MLStrategy:
         if self.v85_enabled:
             self._load_conviction_model()
 
-        # V9 LossDetector
-        if self.v9_enabled:
+        # V9.5 Per-pair LossDetector (preferred over V9)
+        self._load_loss_detector_v95()
+
+        # V9 LossDetector (fallback if V9.5 not available)
+        if not self.v95_enabled and self.v9_enabled:
             self._load_loss_detector()
 
         logger.info(f"[ML] {count} modelos cargados")
@@ -154,7 +164,7 @@ class MLStrategy:
             self.v85_enabled = False
 
     def _load_loss_detector(self):
-        """Carga V9 LossDetector model y metadata."""
+        """Carga V9 LossDetector model y metadata (generic fallback)."""
         scorer_path = MODELS_DIR / 'v9_loss_detector.pkl'
         meta_path = MODELS_DIR / 'v9_meta.json'
 
@@ -176,6 +186,45 @@ class MLStrategy:
         except Exception as e:
             logger.error(f"[ML] Error cargando LossDetector: {e}")
             self.v9_enabled = False
+
+    def _load_loss_detector_v95(self):
+        """Carga V9.5 Per-pair LossDetector models y metadata."""
+        meta_path = MODELS_DIR / 'v95_meta.json'
+
+        if not meta_path.exists():
+            logger.info("[ML] V9.5 meta no encontrado - usando V9 generico si disponible")
+            return
+
+        try:
+            with open(meta_path) as f:
+                meta = json.load(f)
+
+            self.v95_fcols = meta.get('feature_cols', [])
+            pairs_meta = meta.get('pairs', {})
+
+            count = 0
+            for pair, info in pairs_meta.items():
+                safe = pair.replace('/', '')
+                model_path = MODELS_DIR / f'v95_ld_{safe}.pkl'
+
+                if model_path.exists():
+                    self.v95_loss_detectors[pair] = joblib.load(model_path)
+                    self.v95_thresholds[pair] = info.get('threshold', 0.55)
+                    count += 1
+
+            if count > 0:
+                self.v95_enabled = True
+                logger.info(f"[ML] V9.5 LossDetector cargado: {count} pares "
+                            f"({len(self.v95_fcols)} features)")
+                for pair, thresh in self.v95_thresholds.items():
+                    auc = pairs_meta.get(pair, {}).get('auc', 0)
+                    logger.info(f"  {pair}: thresh={thresh:.2f}, AUC={auc:.3f}")
+            else:
+                logger.warning("[ML] V9.5 meta existe pero no hay modelos cargados")
+
+        except Exception as e:
+            logger.error(f"[ML] Error cargando V9.5 LossDetector: {e}")
+            self.v95_enabled = False
 
     # =========================================================================
     # V9: LOSS DETECTOR + PAIR TA + BTC CONTEXT
@@ -258,6 +307,50 @@ class MLStrategy:
         p_loss = float(self.loss_detector.predict_proba(df_feat[cols])[0][1])
 
         if p_loss > self.loss_threshold:
+            return True, p_loss
+
+        return False, p_loss
+
+    def score_loss_detector_v95(self, pair, signal, pair_ta, btc_ctx, conviction_pred):
+        """Score a trade with V9.5 per-pair LossDetector.
+
+        Returns (skip: bool, p_loss: float).
+        Uses pair-specific model and threshold. Falls back to V9 generic if no model.
+        """
+        # Check if V9.5 model exists for this pair
+        if not self.v95_enabled or pair not in self.v95_loss_detectors:
+            # Fallback to V9 generic
+            return self.score_loss_detector(signal, pair_ta, btc_ctx, conviction_pred)
+
+        model = self.v95_loss_detectors[pair]
+        threshold = self.v95_thresholds.get(pair, 0.55)
+
+        features = {
+            'cs_conf': signal['confidence'],
+            'cs_pred_mag': abs(signal['prediction']),
+            'cs_macro_score': self.macro_score,
+            'cs_risk_off': self.risk_off_mult,
+            'cs_regime_bull': 1.0 if self.regime == 'BULL' else 0.0,
+            'cs_regime_bear': 1.0 if self.regime == 'BEAR' else 0.0,
+            'cs_regime_range': 1.0 if self.regime == 'RANGE' else 0.0,
+            'cs_atr_pct': signal['atr_pct'],
+            'cs_n_open': signal.get('n_open', 0),
+            'cs_pred_sign': float(signal['direction']),
+            'ld_conviction_pred': conviction_pred,
+            **pair_ta,
+            **btc_ctx,
+            'ld_hour': float(datetime.now(timezone.utc).hour) / 24.0,
+            'ld_tp_sl_ratio': 0.03 / 0.015,
+        }
+
+        df_feat = pd.DataFrame([features])
+        cols = [c for c in self.v95_fcols if c in df_feat.columns]
+        if not cols:
+            return False, 0.0
+
+        p_loss = float(model.predict_proba(df_feat[cols])[0][1])
+
+        if p_loss > threshold:
             return True, p_loss
 
         return False, p_loss
@@ -721,15 +814,20 @@ class MLStrategy:
                 if pair not in open_pairs_shadow:
                     v85_signals.append(dict(base_signal))
 
-                # V9: Apply LossDetector filter
+                # V9/V9.5: Apply LossDetector filter
                 if pair not in open_pairs_v9:
                     pair_ta = self.compute_pair_ta_live(df)
-                    skip_ld, p_loss = self.score_loss_detector(
+                    # Use V9.5 per-pair if available, else V9 generic
+                    skip_ld, p_loss = self.score_loss_detector_v95(
+                        pair,
                         {**base_signal, 'n_open': n_open_v9},
                         pair_ta, btc_ctx, conviction_pred,
                     )
+                    version = "V9.5" if self.v95_enabled and pair in self.v95_loss_detectors else "V9"
+                    thresh = self.v95_thresholds.get(pair, self.loss_threshold) if self.v95_enabled else self.loss_threshold
                     if skip_ld:
-                        logger.info(f"[ML] {pair} skipped by LossDetector (P={p_loss:.3f})")
+                        logger.info(f"[ML] {pair} skipped by LossDetector {version} "
+                                    f"(P={p_loss:.3f} > {thresh:.2f})")
                         continue
                     v9_signals.append(dict(base_signal))
 
