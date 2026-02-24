@@ -185,7 +185,7 @@ class PortfolioManager:
                 trade['quantity'], trade['notional'], trade['leverage'],
                 trade['pnl'], trade['exit_reason'], trade['regime'],
                 trade['confidence'], trade['commission'],
-                trade.get('strategy', 'v9'),
+                trade.get('strategy', 'v85_prod'),
             ))
             conn.commit()
         finally:

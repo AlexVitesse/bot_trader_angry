@@ -42,7 +42,7 @@ class MLBot:
         self.strategy = MLStrategy()
         self.portfolio = PortfolioManager(self.exchange, ML_DB_FILE)
         self.shadow_enabled = ML_SHADOW_ENABLED and ML_V9_ENABLED
-        self.shadow_portfolio = ShadowPortfolioManager() if self.shadow_enabled else None
+        self.shadow_portfolio = ShadowPortfolioManager(strategy='v9_shadow') if self.shadow_enabled else None
         self.running = False
         self.last_4h_candle = None     # Timestamp de ultima vela procesada
         self.last_regime_date = None   # Fecha de ultimo regime update
@@ -553,8 +553,8 @@ class MLBot:
             self._execute_v9_signal(signal)
 
     def _on_new_candle_dual(self):
-        """Modo dual: V9 ejecuta en exchange, V8.5 ejecuta en shadow."""
-        open_pairs_v9 = set(self.portfolio.positions.keys())
+        """Modo dual: V8.5 ejecuta en exchange (PROD), V9 ejecuta en shadow."""
+        open_pairs_prod = set(self.portfolio.positions.keys())
         open_pairs_shadow = set(self.shadow_portfolio.positions.keys())
 
         # Fetch BTC 4h data once (shared by both strategies)
@@ -568,36 +568,38 @@ class MLBot:
             logger.warning(f"[BOT] Error fetching BTC data: {e}")
             btc_df = None
 
+        # NOTA: generate_dual_signals retorna (v9_filtered, v85_base)
+        # Pero ahora INVERTIMOS: v85 va a PROD, v9 va a shadow
         v9_signals, v85_signals = self.strategy.generate_dual_signals(
-            self.exchange_public, open_pairs_v9, open_pairs_shadow, btc_df,
+            self.exchange_public, open_pairs_shadow, open_pairs_prod, btc_df,
         )
 
-        # Log V9 signals
-        if v9_signals:
-            logger.info(f"[BOT] V9: {len(v9_signals)} senales:")
-            for s in v9_signals:
+        # Log V8.5 signals (ahora PROD)
+        if v85_signals:
+            logger.info(f"[BOT] V8.5 PROD: {len(v85_signals)} senales:")
+            for s in v85_signals:
                 side = 'LONG' if s['direction'] == 1 else 'SHORT'
-                logger.info(f"  [V9] {s['pair']} {side} | conf={s['confidence']:.2f} | "
+                logger.info(f"  [PROD] {s['pair']} {side} | conf={s['confidence']:.2f} | "
                             f"${s['price']:,.2f} | sizing={s.get('sizing_mult', 1.0):.2f}x")
         else:
-            logger.info("[BOT] V9: sin senales")
+            logger.info("[BOT] V8.5 PROD: sin senales")
 
-        # Log V8.5 shadow signals
-        if v85_signals:
-            logger.info(f"[BOT] V8.5 shadow: {len(v85_signals)} senales:")
-            for s in v85_signals:
+        # Log V9 shadow signals
+        if v9_signals:
+            logger.info(f"[BOT] V9 shadow: {len(v9_signals)} senales:")
+            for s in v9_signals:
                 side = 'LONG' if s['direction'] == 1 else 'SHORT'
                 logger.info(f"  [SHADOW] {s['pair']} {side} | conf={s['confidence']:.2f} | "
                             f"${s['price']:,.2f}")
         else:
-            logger.info("[BOT] V8.5 shadow: sin senales")
+            logger.info("[BOT] V9 shadow: sin senales")
 
-        # Execute V9 signals on exchange
-        for signal in v9_signals:
+        # Execute V8.5 signals on exchange (PROD)
+        for signal in v85_signals:
             self._execute_v9_signal(signal)
 
-        # Execute V8.5 signals on shadow portfolio
-        for signal in v85_signals:
+        # Execute V9 signals on shadow portfolio
+        for signal in v9_signals:
             self._execute_shadow_signal(signal)
 
     def _execute_v9_signal(self, signal):
