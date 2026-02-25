@@ -171,14 +171,18 @@ META 3: Mejorar WR en pares debiles
 2.2 METAS MEDIANO PLAZO (3-6 meses)
 ------------------------------------------------------------------------------
 
-META 4: Implementar Trailing Stop Inteligente
-- Actual: Sin trailing en la mayoria de regimenes
-- Objetivo: Trailing adaptativo que capture mas ganancias
+META 4: Optimizar Trailing Stop Existente
+- Actual: Trailing YA implementado, solo activo en BULL_TREND y HIGH_VOL
+- Nota: "+$1,360 extra capturados vs TP fijo" (segun plan.txt)
+- Objetivo: Ajustar parametros de activacion por regimen
+- Probar: Activacion mas temprana (1.0x ATR vs 1.5x actual)
 - Beneficio esperado: +5-10% en retorno total
 
-META 5: Agregar Analisis de Sentiment
-- Integrar Fear & Greed Index
-- Reducir exposicion cuando Fear > 75 o Greed < 25
+META 5: Usar F&G como FILTRO Directo (no solo feature ML)
+- Actual: F&G YA integrado como feature del MacroScorer V8.4
+- Diferencia: Usarlo como FILTRO pre-trade, no solo input ML
+- Ejemplo: Si FGI < 15 (miedo extremo) -> reducir size 50%
+- Ejemplo: Si FGI > 85 (codicia extrema) -> reducir size 50%
 - Beneficio esperado: DD -3-5%
 
 META 6: Multi-Timeframe Confirmation
@@ -264,6 +268,50 @@ MES 3:
 [ ] Evaluar primeros 100 trades live
 [ ] Ajustar position sizing segun resultados reales
 [ ] Comenzar desarrollo LossDetector V2
+
+================================================================================
+PARTE 4: LO QUE YA PROBAMOS Y NO FUNCIONO (NO REPETIR)
+================================================================================
+
+Documentado para evitar repetir errores. Ver REVISION_FEATURES_V12.txt para
+detalles completos.
+
+------------------------------------------------------------------------------
+4.1 COMPOUNDING (INTERES COMPUESTO) - FALLO
+------------------------------------------------------------------------------
+Resultado: V9_Compound: +15.3%, PF 1.14 vs V9_Base: +29.7%, PF 1.12
+Problema: "Perdidas se amplifican igual que ganancias"
+DECISION: Mantener FLAT sizing. NO implementar compounding.
+
+------------------------------------------------------------------------------
+4.2 MAS DE 3 POSICIONES - FALLO
+------------------------------------------------------------------------------
+Resultado: V9_5Pos: +22.9%, DD 21% vs V9_Base (3pos): +29.7%, DD 20.9%
+Problema: "Mas posiciones = mas exposicion correlacionada = kill switch rapido"
+DECISION: Mantener MAX 3 posiciones. NO aumentar.
+
+------------------------------------------------------------------------------
+4.3 TIMEFRAME 1 MINUTO - FALLO
+------------------------------------------------------------------------------
+Resultado: V1 (1m): AUC 0.53 (random), NO rentable
+Problema: "Ruido > senal, edge arbitrado por HFT, costos destruyen ganancias"
+DECISION: Mantener 4h. NO bajar a 1m/5m/15m.
+
+------------------------------------------------------------------------------
+4.4 ATR SIN LIMITES - FALLO
+------------------------------------------------------------------------------
+Resultado: "ATR adaptativo causa kill switch rapido"
+Problema: En alta vol, TP/SL muy amplios = timeout antes de alcanzar
+SOLUCION: ATR + multiplicadores fijos (1.5x-2.5x TP, 1.0x-1.25x SL)
+DECISION: Usar ATR con limites. NO ATR puro.
+
+------------------------------------------------------------------------------
+4.5 RISK-OFF QUE BLOQUEA LONGS - FALLO (V8.3)
+------------------------------------------------------------------------------
+Resultado: "Risk-off override a BEAR bloquea TODOS los longs -> fatal en bull runs"
+Problema: Se perdian grandes movimientos alcistas
+SOLUCION: V8.4 "Soft risk-off" reduce sizing, no bloquea
+DECISION: Usar soft risk-off. NO bloquear direcciones.
 
 ================================================================================
 FUENTES
