@@ -131,17 +131,97 @@ DECISION: PARCIALMENTE UTIL
 STATUS: CONTINUAR A V12.2
 
 ================================================================================
-PROXIMOS PASOS: V12.2
+V12.2 - EXCLUSION + ESPECIALIZACION (FILTROS RELAJADOS)
+================================================================================
+Fecha: 25 Feb 2026
+
+DESCRIPCION:
+Combina exclusion de pares malos (V12) con parametros especializados por TIER.
+TIER 1 (agresivo) y TIER 2 (balanceado) con filtros relajados segun WR historico.
+
+CONFIGURACION:
+- Pares: 8 (excluidos BTC, SOL, BNB)
+- TIER 1: conviction 1.8, RSI 35-75, chop<55
+- TIER 2: conviction 2.0, RSI 38-72, chop<52
+
+RESULTADOS:
+| Periodo      | Trades | WR    | PnL     |
+|--------------|--------|-------|---------|
+| Ultimo Ano   | 789    | 48.0% | $1,331  |
+| Bear Market  | 765    | 47.7% | $997    |
+| PROMEDIO     | -      | 47.9% | $2,328  |
+
+COMPARACION:
+- V12 Base: WR 50.4%, PnL $2,426
+- V12.2: WR 47.9%, PnL $2,328
+
+CONCLUSION: FALLO
+- Relajar filtros para TIER 1 EMPEORA WR
+- Los filtros estrictos de V12 ya eran optimos
+- Mas trades != Mejor calidad
+
+DECISION: NO usar filtros relajados
+STATUS: DESCARTADO
+
+================================================================================
+V12.2b - FILTROS UNIVERSALES + TP/SL ESPECIALIZADO
+================================================================================
+Fecha: 25 Feb 2026
+
+DESCRIPCION:
+Mantiene filtros estrictos de V12 (que funcionan).
+Solo especializa TP/SL segun volatilidad historica del par.
+
+CONFIGURACION:
+Filtros UNIVERSALES (igual que V12):
+- conviction >= 2.0
+- RSI 38-72
+- BB 0.2-0.8
+- chop < 52
+
+TP/SL ESPECIALIZADO:
+- DOGE: TP 2.8x (muy volatil)
+- AVAX: TP 2.3x
+- ADA, XRP, DOT, NEAR, LINK: TP 2.0x (estandar)
+- ETH: TP 1.8x (menos volatil)
+
+RESULTADOS:
+| Periodo      | V12 (TP fijo) | V12.2b (TP esp) | Diferencia |
+|--------------|---------------|-----------------|------------|
+| Ultimo Ano   | WR 49.2%      | WR 49.3%        | +0.1%      |
+|              | PnL $1,406    | PnL $1,500      | +$95       |
+| Bear Market  | WR 48.2%      | WR 48.1%        | -0.1%      |
+|              | PnL $1,356    | PnL $1,364      | +$8        |
+| PROMEDIO     | WR 48.7%      | WR 48.7%        | 0%         |
+|              | PnL $2,762    | PnL $2,864      | +$102      |
+
+Mejores pares V12.2b:
+1. ADA: WR 54-60%, TP 2.0x - Funciona excelente
+2. XRP: WR 50-53%, TP 2.0x - Consistente
+3. DOT: WR 50-52%, TP 2.0x - Bueno
+4. DOGE: WR 42-50%, TP 2.8x - Mejora con TP alto
+
+CONCLUSION: MEJORA LEVE
+- WR igual (48.7%)
+- PnL +$102 (+3.7%)
+- TP especializado ayuda sin perjudicar WR
+
+DECISION: V12.2b es una mejora marginal, considerar para produccion
+STATUS: APROBADO (mejora leve)
+
+================================================================================
+PROXIMOS PASOS: V12.3
 ================================================================================
 
-IDEA: Combinar lo mejor de V12 y V12.1
-- Usar exclusion de pares (como V12)
-- Usar parametros especializados (como V12.1)
-- Solo pares TIER 1 y TIER 2 con sus parametros optimizados
+APRENDIZAJES DE V12.2/V12.2b:
+1. Los filtros estrictos de V12 son OPTIMOS - no relajar
+2. TP/SL especializado da mejora pequeña pero consistente
+3. DOGE se beneficia de TP mas alto (2.8x vs 2.0x)
 
-HIPOTESIS:
-V12.2 = V12 (8 pares) + parametros especializados por TIER
-Deberia lograr WR > 50% con mejor PnL
+IDEAS PARA V12.3:
+- Probar diferentes max_hold por par
+- Ajustar position_size por volatilidad
+- Trailing stop diferenciado por par
 
 ================================================================================
 LECCIONES APRENDIDAS

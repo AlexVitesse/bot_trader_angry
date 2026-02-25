@@ -1,0 +1,79 @@
+{
+  "version": "V12.2b",
+  "description": "Filtros universales V12 + TP/SL especializado por volatilidad",
+  "result": "MEJORA_PNL",
+  "filters": {
+    "min_conviction": 2.0,
+    "rsi_range": [
+      38,
+      72
+    ],
+    "bb_range": [
+      0.2,
+      0.8
+    ],
+    "max_chop": 52
+  },
+  "pair_tpsl": {
+    "DOGE/USDT": {
+      "tp_mult": 2.8,
+      "sl_mult": 1.0
+    },
+    "SOL/USDT": {
+      "tp_mult": 2.5,
+      "sl_mult": 1.0
+    },
+    "AVAX/USDT": {
+      "tp_mult": 2.3,
+      "sl_mult": 1.0
+    },
+    "ADA/USDT": {
+      "tp_mult": 2.0,
+      "sl_mult": 1.0
+    },
+    "XRP/USDT": {
+      "tp_mult": 2.0,
+      "sl_mult": 1.0
+    },
+    "DOT/USDT": {
+      "tp_mult": 2.0,
+      "sl_mult": 1.0
+    },
+    "NEAR/USDT": {
+      "tp_mult": 2.0,
+      "sl_mult": 1.0
+    },
+    "LINK/USDT": {
+      "tp_mult": 2.0,
+      "sl_mult": 1.0
+    },
+    "ETH/USDT": {
+      "tp_mult": 1.8,
+      "sl_mult": 1.0
+    },
+    "BTC/USDT": {
+      "tp_mult": 1.5,
+      "sl_mult": 1.0
+    },
+    "BNB/USDT": {
+      "tp_mult": 1.5,
+      "sl_mult": 1.0
+    }
+  },
+  "active_pairs": [
+    "ADA/USDT",
+    "XRP/USDT",
+    "DOT/USDT",
+    "DOGE/USDT",
+    "ETH/USDT",
+    "AVAX/USDT",
+    "NEAR/USDT",
+    "LINK/USDT"
+  ],
+  "metrics": {
+    "v12_wr": 48.69646366718109,
+    "v12_pnl": 2761.9900311764704,
+    "v12_2b_wr": 48.7269187580149,
+    "v12_2b_pnl": 2864.0685285748677
+  }
+}
