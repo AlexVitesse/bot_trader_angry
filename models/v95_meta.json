@@ -1,0 +1,95 @@
+{
+  "version": "9.5",
+  "trained_at": "2026-02-24T17:02:53.377212",
+  "pairs": {
+    "BTC/USDT": {
+      "auc": 0.6948051948051949,
+      "threshold": 0.45,
+      "n_trades": 915,
+      "n_features": 21
+    },
+    "ETH/USDT": {
+      "auc": 0.9609593837535014,
+      "threshold": 0.5,
+      "n_trades": 1176,
+      "n_features": 21
+    },
+    "SOL/USDT": {
+      "auc": 0.8008877615726061,
+      "threshold": 0.45,
+      "n_trades": 888,
+      "n_features": 21
+    },
+    "BNB/USDT": {
+      "auc": 0.8585298196948682,
+      "threshold": 0.45,
+      "n_trades": 793,
+      "n_features": 21
+    },
+    "XRP/USDT": {
+      "auc": 0.7312271062271062,
+      "threshold": 0.55,
+      "n_trades": 1089,
+      "n_features": 21
+    },
+    "DOGE/USDT": {
+      "auc": 0.7006275378368402,
+      "threshold": 0.55,
+      "n_trades": 853,
+      "n_features": 21
+    },
+    "ADA/USDT": {
+      "auc": 0.6635891198584697,
+      "threshold": 0.45,
+      "n_trades": 973,
+      "n_features": 21
+    },
+    "AVAX/USDT": {
+      "auc": 0.8988072335513659,
+      "threshold": 0.45,
+      "n_trades": 793,
+      "n_features": 21
+    },
+    "LINK/USDT": {
+      "auc": 0.6802836345381525,
+      "threshold": 0.55,
+      "n_trades": 1066,
+      "n_features": 21
+    },
+    "DOT/USDT": {
+      "auc": 0.6082172331174018,
+      "threshold": 0.55,
+      "n_trades": 1248,
+      "n_features": 21
+    },
+    "NEAR/USDT": {
+      "auc": 0.6258181818181818,
+      "threshold": 0.55,
+      "n_trades": 1622,
+      "n_features": 21
+    }
+  },
+  "feature_cols": [
+    "cs_conf",
+    "cs_pred_mag",
+    "cs_macro_score",
+    "cs_risk_off",
+    "cs_regime_bull",
+    "cs_regime_bear",
+    "cs_regime_range",
+    "cs_atr_pct",
+    "cs_n_open",
+    "cs_pred_sign",
+    "ld_conviction_pred",
+    "ld_pair_rsi14",
+    "ld_pair_bb_pct",
+    "ld_pair_vol_ratio",
+    "ld_pair_ret_5",
+    "ld_pair_ret_20",
+    "ld_btc_ret_5",
+    "ld_btc_rsi14",
+    "ld_btc_vol20",
+    "ld_hour",
+    "ld_tp_sl_ratio"
+  ]
+}
