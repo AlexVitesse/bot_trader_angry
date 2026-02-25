@@ -1,0 +1,90 @@
+{
+  "version": "V12_PRO",
+  "description": "Sistema hibrido adaptativo con filtros profesionales",
+  "target_wr": "50%+",
+  "achieved_wr": 50.4,
+  "pairs": {
+    "active": [
+      "XRP/USDT",
+      "ETH/USDT",
+      "DOGE/USDT",
+      "ADA/USDT",
+      "AVAX/USDT",
+      "LINK/USDT",
+      "DOT/USDT",
+      "NEAR/USDT"
+    ],
+    "excluded": [
+      "BNB/USDT",
+      "BTC/USDT",
+      "SOL/USDT"
+    ],
+    "reason_excluded": "WR < 45% en ultimo ano"
+  },
+  "filters": {
+    "universal": {
+      "min_conviction": 2.0,
+      "rsi_range": [
+        38,
+        72
+      ],
+      "bb_pos_range": [
+        0.2,
+        0.8
+      ],
+      "max_chop": 52
+    },
+    "by_regime": {
+      "BULL_TREND": {
+        "only_long": true,
+        "tp_mult": 2.0,
+        "sl_mult": 1.0,
+        "max_hold": 25
+      },
+      "WEAK_TREND": {
+        "adx_range": [
+          15,
+          40
+        ],
+        "tp_mult": 1.5,
+        "sl_mult": 1.0,
+        "max_hold": 15,
+        "pos_mult": 0.85
+      },
+      "HIGH_VOL": {
+        "rsi_range": [
+          40,
+          60
+        ],
+        "tp_mult": 2.0,
+        "sl_mult": 1.25,
+        "max_hold": 12,
+        "pos_mult": 0.5
+      },
+      "BEAR_TREND": "NO_TRADE",
+      "LOW_VOL": "NO_TRADE",
+      "LATERAL": "NO_TRADE"
+    }
+  },
+  "backtest_results": {
+    "ultimo_ano": {
+      "trades": 734,
+      "wr": 50.7,
+      "pnl": 1316,
+      "pf": 1.3,
+      "max_dd": 15.1
+    },
+    "bear_market_2022": {
+      "trades": 689,
+      "wr": 50.1,
+      "pnl": 1110,
+      "pf": 1.24,
+      "max_dd": 19.6
+    },
+    "combined": {
+      "total_pnl": 2426,
+      "avg_wr": 50.4,
+      "avg_dd": 17.3
+    }
+  }
+}

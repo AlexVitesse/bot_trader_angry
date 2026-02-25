@@ -1,0 +1,38 @@
+{
+  "weak_trend": {
+    "min_rsi": 40,
+    "max_rsi": 70,
+    "min_bb": 0.2,
+    "max_bb": 0.8,
+    "min_adx": 15,
+    "max_adx": 45,
+    "max_chop": 45,
+    "min_conv": 1.5,
+    "tp_mult": 2.0,
+    "sl_mult": 1.0
+  },
+  "bull_trend": {
+    "min_rsi": 30,
+    "max_rsi": 65,
+    "min_bb": 0.2,
+    "max_bb": 0.8,
+    "min_adx": 15,
+    "max_adx": 45,
+    "max_chop": 45,
+    "min_conv": 1.5,
+    "tp_mult": 2.0,
+    "sl_mult": 1.0
+  },
+  "low_vol": {
+    "min_rsi": 30,
+    "max_rsi": 65,
+    "min_bb": 0.2,
+    "max_bb": 0.8,
+    "min_adx": 15,
+    "max_adx": 45,
+    "max_chop": 50,
+    "min_conv": 1.5,
+    "tp_mult": 2.0,
+    "sl_mult": 1.0
+  }
+}

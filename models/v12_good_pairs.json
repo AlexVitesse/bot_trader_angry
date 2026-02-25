@@ -1,0 +1,17 @@
+{
+  "good_pairs": [
+    "XRP/USDT",
+    "ETH/USDT",
+    "DOGE/USDT",
+    "ADA/USDT",
+    "AVAX/USDT",
+    "LINK/USDT",
+    "DOT/USDT",
+    "NEAR/USDT"
+  ],
+  "excluded_pairs": [
+    "BNB/USDT",
+    "BTC/USDT",
+    "SOL/USDT"
+  ]
+}
