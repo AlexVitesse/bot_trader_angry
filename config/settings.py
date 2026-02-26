@@ -150,7 +150,7 @@ ML_HORIZON = 5              # Predecir retorno 5 velas adelante (20h)
 ML_SIGNAL_THRESHOLD = 0.5   # V13: mas permisivo (antes 0.7)
 
 # Risk Management
-ML_MAX_CONCURRENT = 4       # V13: 4 posiciones (antes 3, menos pares pero mas trades)
+ML_MAX_CONCURRENT = 3       # Igual que backtest validado
 ML_MAX_DD_PCT = 0.20        # 20% DD -> kill switch
 ML_MAX_DAILY_LOSS_PCT = 0.20  # 20% daily loss -> pausar (backtest max DD ~$20/$100)
 ML_RISK_PER_TRADE = 0.02    # 2% capital at risk
