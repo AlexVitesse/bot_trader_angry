@@ -924,25 +924,23 @@ class MLBot:
                 )
             else:
                 macro_str = ""
-            conv_str = "🎯 V8.5: PROD\n" if self.strategy.v85_enabled else ""
-            v9_str = "🔬 V9 LD: shadow\n" if self.strategy.v9_enabled else ""
+            conv_str = "🎯 ConvictionScorer: ON\n" if self.strategy.v85_enabled else ""
             shadow_hb = ""
             if self.shadow_enabled:
                 ss = self.shadow_portfolio.get_summary()
                 shadow_hb = (
-                    f"👻 Shadow V9: {ss['n_open']}pos | "
+                    f"👻 Shadow: {ss['n_open']}pos | "
                     f"{ss['n_trades']}t | ${ss['total_pnl']:+,.2f}\n"
                 )
             send_alert(
-                f"🟢 <b>BOT TODO OK</b>\n"
+                f"🟢 <b>{ML_V13_VERSION} OK</b>\n"
                 f"━━━━━━━━━━━━━━━\n"
                 f"💰 Balance: ${status['balance']:,.2f}\n"
-                f"📈 Pos: {status['positions']}/3\n"
-                f"{pnl_emoji} V9 PnL hoy: ${total_pnl:+,.2f} ({len(trades_today)}t)\n"
+                f"📈 Pos: {status['positions']}/{ML_MAX_CONCURRENT}\n"
+                f"{pnl_emoji} PnL hoy: ${total_pnl:+,.2f} ({len(trades_today)}t)\n"
                 f"📊 Regime: {self.strategy.regime}\n"
                 f"{macro_str}"
                 f"{conv_str}"
-                f"{v9_str}"
                 f"{shadow_hb}"
                 f"⚠️ DD: {status['dd']:.1%}\n"
                 f"⏱️ Uptime: {uptime_h:.1f}h\n"
