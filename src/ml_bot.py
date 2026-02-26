@@ -24,6 +24,7 @@ from config.settings import (
     ML_DB_FILE, MODELS_DIR, TELEGRAM_ENABLED, LOG_LEVEL,
     LOGS_DIR, INITIAL_CAPITAL, ML_MAX_DAILY_LOSS_PCT,
     ML_SHADOW_ENABLED, ML_V9_ENABLED, ML_TIMEFRAME,
+    ML_MAX_CONCURRENT, ML_V13_VERSION,
 )
 from src.ml_strategy import MLStrategy
 from src.portfolio_manager import PortfolioManager
@@ -221,25 +222,23 @@ class MLBot:
         extras = []
         if self.strategy.v84_enabled:
             extras.append(
-                f"🌐 Macro V8.4: score={self.strategy.macro_score:.2f}, "
+                f"🌐 Macro: score={self.strategy.macro_score:.2f}, "
                 f"sizing={self.strategy.get_sizing_multiplier():.2f}x"
             )
         if self.strategy.v85_enabled:
-            extras.append("🎯 V8.5 ConvictionScorer: PROD")
-        if self.strategy.v9_enabled:
-            extras.append("🔬 V9 LossDetector: shadow")
+            extras.append("🎯 ConvictionScorer: ON")
         if self.shadow_enabled:
             extras.append(
-                f"👻 Shadow V9: {len(self.shadow_portfolio.positions)} pos"
+                f"👻 Shadow: {len(self.shadow_portfolio.positions)} pos"
             )
         extra_str = "\n" + "\n".join(extras) if extras else ""
         send_alert(
-            f"🚀 <b>ML BOT INICIADO</b>\n"
+            f"🚀 <b>{ML_V13_VERSION} INICIADO</b>\n"
             f"━━━━━━━━━━━━━━━\n"
             f"📊 Modo: {TRADING_MODE.upper()}\n"
             f"{regime_emoji} Regime: {regime}\n"
-            f"🧠 Modelos: {count}\n"
-            f"📈 Posiciones: {n_pos}\n"
+            f"🧠 Modelos: {count} pares\n"
+            f"📈 Posiciones: {n_pos}/{ML_MAX_CONCURRENT}\n"
             f"💰 Balance: <b>${self.portfolio.balance:,.2f}</b>"
             f"{extra_str}"
         )
@@ -300,25 +299,23 @@ class MLBot:
             )
         else:
             macro_str = ""
-        conv_str = "\n🎯 V8.5 ConvictionScorer: PROD" if self.strategy.v85_enabled else ""
-        v9_str = "\n🔬 V9 LossDetector: shadow" if self.strategy.v9_enabled else ""
+        conv_str = "\n🎯 ConvictionScorer: ON" if self.strategy.v85_enabled else ""
         shadow_str = ""
         if self.shadow_enabled:
             ss = self.shadow_portfolio.get_summary()
             shadow_str = (
-                f"\n👻 Shadow V9: {ss['n_open']} pos | "
+                f"\n👻 Shadow: {ss['n_open']} pos | "
                 f"{ss['n_trades']} trades | ${ss['total_pnl']:+,.2f}"
             )
         send_alert(
-            f"📊 <b>STATUS</b>\n"
+            f"📊 <b>STATUS {ML_V13_VERSION}</b>\n"
             f"━━━━━━━━━━━━━━━\n"
             f"💰 Balance: ${status['balance']:,.2f}\n"
-            f"📈 Pos: {status['positions']}/3\n"
-            f"{pnl_emoji} V9 PnL hoy: ${total_pnl:+,.2f} ({len(trades_today)}t)\n"
+            f"📈 Pos: {status['positions']}/{ML_MAX_CONCURRENT}\n"
+            f"{pnl_emoji} PnL hoy: ${total_pnl:+,.2f} ({len(trades_today)}t)\n"
             f"📊 Regime: {self.strategy.regime}"
             f"{macro_str}"
             f"{conv_str}"
-            f"{v9_str}"
             f"{shadow_str}\n"
             f"⚠️ DD: {status['dd']:.1%}\n"
             f"⏱️ Uptime: {uptime_h:.1f}h"
@@ -646,8 +643,6 @@ class MLBot:
                     intel_parts.append(
                         f"🎯 Conv: {cm:.2f}x | Total: {sm:.2f}x"
                     )
-                if self.strategy.v9_enabled:
-                    intel_parts.append("🔬 LossDetector: PASS")
                 macro_str = "\n" + "\n".join(intel_parts) if intel_parts else ""
                 send_alert(
                     f"{side_emoji} <b>TRADE ABIERTO - {action}</b>\n"
@@ -901,23 +896,23 @@ class MLBot:
         if self.shadow_enabled:
             ss = self.shadow_portfolio.get_summary()
             shadow_str = (
-                f"\n👻 <b>Shadow V9</b>: {ss['n_trades']}t | "
+                f"\n👻 <b>Shadow</b>: {ss['n_trades']}t | "
                 f"${ss['total_pnl']:+,.2f} | WR {ss['win_rate']:.0f}%"
             )
 
         pnl_emoji = '📈' if total_pnl >= 0 else '📉'
         send_alert(
-            f"📊 <b>RESUMEN DIARIO</b>\n"
+            f"📊 <b>RESUMEN DIARIO {ML_V13_VERSION}</b>\n"
             f"━━━━━━━━━━━━━━━\n"
-            f"🔬 <b>V9</b>: {len(trades_today)}t | "
+            f"📈 Trades: {len(trades_today)} | "
             f"✅ {wins} ❌ {losses} | WR {wr:.0f}%\n"
-            f"{pnl_emoji} V9 PnL: <b>${total_pnl:+,.2f}</b>"
+            f"{pnl_emoji} PnL: <b>${total_pnl:+,.2f}</b>"
             f"{shadow_str}\n"
             f"━━━━━━━━━━━━━━━\n"
             f"💰 Balance: <b>${status['balance']:,.2f}</b>\n"
             f"⚠️ DD: {status['dd']:.1%}\n"
             f"📊 Regime: {self.strategy.regime}\n"
-            f"📈 Posiciones: {status['positions']}"
+            f"📈 Posiciones: {status['positions']}/{ML_MAX_CONCURRENT}"
         )
 
     def _on_kill_switch(self):
