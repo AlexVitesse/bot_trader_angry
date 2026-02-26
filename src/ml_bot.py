@@ -888,27 +888,26 @@ class MLBot:
         trades_today = self.portfolio.get_today_trades_from_db()  # Solo V9
         total_pnl = sum(t['pnl'] for t in trades_today)
 
-        # Contador de demo: 11 dias desde 2026-02-16 -> fin 2026-02-25
-        # TODO: Borrar este contador despues del 2026-02-25 (ver plan.txt)
-        demo_end = datetime(2026, 2, 25, tzinfo=timezone.utc)
+        # Contador de demo V13: 14 dias desde 2026-02-26 -> fin 2026-03-12
+        demo_end = datetime(2026, 3, 12, tzinfo=timezone.utc)
         days_left = (demo_end - datetime.now(timezone.utc)).days
         if days_left > 0:
-            demo_str = f"📅 Demo: {days_left} dias restantes"
+            demo_str = f"📅 V13 Demo: {days_left} dias restantes"
         elif days_left == 0:
-            demo_str = "📅 Demo: ULTIMO DIA - revisar resultados!"
+            demo_str = "📅 V13 Demo: ULTIMO DIA - revisar resultados!"
         else:
-            demo_str = "📅 Demo: FINALIZADA - revisar resultados!"
+            demo_str = "📅 V13 Demo: FINALIZADA - revisar resultados!"
 
         if self.recent_errors:
             errors_str = "\n".join(f"  ⚠️ {e[:80]}" for e in self.recent_errors[-5:])
             n_errors = len(self.recent_errors)
             send_alert(
-                f"🔴 <b>BOT ERRORES ({n_errors})</b>\n"
+                f"🔴 <b>{ML_V13_VERSION} ERRORES ({n_errors})</b>\n"
                 f"━━━━━━━━━━━━━━━\n"
                 f"{errors_str}\n"
                 f"\n"
                 f"💰 Balance: ${status['balance']:,.2f}\n"
-                f"📈 Pos: {status['positions']}/3\n"
+                f"📈 Pos: {status['positions']}/{ML_MAX_CONCURRENT}\n"
                 f"📊 Regime: {self.strategy.regime}\n"
                 f"⏱️ Uptime: {uptime_h:.1f}h\n"
                 f"{demo_str}"
