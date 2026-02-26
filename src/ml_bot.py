@@ -250,6 +250,7 @@ class MLBot:
             '/resume': self._cmd_resume,
             '/log': self._cmd_log,
             '/backup': self._cmd_backup,
+            '/update': self._cmd_update,
             '/pull': self._cmd_pull,
             '/install': self._cmd_install,
             '/restart': self._cmd_restart,
@@ -274,13 +275,11 @@ class MLBot:
             f"  /resume - Reanudar si esta pausado\n"
             f"  /restart - Reiniciar el bot\n"
             f"\n"
-            f"<b>DevOps (sin detener bot):</b>\n"
-            f"  /pull - git pull (descargar cambios)\n"
-            f"  /install - poetry install (deps)\n"
-            f"  /retrain - Reentrenar modelos ML\n"
-            f"\n"
-            f"💡 Flujo tipico de update:\n"
-            f"  /pull -> /install -> /restart"
+            f"<b>DevOps:</b>\n"
+            f"  /update - Pull + Install + Restart (todo)\n"
+            f"  /pull - git stash + pull\n"
+            f"  /install - poetry install\n"
+            f"  /retrain - Reentrenar modelos ML"
         )
 
     def _cmd_status(self):
@@ -368,22 +367,32 @@ class MLBot:
             logger.warning(f"[BOT] Error en backup: {e}")
 
     def _cmd_pull(self):
-        """Responde al comando /pull - ejecuta git pull en background."""
-        send_alert("📥 Ejecutando git pull...")
+        """Responde al comando /pull - ejecuta git stash + git pull en background."""
+        send_alert("📥 Ejecutando git pull (con stash si hay conflictos)...")
         logger.info("[BOT] Pull solicitado via /pull")
         project_root = str(Path(__file__).parent.parent)
 
         def _do_pull():
             try:
+                # Primero stash para evitar conflictos con cambios locales
+                stash_result = subprocess.run(
+                    ['git', 'stash'], capture_output=True, text=True,
+                    timeout=30, cwd=project_root,
+                )
+                stashed = "No local changes" not in stash_result.stdout
+
+                # Luego pull
                 result = subprocess.run(
                     ['git', 'pull'], capture_output=True, text=True,
                     timeout=60, cwd=project_root,
                 )
-                output = (result.stdout.strip() or result.stderr.strip() or "Sin output")[:500]
+                output = (result.stdout.strip() or result.stderr.strip() or "Sin output")[:400]
                 ok = result.returncode == 0
+
+                stash_msg = "\n📦 Stash: cambios locales guardados" if stashed else ""
                 emoji = "✅" if ok else "❌"
-                send_alert(f"{emoji} <b>GIT PULL</b>\n<code>{output}</code>")
-                logger.info(f"[BOT] git pull: rc={result.returncode} {output[:100]}")
+                send_alert(f"{emoji} <b>GIT PULL</b>\n<code>{output}</code>{stash_msg}")
+                logger.info(f"[BOT] git pull: rc={result.returncode} stashed={stashed}")
             except Exception as e:
                 send_alert(f"❌ Error en git pull: {e}")
                 logger.error(f"[BOT] git pull error: {e}")
@@ -425,6 +434,64 @@ class MLBot:
         logger.info("[BOT] Restart solicitado via /restart - exit code 43")
         self._exit_code = 43
         self.running = False
+
+    def _cmd_update(self):
+        """Responde al comando /update - hace pull + install + restart automatico."""
+        n_pos = len(self.portfolio.positions)
+        send_alert(
+            f"🔄 <b>UPDATE COMPLETO INICIADO</b>\n"
+            f"━━━━━━━━━━━━━━━\n"
+            f"📈 Posiciones: {n_pos} (SL activos)\n"
+            f"1️⃣ git stash + pull\n"
+            f"2️⃣ poetry install\n"
+            f"3️⃣ restart"
+        )
+        logger.info("[BOT] Update completo solicitado via /update")
+        project_root = str(Path(__file__).parent.parent)
+
+        def _do_update():
+            try:
+                # 1. Git stash + pull
+                subprocess.run(
+                    ['git', 'stash'], capture_output=True, text=True,
+                    timeout=30, cwd=project_root,
+                )
+                pull_result = subprocess.run(
+                    ['git', 'pull'], capture_output=True, text=True,
+                    timeout=60, cwd=project_root,
+                )
+                pull_ok = pull_result.returncode == 0
+                pull_out = (pull_result.stdout.strip() or pull_result.stderr.strip())[:200]
+
+                if not pull_ok:
+                    send_alert(f"❌ <b>UPDATE FALLIDO</b>\ngit pull error:\n<code>{pull_out}</code>")
+                    return
+
+                send_alert(f"✅ Pull OK\n<code>{pull_out}</code>\n\n📦 Instalando deps...")
+
+                # 2. Poetry install
+                install_result = subprocess.run(
+                    ['poetry', 'install', '--no-interaction'], capture_output=True, text=True,
+                    timeout=300, cwd=project_root,
+                )
+                install_ok = install_result.returncode == 0
+
+                if not install_ok:
+                    install_err = (install_result.stderr.strip() or install_result.stdout.strip())[:300]
+                    send_alert(f"❌ <b>UPDATE FALLIDO</b>\npoetry install error:\n<code>{install_err}</code>")
+                    return
+
+                send_alert("✅ Install OK\n\n🔄 Reiniciando bot...")
+
+                # 3. Trigger restart
+                self._exit_code = 43
+                self.running = False
+
+            except Exception as e:
+                send_alert(f"❌ Error en update: {e}")
+                logger.error(f"[BOT] update error: {e}")
+
+        threading.Thread(target=_do_update, daemon=True).start()
 
     def _cmd_retrain(self):
         """Responde al comando /retrain - ejecuta ml_export_models.py en background."""
