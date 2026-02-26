@@ -255,6 +255,8 @@ class MLBot:
             '/install': self._cmd_install,
             '/restart': self._cmd_restart,
             '/retrain': self._cmd_retrain,
+            '/clearlog': self._cmd_clearlog,
+            '/resetdb': self._cmd_resetdb,
         })
         self.tg_poller.start()
 
@@ -275,11 +277,15 @@ class MLBot:
             f"  /resume - Reanudar si esta pausado\n"
             f"  /restart - Reiniciar el bot\n"
             f"\n"
+            f"<b>Limpieza:</b>\n"
+            f"  /clearlog - Borrar archivo de log\n"
+            f"  /resetdb - Borrar trades antiguos\n"
+            f"\n"
             f"<b>DevOps:</b>\n"
-            f"  /update - Pull + Install + Restart (todo)\n"
+            f"  /update - Pull + Install + Restart\n"
             f"  /pull - git stash + pull\n"
             f"  /install - poetry install\n"
-            f"  /retrain - Reentrenar modelos ML"
+            f"  /retrain - Reentrenar modelos"
         )
 
     def _cmd_status(self):
@@ -365,6 +371,58 @@ class MLBot:
         except Exception as e:
             send_alert(f"⚠️ Error en backup: {e}")
             logger.warning(f"[BOT] Error en backup: {e}")
+
+    def _cmd_clearlog(self):
+        """Responde al comando /clearlog - borra el archivo de log."""
+        log_file = LOGS_DIR / "ml_bot.log"
+        try:
+            if log_file.exists():
+                size_kb = log_file.stat().st_size / 1024
+                log_file.unlink()
+                # Recrear archivo vacio
+                log_file.touch()
+                send_alert(f"🗑️ <b>LOG BORRADO</b>\n{size_kb:.0f} KB eliminados\nNuevo log iniciado")
+                logger.info("[BOT] Log borrado via /clearlog")
+            else:
+                send_alert("ℹ️ Archivo de log no existe")
+        except Exception as e:
+            send_alert(f"⚠️ Error borrando log: {e}")
+            logger.warning(f"[BOT] Error en clearlog: {e}")
+
+    def _cmd_resetdb(self):
+        """Responde al comando /resetdb - borra trades antiguos de la BD."""
+        import sqlite3 as _sqlite3
+        n_pos = len(self.portfolio.positions)
+        if n_pos > 0:
+            send_alert(
+                f"⚠️ <b>NO SE PUEDE RESETEAR</b>\n"
+                f"Hay {n_pos} posiciones abiertas.\n"
+                f"Cierra posiciones primero."
+            )
+            return
+        try:
+            conn = _sqlite3.connect(str(ML_DB_FILE))
+            cur = conn.cursor()
+            # Contar trades antes
+            cur.execute("SELECT COUNT(*) FROM ml_trades")
+            count_before = cur.fetchone()[0]
+            # Borrar trades
+            cur.execute("DELETE FROM ml_trades")
+            # Reset estado
+            cur.execute("UPDATE ml_state SET peak = balance WHERE id = 1")
+            conn.commit()
+            conn.close()
+            send_alert(
+                f"🗑️ <b>BD RESETEADA</b>\n"
+                f"━━━━━━━━━━━━━━━\n"
+                f"🗂️ {count_before} trades eliminados\n"
+                f"📊 Peak reseteado a balance actual\n"
+                f"✅ Listo para V13 limpio"
+            )
+            logger.info(f"[BOT] BD reseteada via /resetdb: {count_before} trades eliminados")
+        except Exception as e:
+            send_alert(f"⚠️ Error reseteando BD: {e}")
+            logger.warning(f"[BOT] Error en resetdb: {e}")
 
     def _cmd_pull(self):
         """Responde al comando /pull - ejecuta git stash + git pull en background."""
