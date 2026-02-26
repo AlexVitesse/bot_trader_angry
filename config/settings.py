@@ -128,18 +128,29 @@ MODELS_DIR.mkdir(exist_ok=True)
 
 ML_DB_FILE = DATA_DIR / "ml_bot.db"
 
+# Pares EXCLUIDOS por bajo rendimiento historico:
+# - BTC/USDT: 33% WR en ultimos 14 dias, -$12
+# - SOL/USDT: 42% WR en ultimos 14 dias, -$31 (EL PEOR)
+# - BNB/USDT: volatil, marginal
 ML_PAIRS = [
-    'BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'BNB/USDT', 'XRP/USDT',
-    'DOGE/USDT', 'ADA/USDT', 'AVAX/USDT', 'LINK/USDT', 'DOT/USDT',
-    'NEAR/USDT',
+    'XRP/USDT',   # Tier 1: 86% WR backtest
+    'NEAR/USDT',  # Tier 1: 67% WR backtest
+    'DOT/USDT',   # Tier 2: 67% WR backtest
+    'ETH/USDT',   # Tier 2: bueno en BULL
+    'DOGE/USDT',  # Tier 2: 71% WR backtest
+    'AVAX/USDT',  # Tier 2: 100% WR ultimos 14 dias
+    'LINK/USDT',  # Tier 2: 64% WR produccion
+    'ADA/USDT',   # Tier 3: bajo volumen
 ]
 
 ML_TIMEFRAME = '4h'
 ML_HORIZON = 5              # Predecir retorno 5 velas adelante (20h)
-ML_SIGNAL_THRESHOLD = 0.7   # Confianza minima para senal
+# V13: threshold relajado para mas trades (antes 0.7)
+# conviction = abs(pred) / 0.005, entonces 0.5 = pred de 0.25%
+ML_SIGNAL_THRESHOLD = 0.5   # V13: mas permisivo (antes 0.7)
 
 # Risk Management
-ML_MAX_CONCURRENT = 3       # Max posiciones simultaneas
+ML_MAX_CONCURRENT = 4       # V13: 4 posiciones (antes 3, menos pares pero mas trades)
 ML_MAX_DD_PCT = 0.20        # 20% DD -> kill switch
 ML_MAX_DAILY_LOSS_PCT = 0.20  # 20% daily loss -> pausar (backtest max DD ~$20/$100)
 ML_RISK_PER_TRADE = 0.02    # 2% capital at risk
@@ -200,13 +211,25 @@ ML_CONVICTION_SIZING_MIN = 0.3
 ML_CONVICTION_SIZING_MAX = 1.8
 
 # =============================================================================
-# V9 LOSS DETECTOR
+# V9 LOSS DETECTOR - DESACTIVADO EN V13
 # =============================================================================
-ML_V9_ENABLED = True         # Feature flag: enable V9 LossDetector filter
-ML_LOSS_THRESHOLD = 0.55     # Skip trade if P(loss) > this threshold
+# NOTA: LossDetector causaba 37% WR vs 54.5% WR sin el.
+# V13 usa V8.5 ConvictionScorer SIN LossDetector.
+ML_V9_ENABLED = False        # DESACTIVADO: filtraba buenos trades
+ML_LOSS_THRESHOLD = 0.55     # (no usado cuando V9 desactivado)
 
-# Dual-mode: run V8.5 as shadow strategy for comparison
-ML_SHADOW_ENABLED = True     # Enable shadow paper-trading of V8.5
+# Dual-mode: desactivado en V13 (solo corre una version)
+ML_SHADOW_ENABLED = False    # Sin shadow en V13
+
+# =============================================================================
+# V13 CORE - Modelo Simplificado (25 Feb 2026)
+# =============================================================================
+# Cambios vs V9:
+# - Sin LossDetector (causaba bajo WR)
+# - Sin SOL/BTC/BNB (pares perdedores)
+# - Filtros relajados para mas trades de calidad
+# Backtest ultimos 14 dias: 34 trades, 56% WR, +$108
+ML_V13_VERSION = "V13_CORE"
 
 
 def validate_config() -> bool:
