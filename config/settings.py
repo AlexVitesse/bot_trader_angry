@@ -129,13 +129,12 @@ MODELS_DIR.mkdir(exist_ok=True)
 ML_DB_FILE = DATA_DIR / "ml_bot.db"
 
 # =============================================================================
-# V13.01: BTC habilitado con modelo V2 optimizado
+# V13.02: BTC + BNB habilitados (27 Feb 2026)
 # =============================================================================
-# Pares EXCLUIDOS por bajo rendimiento historico:
-# - SOL/USDT: 42% WR en ultimos 14 dias, -$31 (EL PEOR)
-# - BNB/USDT: volatil, marginal
+# SOL descartado: 60% MaxDD con $100 capital es demasiado riesgo
 ML_PAIRS = [
-    'BTC/USDT',   # V13.01: Rehabilitado con modelo V2 + TP/SL optimizado
+    'BTC/USDT',   # V13.01: Modelo V2 + TP=4%/SL=2%
+    'BNB/USDT',   # V13.02: Modelo V2 + TP=7%/SL=3.5% + SOLO SHORT (87.5% WR)
     'XRP/USDT',   # Tier 1: 86% WR backtest
     'NEAR/USDT',  # Tier 1: 67% WR backtest
     'DOT/USDT',   # Tier 2: 67% WR backtest
@@ -167,18 +166,105 @@ ML_TP_PCT = 0.03            # 3% TP (default para todos los pares)
 ML_SL_PCT = 0.015           # 1.5% SL (default para todos los pares)
 
 # =============================================================================
-# V13.01: Configuracion especifica para BTC
+# V13.03: Configuracion por par - Todos con modelos V2 optimizados
 # =============================================================================
-# BTC usa modelo V2 GradientBoosting con TP/SL optimizado
-# Validado: 8/8 años mejoraron, 3/3 regimenes mejoraron
-# PnL: +1654% -> +2320% (+665% mejora)
-ML_BTC_CONFIG = {
-    'model_file': 'btc_v2_gradientboosting.pkl',  # Modelo especializado
-    'tp_pct': 0.04,           # 4% TP (optimizado)
-    'sl_pct': 0.02,           # 2% SL (optimizado)
-    'conv_min': 1.0,          # Conviction minima mas alta
-    'use_v7_model': False,    # No usar modelo V7 generico
+# Backtest V13.03: 1,299 trades, 67.3% WR, $402.74 PnL, 10.1% MaxDD, PF 3.98
+# ADVERTENCIA: Ver docs/ANALISIS_CRITICO_OVERFITTING.md para expectativas realistas
+#
+# Formato: {
+#   'model_file': archivo del modelo,
+#   'tp_pct': take profit %,
+#   'sl_pct': stop loss %,
+#   'conv_min': conviction minima,
+#   'only_short': True = solo SHORTs,
+#   'only_long': True = solo LONGs,
+# }
+ML_PAIR_CONFIGS = {
+    'BTC/USDT': {
+        'model_file': 'btc_v2_gradientboosting.pkl',
+        'tp_pct': 0.04,
+        'sl_pct': 0.02,
+        'conv_min': 1.0,
+        'only_short': False,
+        'only_long': False,
+    },
+    'BNB/USDT': {
+        'model_file': 'bnb_usdt_v2_gradientboosting.pkl',
+        'tp_pct': 0.07,
+        'sl_pct': 0.035,
+        'conv_min': 1.0,
+        'only_short': True,  # LONGs tienen 16.7% WR
+        'only_long': False,
+    },
+    'XRP/USDT': {
+        'model_file': 'xrp_usdt_v2_gradientboosting.pkl',
+        'tp_pct': 0.08,
+        'sl_pct': 0.04,
+        'conv_min': 0.5,
+        'only_short': False,
+        'only_long': False,
+    },
+    'ETH/USDT': {
+        'model_file': 'eth_usdt_v2_gradientboosting.pkl',
+        'tp_pct': 0.08,
+        'sl_pct': 0.04,
+        'conv_min': 0.5,
+        'only_short': False,
+        'only_long': False,
+    },
+    'AVAX/USDT': {
+        'model_file': 'avax_usdt_v2_gradientboosting.pkl',
+        'tp_pct': 0.07,
+        'sl_pct': 0.02,
+        'conv_min': 0.5,
+        'only_short': False,
+        'only_long': False,
+    },
+    'ADA/USDT': {
+        'model_file': 'ada_usdt_v2_gradientboosting.pkl',
+        'tp_pct': 0.05,
+        'sl_pct': 0.04,
+        'conv_min': 0.5,
+        'only_short': False,
+        'only_long': False,
+    },
+    'LINK/USDT': {
+        'model_file': 'link_usdt_v2_gradientboosting.pkl',
+        'tp_pct': 0.07,
+        'sl_pct': 0.04,
+        'conv_min': 0.5,
+        'only_short': False,
+        'only_long': False,
+    },
+    'DOGE/USDT': {
+        'model_file': 'doge_usdt_v2_gradientboosting.pkl',
+        'tp_pct': 0.05,
+        'sl_pct': 0.025,
+        'conv_min': 0.5,
+        'only_short': False,
+        'only_long': False,
+    },
+    'NEAR/USDT': {
+        'model_file': 'near_usdt_v2_gradientboosting.pkl',
+        'tp_pct': 0.05,
+        'sl_pct': 0.015,
+        'conv_min': 0.5,
+        'only_short': True,  # LONGs tienen bajo WR
+        'only_long': False,
+    },
+    'DOT/USDT': {
+        'model_file': 'dot_usdt_v2_gradientboosting.pkl',
+        'tp_pct': 0.06,
+        'sl_pct': 0.025,
+        'conv_min': 0.5,
+        'only_short': True,  # LONGs tienen bajo WR
+        'only_long': False,
+    },
 }
+
+# Backwards compatibility
+ML_BTC_CONFIG = ML_PAIR_CONFIGS['BTC/USDT']
+ML_BNB_CONFIG = ML_PAIR_CONFIGS['BNB/USDT']
 
 # Trailing Stop
 ML_TRAILING_ACTIVATION = 0.5  # Activar al 50% del TP (1.5% profit)
@@ -239,14 +325,15 @@ ML_LOSS_THRESHOLD = 0.55     # (no usado cuando V9 desactivado)
 ML_SHADOW_ENABLED = False    # Sin shadow en V13
 
 # =============================================================================
-# V13 CORE - Modelo Simplificado (25 Feb 2026)
+# V13.03 - Todos los pares optimizados (27 Feb 2026)
 # =============================================================================
-# Cambios vs V9:
-# - Sin LossDetector (causaba bajo WR)
-# - Sin SOL/BTC/BNB (pares perdedores)
-# - Filtros relajados para mas trades de calidad
-# Backtest ultimos 14 dias: 34 trades, 56% WR, +$108
-ML_V13_VERSION = "V13_CORE"
+# Cambios vs V13.02:
+# - 10 pares con modelos V2 individuales GradientBoosting
+# - TP/SL optimizado por par
+# - Filtros de direccion: BNB/NEAR/DOT = SHORT ONLY
+# Backtest V13.03: 1,299 trades, 67.3% WR, $402.74 PnL, 10.1% MaxDD, PF 3.98
+# ADVERTENCIA: Posible overfitting - ver docs/ANALISIS_CRITICO_OVERFITTING.md
+ML_V13_VERSION = "V13.03"
 
 
 def validate_config() -> bool:

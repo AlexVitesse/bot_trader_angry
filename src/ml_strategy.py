@@ -33,7 +33,7 @@ from config.settings import (
     ML_V85_ENABLED, ML_CONVICTION_SKIP_MULT,
     ML_CONVICTION_SIZING_MIN, ML_CONVICTION_SIZING_MAX,
     ML_V9_ENABLED, ML_LOSS_THRESHOLD, ML_SHADOW_ENABLED,
-    ML_BTC_CONFIG,
+    ML_BTC_CONFIG, ML_PAIR_CONFIGS,
 )
 
 logger = logging.getLogger(__name__)
@@ -76,7 +76,14 @@ class MLStrategy:
         self.v95_thresholds = {}      # {pair: threshold}
         self.v95_fcols = []           # Feature columns (same for all pairs)
 
-        # V13.01: BTC V2 model (specialized GradientBoosting)
+        # V13.03: Per-pair V2 models (specialized GradientBoosting)
+        self.v2_models = {}       # {pair: model}
+        self.v2_scalers = {}      # {pair: scaler}
+        self.v2_fcols = {}        # {pair: feature_cols}
+        self.v2_pred_stds = {}    # {pair: pred_std}
+        self.v2_enabled = {}      # {pair: bool}
+
+        # Backwards compatibility
         self.btc_v2_model = None
         self.btc_v2_scaler = None
         self.btc_v2_fcols = []
@@ -123,11 +130,10 @@ class MLStrategy:
         if not self.v95_enabled and self.v9_enabled:
             self._load_loss_detector()
 
-        # V13.01: BTC V2 specialized model
-        if 'BTC/USDT' in ML_PAIRS and not ML_BTC_CONFIG.get('use_v7_model', True):
-            self._load_btc_v2_model()
+        # V13.03: Load V2 models for all pairs with config
+        self._load_v2_models()
 
-        logger.info(f"[ML] {count} modelos cargados")
+        logger.info(f"[ML] {count} modelos V7 cargados, {len(self.v2_models)} modelos V2 cargados")
         return count
 
     def _load_macro_model(self):
@@ -262,6 +268,65 @@ class MLStrategy:
         except Exception as e:
             logger.error(f"[ML] Error cargando BTC V2 model: {e}")
             self.btc_v2_enabled = False
+
+    def _load_v2_models(self):
+        """Carga modelos V2 para todos los pares con configuracion en ML_PAIR_CONFIGS."""
+        for pair in ML_PAIRS:
+            if pair not in ML_PAIR_CONFIGS:
+                continue
+
+            config = ML_PAIR_CONFIGS[pair]
+            model_file = config.get('model_file')
+            if not model_file:
+                continue
+
+            model_path = MODELS_DIR / model_file
+            if not model_path.exists():
+                logger.warning(f"[ML] V2 model no encontrado para {pair}: {model_path}")
+                self.v2_enabled[pair] = False
+                continue
+
+            try:
+                data = joblib.load(model_path)
+                self.v2_models[pair] = data.get('model')
+                self.v2_scalers[pair] = data.get('scaler')
+                self.v2_fcols[pair] = data.get('feature_cols', [])
+                self.v2_pred_stds[pair] = data.get('pred_std', 0.01)
+                self.v2_enabled[pair] = True
+
+                tp_pct = config.get('tp_pct', 0.03)
+                sl_pct = config.get('sl_pct', 0.015)
+                only_short = config.get('only_short', False)
+                only_long = config.get('only_long', False)
+                dir_str = "SHORT_ONLY" if only_short else ("LONG_ONLY" if only_long else "BOTH")
+
+                logger.info(f"[ML] V2 {pair}: {len(self.v2_fcols[pair])} features, "
+                            f"TP={tp_pct*100}%, SL={sl_pct*100}%, {dir_str}")
+
+                # Backwards compatibility for BTC
+                if pair == 'BTC/USDT':
+                    self.btc_v2_model = self.v2_models[pair]
+                    self.btc_v2_scaler = self.v2_scalers[pair]
+                    self.btc_v2_fcols = self.v2_fcols[pair]
+                    self.btc_v2_pred_std = self.v2_pred_stds[pair]
+                    self.btc_v2_enabled = True
+
+            except Exception as e:
+                logger.error(f"[ML] Error cargando V2 model {pair}: {e}")
+                self.v2_enabled[pair] = False
+
+    def get_pair_config(self, pair: str) -> dict:
+        """Obtiene configuracion para un par (TP/SL/conviction/direction)."""
+        if pair in ML_PAIR_CONFIGS:
+            return ML_PAIR_CONFIGS[pair]
+        # Default config
+        return {
+            'tp_pct': 0.03,
+            'sl_pct': 0.015,
+            'conv_min': 0.5,
+            'only_short': False,
+            'only_long': False,
+        }
 
     # =========================================================================
     # V9: LOSS DETECTOR + PAIR TA + BTC CONTEXT
@@ -752,13 +817,14 @@ class MLStrategy:
 
         V8.4: Uses adaptive threshold from macro score.
         V8.5: ConvictionScorer filters and adjusts per-trade sizing.
+        V13.03: Uses V2 models for all pairs, per-pair TP/SL/conviction, direction filtering.
         Returns sizing_mult in each signal for portfolio manager.
         """
         if open_pairs is None:
             open_pairs = set()
 
-        # V8.4: adaptive threshold
-        thresh = self.get_adaptive_threshold()
+        # V8.4: adaptive threshold (base, modified by per-pair conv_min)
+        base_thresh = self.get_adaptive_threshold()
         macro_sizing = self.get_sizing_multiplier()
 
         n_open = len(open_pairs)
@@ -776,26 +842,32 @@ class MLStrategy:
                 if len(df) < 250:
                     continue
 
-                # V13.01: Use BTC V2 model for BTC/USDT if enabled
-                if pair == 'BTC/USDT' and self.btc_v2_enabled:
-                    feat = self.compute_features_btc_v2(df)
+                # Get per-pair config
+                pair_config = self.get_pair_config(pair)
+                conv_min = pair_config.get('conv_min', 0.5)
+                only_short = pair_config.get('only_short', False)
+                only_long = pair_config.get('only_long', False)
+
+                # V13.03: Use V2 model if available for this pair
+                if self.v2_enabled.get(pair, False):
+                    feat = self.compute_features_btc_v2(df)  # Same 54 features for all V2 models
                     feat = feat.replace([np.inf, -np.inf], np.nan)
-                    cols = [c for c in self.btc_v2_fcols if c in feat.columns]
+                    cols = [c for c in self.v2_fcols[pair] if c in feat.columns]
                     last_feat = feat[cols].iloc[-1:].fillna(0)
 
                     # Scale features if scaler exists
-                    if self.btc_v2_scaler is not None:
+                    if self.v2_scalers.get(pair) is not None:
                         last_feat_scaled = pd.DataFrame(
-                            self.btc_v2_scaler.transform(last_feat),
+                            self.v2_scalers[pair].transform(last_feat),
                             columns=cols
                         )
                     else:
                         last_feat_scaled = last_feat
 
-                    pred = self.btc_v2_model.predict(last_feat_scaled)[0]
-                    ps = self.btc_v2_pred_std
+                    pred = self.v2_models[pair].predict(last_feat_scaled)[0]
+                    ps = self.v2_pred_stds.get(pair, 0.01)
                 else:
-                    # Standard V7 model
+                    # Fallback to V7 model
                     feat = self.compute_features(df)
                     feat = feat.replace([np.inf, -np.inf], np.nan)
 
@@ -818,10 +890,20 @@ class MLStrategy:
                         self.pred_stds[pair] = ps
 
                 conf = abs(pred) / ps
+                # Use per-pair conviction minimum
+                thresh = max(base_thresh, conv_min)
                 if conf < thresh:
                     continue
 
                 direction = 1 if pred > 0 else -1
+
+                # V13.03: Direction filtering (only_short, only_long)
+                if only_short and direction == 1:
+                    logger.debug(f"[ML] {pair} skipped: LONG signal but only_short=True")
+                    continue
+                if only_long and direction == -1:
+                    logger.debug(f"[ML] {pair} skipped: SHORT signal but only_long=True")
+                    continue
 
                 # Regime filter (V7 rules, NO override from V8.4)
                 if self.regime == 'BULL' and direction == -1:
@@ -843,6 +925,7 @@ class MLStrategy:
                 total_sizing = macro_sizing * conv_mult
                 total_sizing = max(0.2, min(2.5, total_sizing))
 
+                # Include per-pair TP/SL in signal for portfolio manager
                 signals.append({
                     'pair': pair,
                     'direction': direction,
@@ -852,6 +935,8 @@ class MLStrategy:
                     'atr_pct': atr_pct,
                     'sizing_mult': total_sizing,
                     'conviction_mult': conv_mult,
+                    'tp_pct': pair_config.get('tp_pct', 0.03),
+                    'sl_pct': pair_config.get('sl_pct', 0.015),
                 })
 
             except Exception as e:
