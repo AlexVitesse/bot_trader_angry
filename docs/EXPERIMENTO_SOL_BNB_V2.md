@@ -297,4 +297,106 @@ ML_BNB_CONFIG = {
 
 ---
 
+## Experimentos de Mejora (27 Feb 2026)
+
+### BNB - Experimentos
+
+#### Filtro Solo SHORT
+| Config | Trades | WR | PnL |
+|--------|--------|-----|-----|
+| Baseline | 58 | 55.2% | +$76 |
+| **Solo SHORT** | **40** | **72.5%** | **+$102** |
+
+**Resultado:** +$26 mejora con solo SHORT
+
+#### Solo SHORT + Diferentes TP/SL
+| TP/SL | Trades | WR | PnL |
+|-------|--------|-----|-----|
+| 4%/2% | 40 | 60.0% | +$58 |
+| 5%/2.5% | 40 | 72.5% | +$102 |
+| **6%/3%** | **40** | **80.0%** | **+$139** |
+| 4%/2.5% | 40 | 72.5% | +$80 |
+
+**MEJOR CONFIG BNB: Solo SHORT + TP=6%/SL=3%**
+- 80% Win Rate
+- +$139 en 3 meses
+- Mejora de +$63 vs baseline
+
+#### Conviction Threshold (Solo SHORT)
+| Conv Min | Trades | WR | PnL |
+|----------|--------|-----|-----|
+| 0.7 | 57 | 61.4% | +$86 |
+| **1.0** | **40** | **72.5%** | **+$102** |
+| 1.2 | 32 | 68.8% | +$86 |
+| 1.5 | 24 | 75.0% | +$76 |
+
+**Conclusión BNB:** Conv >= 1.0 es óptimo para SHORT
+
+### SOL - Experimentos
+
+#### Conviction Threshold
+| Conv Min | Trades | WR | PnL |
+|----------|--------|-----|-----|
+| 1.0 (baseline) | 8 | 12.5% | -$15 |
+| 0.7 | 30 | 36.7% | +$1 |
+| 0.5 | 72 | 37.5% | +$11 |
+| 0.3 | 180 | 31.7% | -$48 |
+
+#### Conv Bajo + Solo SHORT
+| Conv Min | Trades | WR | PnL |
+|----------|--------|-----|-----|
+| 0.3 SHORT | 95 | 37.9% | +$24 |
+| **0.5 SHORT** | **37** | **43.2%** | **+$19** |
+| 0.7 SHORT | 13 | 46.2% | +$6 |
+
+**Mejor opción actual:** Conv >= 0.5 + Solo SHORT (43.2% WR, +$19)
+
+#### Diferentes TP/SL (Conv >= 0.5)
+| TP/SL | Trades | WR | PnL |
+|-------|--------|-----|-----|
+| 3%/1.5% | 72 | 33.3% | $0 |
+| **4%/2%** | **72** | **36.1%** | **+$8** |
+| 5%/2.5% | 72 | 37.5% | +$11 |
+| 6%/3% | 72 | 34.7% | -$17 |
+
+#### Modelo Entrenado Solo 2024-2026
+| TP/SL | Trades | WR | PnL |
+|-------|--------|-----|-----|
+| 5%/2.5% | 223 | 35.4% | -$0 |
+| 4%/2% | 223 | 33.2% | -$7 |
+| **3%/1.5%** | **223** | **36.3%** | **+$30** |
+
+**Observación:** Modelo reciente + TP/SL bajo genera más trades pero WR sigue bajo.
+
+### Conclusiones de Mejora
+
+#### BNB - LISTO PARA HABILITAR
+```python
+ML_BNB_CONFIG = {
+    'model_file': 'bnb_usdt_v2_gradientboosting.pkl',
+    'tp_pct': 0.06,           # 6% TP (optimizado)
+    'sl_pct': 0.03,           # 3% SL (optimizado)
+    'conv_min': 1.0,
+    'only_short': True,       # CRITICO: solo SHORTs
+}
+```
+- 80% WR, +$139 en 3 meses
+- Mucho mejor que baseline (+$63)
+
+#### SOL - AUN NO RECOMENDADO
+Mejor opción encontrada: Conv >= 0.5 + Solo SHORT
+- 43.2% WR, +$19 en 3 meses
+- WR demasiado bajo para confiar
+- Necesita más experimentación
+
+### Ideas Pendientes para SOL
+- [ ] Probar clasificador binario WIN/LOSS
+- [ ] Features de funding rate / open interest
+- [ ] Correlación con BTC/ETH como feature
+- [ ] Probar XGBoost o CatBoost
+- [ ] Ensemble de múltiples modelos
+
+---
+
 *Documento creado: 27 Feb 2026*
+*Actualizado: 27 Feb 2026 - Experimentos de mejora BNB y SOL*
