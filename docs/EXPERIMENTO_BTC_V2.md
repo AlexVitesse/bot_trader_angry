@@ -445,5 +445,63 @@ MAX_HOLD = 20  # candles (80 horas)
 
 ---
 
+---
+
+## V13.01: Integración en Producción
+
+### Decisión
+Integrar BTC/USDT en V13 con la configuración optimizada del modelo V2.
+
+### Backtest V13 + BTC
+| Configuración | Trades | WR | PnL | Mejora |
+|---------------|--------|-----|-----|--------|
+| V13 sin BTC | 34 | 55.9% | +34.9% | - |
+| V13 con BTC | 40 | 55.0% | +45.9% | +11.0% |
+
+### Cambios Implementados
+
+#### 1. `config/settings.py`
+```python
+# V13.01: BTC habilitado con modelo V2 optimizado
+ML_PAIRS = [
+    'BTC/USDT',   # V13.01: Rehabilitado con modelo V2 + TP/SL optimizado
+    'XRP/USDT',   # Tier 1: 86% WR backtest
+    'NEAR/USDT',  # Tier 1: 67% WR backtest
+    # ... otros pares
+]
+
+# V13.01: Configuracion especifica para BTC
+ML_BTC_CONFIG = {
+    'model_file': 'btc_v2_gradientboosting.pkl',
+    'tp_pct': 0.04,           # 4% TP (optimizado)
+    'sl_pct': 0.02,           # 2% SL (optimizado)
+    'conv_min': 1.0,          # Conviction minima mas alta
+    'use_v7_model': False,    # No usar modelo V7 generico
+}
+```
+
+#### 2. `src/ml_strategy.py`
+- Nuevo método `_load_btc_v2_model()`: Carga modelo especializado
+- Nuevo método `compute_features_btc_v2()`: Calcula 54 features para BTC
+- Modificación en `generate_signals()` y `generate_dual_signals()`: Usa modelo BTC V2 cuando el par es BTC/USDT
+
+#### 3. `src/portfolio_manager.py`
+- Nueva función `get_pair_tp_sl(pair)`: Retorna TP/SL específico por par
+- BTC usa 4%/2%, otros pares usan 3%/1.5% (default)
+- Todas las creaciones/adopciones de posiciones usan TP/SL per-pair
+
+### Resumen V13.01
+| Aspecto | V13 | V13.01 |
+|---------|-----|--------|
+| Pares | 8 (sin BTC) | 9 (con BTC) |
+| Modelo BTC | - | GradientBoosting V2 |
+| TP/SL BTC | - | 4%/2% (optimizado) |
+| TP/SL otros | 3%/1.5% | 3%/1.5% (sin cambio) |
+| Trades extra | - | +6 trades (Feb 2026) |
+| PnL extra | - | +11% (Feb 2026) |
+
+---
+
 *Documento creado: 27 Feb 2026*
 *Actualizado: 27 Feb 2026 - Descubrimiento TP/SL optimizado 4%/2%*
+*Actualizado: 27 Feb 2026 - Implementación V13.01 en producción*

@@ -128,11 +128,14 @@ MODELS_DIR.mkdir(exist_ok=True)
 
 ML_DB_FILE = DATA_DIR / "ml_bot.db"
 
+# =============================================================================
+# V13.01: BTC habilitado con modelo V2 optimizado
+# =============================================================================
 # Pares EXCLUIDOS por bajo rendimiento historico:
-# - BTC/USDT: 33% WR en ultimos 14 dias, -$12
 # - SOL/USDT: 42% WR en ultimos 14 dias, -$31 (EL PEOR)
 # - BNB/USDT: volatil, marginal
 ML_PAIRS = [
+    'BTC/USDT',   # V13.01: Rehabilitado con modelo V2 + TP/SL optimizado
     'XRP/USDT',   # Tier 1: 86% WR backtest
     'NEAR/USDT',  # Tier 1: 67% WR backtest
     'DOT/USDT',   # Tier 2: 67% WR backtest
@@ -160,8 +163,22 @@ ML_MAX_NOTIONAL = 300.0     # Cap notional por trade
 ML_LEVERAGE = {'BULL': 5, 'BEAR': 4, 'RANGE': 3}
 
 # TP/SL fijos (ganador en backtest - ATR causaba kill switch)
-ML_TP_PCT = 0.03            # 3% TP
-ML_SL_PCT = 0.015           # 1.5% SL
+ML_TP_PCT = 0.03            # 3% TP (default para todos los pares)
+ML_SL_PCT = 0.015           # 1.5% SL (default para todos los pares)
+
+# =============================================================================
+# V13.01: Configuracion especifica para BTC
+# =============================================================================
+# BTC usa modelo V2 GradientBoosting con TP/SL optimizado
+# Validado: 8/8 años mejoraron, 3/3 regimenes mejoraron
+# PnL: +1654% -> +2320% (+665% mejora)
+ML_BTC_CONFIG = {
+    'model_file': 'btc_v2_gradientboosting.pkl',  # Modelo especializado
+    'tp_pct': 0.04,           # 4% TP (optimizado)
+    'sl_pct': 0.02,           # 2% SL (optimizado)
+    'conv_min': 1.0,          # Conviction minima mas alta
+    'use_v7_model': False,    # No usar modelo V7 generico
+}
 
 # Trailing Stop
 ML_TRAILING_ACTIVATION = 0.5  # Activar al 50% del TP (1.5% profit)

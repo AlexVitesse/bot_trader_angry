@@ -33,6 +33,7 @@ from config.settings import (
     ML_V85_ENABLED, ML_CONVICTION_SKIP_MULT,
     ML_CONVICTION_SIZING_MIN, ML_CONVICTION_SIZING_MAX,
     ML_V9_ENABLED, ML_LOSS_THRESHOLD, ML_SHADOW_ENABLED,
+    ML_BTC_CONFIG,
 )
 
 logger = logging.getLogger(__name__)
@@ -75,6 +76,13 @@ class MLStrategy:
         self.v95_thresholds = {}      # {pair: threshold}
         self.v95_fcols = []           # Feature columns (same for all pairs)
 
+        # V13.01: BTC V2 model (specialized GradientBoosting)
+        self.btc_v2_model = None
+        self.btc_v2_scaler = None
+        self.btc_v2_fcols = []
+        self.btc_v2_pred_std = 0.01
+        self.btc_v2_enabled = False
+
     def load_models(self) -> int:
         """Carga modelos desde disco. Retorna cantidad cargada."""
         # V7 metadata
@@ -114,6 +122,10 @@ class MLStrategy:
         # V9 LossDetector (fallback if V9.5 not available)
         if not self.v95_enabled and self.v9_enabled:
             self._load_loss_detector()
+
+        # V13.01: BTC V2 specialized model
+        if 'BTC/USDT' in ML_PAIRS and not ML_BTC_CONFIG.get('use_v7_model', True):
+            self._load_btc_v2_model()
 
         logger.info(f"[ML] {count} modelos cargados")
         return count
@@ -225,6 +237,31 @@ class MLStrategy:
         except Exception as e:
             logger.error(f"[ML] Error cargando V9.5 LossDetector: {e}")
             self.v95_enabled = False
+
+    def _load_btc_v2_model(self):
+        """Carga BTC V2 model especializado (GradientBoosting con TP/SL optimizado)."""
+        model_file = ML_BTC_CONFIG.get('model_file', 'btc_v2_gradientboosting.pkl')
+        model_path = MODELS_DIR / model_file
+
+        if not model_path.exists():
+            logger.warning(f"[ML] BTC V2 model no encontrado: {model_path}")
+            return
+
+        try:
+            data = joblib.load(model_path)
+            self.btc_v2_model = data.get('model')
+            self.btc_v2_scaler = data.get('scaler')
+            self.btc_v2_fcols = data.get('feature_cols', [])
+            self.btc_v2_pred_std = data.get('pred_std', 0.01)
+            self.btc_v2_enabled = True
+
+            tp_pct = ML_BTC_CONFIG.get('tp_pct', 0.04)
+            sl_pct = ML_BTC_CONFIG.get('sl_pct', 0.02)
+            logger.info(f"[ML] BTC V2 model cargado ({len(self.btc_v2_fcols)} features, "
+                        f"TP={tp_pct*100}%, SL={sl_pct*100}%)")
+        except Exception as e:
+            logger.error(f"[ML] Error cargando BTC V2 model: {e}")
+            self.btc_v2_enabled = False
 
     # =========================================================================
     # V9: LOSS DETECTOR + PAIR TA + BTC CONTEXT
@@ -544,6 +581,108 @@ class MLStrategy:
         return False, conv_mult
 
     # =========================================================================
+    # V13.01: BTC V2 FEATURES (54 features)
+    # =========================================================================
+    def compute_features_btc_v2(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Computa features para BTC V2 - 54 features especializadas."""
+        feat = pd.DataFrame(index=df.index)
+        c, h, l, o, v = df['close'], df['high'], df['low'], df['open'], df['volume']
+
+        # Returns (7)
+        for p in [1, 2, 3, 5, 10, 20, 50]:
+            feat[f'ret_{p}'] = c.pct_change(p)
+
+        # ATR (2)
+        feat['atr14'] = ta.atr(h, l, c, length=14)
+        feat['atr_r'] = feat['atr14'] / feat['atr14'].rolling(50).mean()
+
+        # Volatility (3)
+        feat['vol5'] = c.pct_change().rolling(5).std()
+        feat['vol20'] = c.pct_change().rolling(20).std()
+        feat['vol_ratio'] = feat['vol5'] / (feat['vol20'] + 1e-10)
+
+        # RSI (3)
+        feat['rsi14'] = ta.rsi(c, length=14)
+        feat['rsi7'] = ta.rsi(c, length=7)
+        feat['rsi21'] = ta.rsi(c, length=21)
+
+        # StochRSI (2)
+        sr = ta.stochrsi(c, length=14, rsi_length=14, k=3, d=3)
+        if sr is not None:
+            feat['srsi_k'] = sr.iloc[:, 0]
+            feat['srsi_d'] = sr.iloc[:, 1]
+
+        # MACD (3)
+        macd = ta.macd(c, fast=12, slow=26, signal=9)
+        if macd is not None:
+            feat['macd'] = macd.iloc[:, 0]
+            feat['macd_h'] = macd.iloc[:, 1]
+            feat['macd_s'] = macd.iloc[:, 2]
+
+        # ROC (3)
+        feat['roc5'] = ta.roc(c, length=5)
+        feat['roc10'] = ta.roc(c, length=10)
+        feat['roc20'] = ta.roc(c, length=20)
+
+        # EMA distance (5)
+        for el in [8, 21, 55, 100, 200]:
+            e = ta.ema(c, length=el)
+            feat[f'ema{el}_d'] = (c - e) / e * 100
+
+        # EMA slopes (3)
+        feat['ema8_sl'] = ta.ema(c, length=8).pct_change(3) * 100
+        feat['ema21_sl'] = ta.ema(c, length=21).pct_change(5) * 100
+        feat['ema55_sl'] = ta.ema(c, length=55).pct_change(5) * 100
+
+        # Bollinger Bands (2)
+        bb = ta.bbands(c, length=20, std=2.0)
+        if bb is not None:
+            bw = bb.iloc[:, 2] - bb.iloc[:, 0]
+            feat['bb_pos'] = (c - bb.iloc[:, 0]) / bw
+            feat['bb_w'] = bw / bb.iloc[:, 1] * 100
+
+        # Volume (2)
+        feat['vr'] = v / v.rolling(20).mean()
+        feat['vr5'] = v.rolling(5).mean() / v.rolling(20).mean()
+
+        # Candle patterns (4)
+        feat['spr'] = (h - l) / c * 100
+        feat['body'] = abs(c - o) / (h - l + 1e-10)
+        feat['upper_wick'] = (h - np.maximum(c, o)) / (h - l + 1e-10)
+        feat['lower_wick'] = (np.minimum(c, o) - l) / (h - l + 1e-10)
+
+        # ADX (4)
+        ax = ta.adx(h, l, c, length=14)
+        if ax is not None:
+            feat['adx'] = ax.iloc[:, 0]
+            feat['dip'] = ax.iloc[:, 1]
+            feat['dim'] = ax.iloc[:, 2]
+            feat['di_diff'] = feat['dip'] - feat['dim']
+
+        # Choppiness
+        chop = ta.chop(h, l, c, length=14)
+        if chop is not None:
+            feat['chop'] = chop
+
+        # Time features (4)
+        hr = df.index.hour
+        dw = df.index.dayofweek
+        feat['h_s'] = np.sin(2 * np.pi * hr / 24)
+        feat['h_c'] = np.cos(2 * np.pi * hr / 24)
+        feat['d_s'] = np.sin(2 * np.pi * dw / 7)
+        feat['d_c'] = np.cos(2 * np.pi * dw / 7)
+
+        # Lag features (6)
+        feat['ret1_lag1'] = feat['ret_1'].shift(1)
+        feat['rsi14_lag1'] = feat['rsi14'].shift(1)
+        feat['ret1_lag2'] = feat['ret_1'].shift(2)
+        feat['rsi14_lag2'] = feat['rsi14'].shift(2)
+        feat['ret1_lag3'] = feat['ret_1'].shift(3)
+        feat['rsi14_lag3'] = feat['rsi14'].shift(3)
+
+        return feat
+
+    # =========================================================================
     # V7: FEATURES + SIGNALS
     # =========================================================================
     def compute_features(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -637,27 +776,46 @@ class MLStrategy:
                 if len(df) < 250:
                     continue
 
-                feat = self.compute_features(df)
-                feat = feat.replace([np.inf, -np.inf], np.nan)
+                # V13.01: Use BTC V2 model for BTC/USDT if enabled
+                if pair == 'BTC/USDT' and self.btc_v2_enabled:
+                    feat = self.compute_features_btc_v2(df)
+                    feat = feat.replace([np.inf, -np.inf], np.nan)
+                    cols = [c for c in self.btc_v2_fcols if c in feat.columns]
+                    last_feat = feat[cols].iloc[-1:].fillna(0)
 
-                if self.feature_cols:
-                    cols = [c for c in self.feature_cols if c in feat.columns]
+                    # Scale features if scaler exists
+                    if self.btc_v2_scaler is not None:
+                        last_feat_scaled = pd.DataFrame(
+                            self.btc_v2_scaler.transform(last_feat),
+                            columns=cols
+                        )
+                    else:
+                        last_feat_scaled = last_feat
+
+                    pred = self.btc_v2_model.predict(last_feat_scaled)[0]
+                    ps = self.btc_v2_pred_std
                 else:
-                    cols = list(feat.columns)
+                    # Standard V7 model
+                    feat = self.compute_features(df)
+                    feat = feat.replace([np.inf, -np.inf], np.nan)
 
-                last_feat = feat[cols].iloc[-1:].fillna(0)
+                    if self.feature_cols:
+                        cols = [c for c in self.feature_cols if c in feat.columns]
+                    else:
+                        cols = list(feat.columns)
 
-                model = self.models[pair]
-                pred = model.predict(last_feat)[0]
+                    last_feat = feat[cols].iloc[-1:].fillna(0)
+                    model = self.models[pair]
+                    pred = model.predict(last_feat)[0]
 
-                ps = self.pred_stds.get(pair, None)
-                if ps is None or ps < 1e-8:
-                    recent = feat[cols].tail(100).fillna(0)
-                    recent_preds = model.predict(recent)
-                    ps = np.std(recent_preds)
-                    if ps < 1e-8:
-                        ps = 0.01
-                    self.pred_stds[pair] = ps
+                    ps = self.pred_stds.get(pair, None)
+                    if ps is None or ps < 1e-8:
+                        recent = feat[cols].tail(100).fillna(0)
+                        recent_preds = model.predict(recent)
+                        ps = np.std(recent_preds)
+                        if ps < 1e-8:
+                            ps = 0.01
+                        self.pred_stds[pair] = ps
 
                 conf = abs(pred) / ps
                 if conf < thresh:
@@ -739,26 +897,44 @@ class MLStrategy:
                 if len(df) < 250:
                     continue
 
-                feat = self.compute_features(df)
-                feat = feat.replace([np.inf, -np.inf], np.nan)
+                # V13.01: Use BTC V2 model for BTC/USDT if enabled
+                if pair == 'BTC/USDT' and self.btc_v2_enabled:
+                    feat = self.compute_features_btc_v2(df)
+                    feat = feat.replace([np.inf, -np.inf], np.nan)
+                    cols = [c for c in self.btc_v2_fcols if c in feat.columns]
+                    last_feat = feat[cols].iloc[-1:].fillna(0)
 
-                if self.feature_cols:
-                    cols = [c for c in self.feature_cols if c in feat.columns]
+                    if self.btc_v2_scaler is not None:
+                        last_feat_scaled = pd.DataFrame(
+                            self.btc_v2_scaler.transform(last_feat),
+                            columns=cols
+                        )
+                    else:
+                        last_feat_scaled = last_feat
+
+                    pred = self.btc_v2_model.predict(last_feat_scaled)[0]
+                    ps = self.btc_v2_pred_std
                 else:
-                    cols = list(feat.columns)
+                    feat = self.compute_features(df)
+                    feat = feat.replace([np.inf, -np.inf], np.nan)
 
-                last_feat = feat[cols].iloc[-1:].fillna(0)
-                model = self.models[pair]
-                pred = model.predict(last_feat)[0]
+                    if self.feature_cols:
+                        cols = [c for c in self.feature_cols if c in feat.columns]
+                    else:
+                        cols = list(feat.columns)
 
-                ps = self.pred_stds.get(pair, None)
-                if ps is None or ps < 1e-8:
-                    recent = feat[cols].tail(100).fillna(0)
-                    recent_preds = model.predict(recent)
-                    ps = np.std(recent_preds)
-                    if ps < 1e-8:
-                        ps = 0.01
-                    self.pred_stds[pair] = ps
+                    last_feat = feat[cols].iloc[-1:].fillna(0)
+                    model = self.models[pair]
+                    pred = model.predict(last_feat)[0]
+
+                    ps = self.pred_stds.get(pair, None)
+                    if ps is None or ps < 1e-8:
+                        recent = feat[cols].tail(100).fillna(0)
+                        recent_preds = model.predict(recent)
+                        ps = np.std(recent_preds)
+                        if ps < 1e-8:
+                            ps = 0.01
+                        self.pred_stds[pair] = ps
 
                 conf = abs(pred) / ps
                 if conf < thresh:

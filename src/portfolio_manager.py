@@ -18,10 +18,21 @@ from config.settings import (
     ML_DB_FILE, ML_MAX_CONCURRENT, ML_MAX_DD_PCT, ML_MAX_DAILY_LOSS_PCT,
     ML_RISK_PER_TRADE, ML_MAX_NOTIONAL, ML_LEVERAGE, ML_TP_PCT, ML_SL_PCT,
     ML_TRAILING_ACTIVATION, ML_TRAILING_LOCK, ML_MAX_HOLD,
-    COMMISSION_RATE, SLIPPAGE_PCT, INITIAL_CAPITAL,
+    COMMISSION_RATE, SLIPPAGE_PCT, INITIAL_CAPITAL, ML_BTC_CONFIG,
 )
 
 logger = logging.getLogger(__name__)
+
+
+def get_pair_tp_sl(pair: str) -> tuple:
+    """
+    V13.01: Get TP/SL percentages for a pair.
+    BTC uses specialized config, others use default.
+    Returns (tp_pct, sl_pct).
+    """
+    if pair == 'BTC/USDT' and ML_BTC_CONFIG.get('tp_pct'):
+        return ML_BTC_CONFIG['tp_pct'], ML_BTC_CONFIG['sl_pct']
+    return ML_TP_PCT, ML_SL_PCT
 
 
 @dataclass
@@ -327,18 +338,19 @@ class PortfolioManager:
                     direction = 1 if side_str == 'long' else -1
                     leverage = int(ep.get('leverage', old_pos.leverage) or old_pos.leverage)
                     ep_notional = contracts * ex_entry
+                    pair_tp, pair_sl = get_pair_tp_sl(pair)
                     if direction == 1:
-                        tp_price = ex_entry * (1 + ML_TP_PCT)
-                        sl_price = ex_entry * (1 - ML_SL_PCT)
+                        tp_price = ex_entry * (1 + pair_tp)
+                        sl_price = ex_entry * (1 - pair_sl)
                     else:
-                        tp_price = ex_entry * (1 - ML_TP_PCT)
-                        sl_price = ex_entry * (1 + ML_SL_PCT)
+                        tp_price = ex_entry * (1 - pair_tp)
+                        sl_price = ex_entry * (1 + pair_sl)
                     updated = Position(
                         pair=pair, side=side_str, direction=direction,
                         entry_price=ex_entry, quantity=contracts,
                         notional=ep_notional, leverage=leverage,
                         tp_price=tp_price, sl_price=sl_price,
-                        tp_pct=ML_TP_PCT, sl_pct=ML_SL_PCT,
+                        tp_pct=pair_tp, sl_pct=pair_sl,
                         atr_pct=old_pos.atr_pct, regime=old_pos.regime,
                         confidence=old_pos.confidence,
                         peak_price=ex_entry, max_hold=old_pos.max_hold,
@@ -357,20 +369,21 @@ class PortfolioManager:
             leverage = int(ep.get('leverage', 3) or 3)
             notional = contracts * entry_price
 
-            # Calcular TP/SL con valores por defecto
+            # Calcular TP/SL con valores por defecto (V13.01: per-pair)
+            pair_tp, pair_sl = get_pair_tp_sl(pair)
             if direction == 1:
-                tp_price = entry_price * (1 + ML_TP_PCT)
-                sl_price = entry_price * (1 - ML_SL_PCT)
+                tp_price = entry_price * (1 + pair_tp)
+                sl_price = entry_price * (1 - pair_sl)
             else:
-                tp_price = entry_price * (1 - ML_TP_PCT)
-                sl_price = entry_price * (1 + ML_SL_PCT)
+                tp_price = entry_price * (1 - pair_tp)
+                sl_price = entry_price * (1 + pair_sl)
 
             pos = Position(
                 pair=pair, side=side_str, direction=direction,
                 entry_price=entry_price, quantity=contracts,
                 notional=notional, leverage=leverage,
                 tp_price=tp_price, sl_price=sl_price,
-                tp_pct=ML_TP_PCT, sl_pct=ML_SL_PCT,
+                tp_pct=pair_tp, sl_pct=pair_sl,
                 atr_pct=0.02,  # Default conservador
                 regime='RANGE', confidence=0.0,
                 peak_price=entry_price, max_hold=30,
@@ -562,16 +575,18 @@ class PortfolioManager:
         risk_pct *= sizing_mult
 
         risk_amt = INITIAL_CAPITAL * risk_pct  # FLAT sizing
-        notional = risk_amt / ML_SL_PCT if ML_SL_PCT > 0 else risk_amt
+        # V13.01: per-pair TP/SL
+        pair_tp, pair_sl = get_pair_tp_sl(pair)
+        notional = risk_amt / pair_sl if pair_sl > 0 else risk_amt
         notional = min(notional, ML_MAX_NOTIONAL)
 
-        # TP/SL precios
+        # TP/SL precios (V13.01: per-pair)
         if direction == 1:
-            tp_price = price * (1 + ML_TP_PCT)
-            sl_price = price * (1 - ML_SL_PCT)
+            tp_price = price * (1 + pair_tp)
+            sl_price = price * (1 - pair_sl)
         else:
-            tp_price = price * (1 - ML_TP_PCT)
-            sl_price = price * (1 + ML_SL_PCT)
+            tp_price = price * (1 - pair_tp)
+            sl_price = price * (1 + pair_sl)
 
         max_hold = ML_MAX_HOLD.get(regime, 15)
 
@@ -600,18 +615,19 @@ class PortfolioManager:
                             ep_entry = float(ep.get('entryPrice', 0) or 0)
                             ep_lev = int(ep.get('leverage', 3) or 3)
                             ep_notional = contracts * ep_entry
+                            adopt_tp, adopt_sl = get_pair_tp_sl(pair)
                             if ep_dir == 1:
-                                ep_tp = ep_entry * (1 + ML_TP_PCT)
-                                ep_sl = ep_entry * (1 - ML_SL_PCT)
+                                ep_tp = ep_entry * (1 + adopt_tp)
+                                ep_sl = ep_entry * (1 - adopt_sl)
                             else:
-                                ep_tp = ep_entry * (1 - ML_TP_PCT)
-                                ep_sl = ep_entry * (1 + ML_SL_PCT)
+                                ep_tp = ep_entry * (1 - adopt_tp)
+                                ep_sl = ep_entry * (1 + adopt_sl)
                             adopted = Position(
                                 pair=pair, side=side_str, direction=ep_dir,
                                 entry_price=ep_entry, quantity=contracts,
                                 notional=ep_notional, leverage=ep_lev,
                                 tp_price=ep_tp, sl_price=ep_sl,
-                                tp_pct=ML_TP_PCT, sl_pct=ML_SL_PCT,
+                                tp_pct=adopt_tp, sl_pct=adopt_sl,
                                 atr_pct=atr_pct, regime=regime,
                                 confidence=confidence,
                                 peak_price=ep_entry, max_hold=max_hold,
@@ -644,13 +660,13 @@ class PortfolioManager:
             fill_price = float(order.get('average', price))
             filled_qty = float(order.get('filled', quantity))
 
-            # Recalcular TP/SL con precio real de fill
+            # Recalcular TP/SL con precio real de fill (V13.01: per-pair)
             if direction == 1:
-                tp_price = fill_price * (1 + ML_TP_PCT)
-                sl_price = fill_price * (1 - ML_SL_PCT)
+                tp_price = fill_price * (1 + pair_tp)
+                sl_price = fill_price * (1 - pair_sl)
             else:
-                tp_price = fill_price * (1 - ML_TP_PCT)
-                sl_price = fill_price * (1 + ML_SL_PCT)
+                tp_price = fill_price * (1 - pair_tp)
+                sl_price = fill_price * (1 + pair_sl)
 
             actual_notional = filled_qty * fill_price
 
@@ -659,7 +675,7 @@ class PortfolioManager:
                 entry_price=fill_price, quantity=filled_qty,
                 notional=actual_notional, leverage=lev,
                 tp_price=tp_price, sl_price=sl_price,
-                tp_pct=ML_TP_PCT, sl_pct=ML_SL_PCT,
+                tp_pct=pair_tp, sl_pct=pair_sl,
                 atr_pct=atr_pct, regime=regime, confidence=confidence,
                 peak_price=fill_price, max_hold=max_hold,
             )
