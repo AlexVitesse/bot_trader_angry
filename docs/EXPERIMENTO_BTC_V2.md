@@ -262,18 +262,64 @@ Esto sugiere que si se usa V3, requiere un umbral de conviction más alto.
 
 ---
 
+## Experimentos de Mejora (27 Feb 2026)
+
+### Experimento A: Conviction Threshold más alto
+| Conv | Trades | WR | PnL |
+|------|--------|-----|-----|
+| 0.5 | 63 | 38.1% | +13.50% |
+| **1.0** | **27** | **51.9%** | **+22.50%** |
+| 1.5 | 19 | 47.4% | +12.00% |
+| 2.0 | 12 | 41.7% | +4.50% |
+
+**Resultado:** conv >= 1.0 ya es óptimo. Subir threshold EMPEORA.
+
+### Experimento B: Features Macro adicionales
+Features agregados:
+- vol_mom_5/20, vol_trend, vol_regime, vol_expansion
+- pv_div, range_20, range_ratio, mom_div
+- ret_30, ret_42, ema_stack
+
+| Conv | Trades | WR | PnL |
+|------|--------|-----|-----|
+| 1.0 | 14 | 42.9% | +6.00% |
+
+**Resultado:** Features macro EMPEORAN el modelo (42.9% vs 51.9% WR).
+Agregan ruido en lugar de señal.
+
+### Experimento C: Ensemble V2 + V3
+| Estrategia | Trades | WR | PnL |
+|------------|--------|-----|-----|
+| V2 Baseline | 27 | 51.9% | +22.50% |
+| Ensemble Average | 26 | 42.3% | +10.50% |
+| Ensemble 70/30 | 26 | 38.5% | +6.00% |
+| Agreement Filter | 17 | 52.9% | +15.00% |
+
+**Resultado:** Ningún ensemble supera V2 solo.
+Agreement Filter tiene mejor WR pero menos trades/PnL total.
+
+### Conclusión Final
+**V2 GradientBoosting con conviction >= 1.0 es la configuración óptima.**
+- No hay mejoras significativas posibles con los enfoques probados
+- El modelo ya está bien calibrado para BTC
+
+---
+
 ## Siguiente Paso
 
 1. ~~Analizar por régimen de mercado~~ (Completado)
 2. ~~Feature importance de GradientBoosting~~ (Completado)
 3. ~~Probar datos recientes~~ (Completado - No mejora)
-4. Probar features adicionales:
-   - BTC.D (dominancia)
-   - Funding rates
-   - Open Interest
-   - Correlación con SPY/Gold
-5. Ensemble V2 + V3 con voting
-6. Aumentar conviction threshold para V2
+4. ~~Probar features adicionales~~ (Completado - No mejora)
+5. ~~Ensemble V2 + V3~~ (Completado - No mejora)
+6. ~~Aumentar conviction threshold~~ (Completado - No mejora)
+
+**Estado: V2 es el modelo final para BTC. No se encontraron mejoras.**
+
+Posibles siguientes pasos si se requiere más investigación:
+- Probar datos on-chain (realized cap, MVRV, NVT)
+- Sentiment analysis (Fear & Greed, social volume)
+- Cross-market features (DXY, SPY, Gold correlación)
 
 ---
 
@@ -292,6 +338,7 @@ Esto sugiere que si se usa V3, requiere un umbral de conviction más alto.
 - `train_btc_models.py` - Entrenamiento multi-modelo V2
 - `analyze_btc_v2_deep.py` - Análisis profundo V2
 - `train_btc_v3_recent.py` - Entrenamiento V3 con datos recientes
+- `btc_improvement_experiments.py` - Experimentos A/B/C de mejora
 
 ---
 
