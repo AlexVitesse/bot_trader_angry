@@ -1,0 +1,103 @@
+{
+  "version": "v13.04",
+  "trained_at": "2026-02-28T04:12:55.485747",
+  "model_type": "Ridge",
+  "model_params": {
+    "alpha": 100.0
+  },
+  "feature_cols": [
+    "ret_1",
+    "ret_5",
+    "ret_20",
+    "vol20",
+    "rsi14",
+    "ema21_d",
+    "vr"
+  ],
+  "direction": "LONG_ONLY",
+  "pairs": {
+    "DOGE": {
+      "n_samples": 13469,
+      "date_range": "2020-01-04 to 2026-02-26",
+      "corr": 0.23029506906393957,
+      "pred_std": 0.022163448761703904,
+      "direction": "LONG_ONLY",
+      "tp_pct": 0.02,
+      "sl_pct": 0.02,
+      "conv_min": 1.0,
+      "tier": 1
+    },
+    "ADA": {
+      "n_samples": 13469,
+      "date_range": "2020-01-04 to 2026-02-26",
+      "corr": 0.13090958494793428,
+      "pred_std": 0.006180498373623192,
+      "direction": "LONG_ONLY",
+      "tp_pct": 0.02,
+      "sl_pct": 0.02,
+      "conv_min": 1.0,
+      "tier": 1
+    },
+    "DOT": {
+      "n_samples": 12085,
+      "date_range": "2020-08-22 to 2026-02-26",
+      "corr": 0.09035954971699699,
+      "pred_std": 0.0042916293647122005,
+      "direction": "LONG_ONLY",
+      "tp_pct": 0.02,
+      "sl_pct": 0.02,
+      "conv_min": 1.0,
+      "tier": 1
+    },
+    "XRP": {
+      "n_samples": 13469,
+      "date_range": "2020-01-04 to 2026-02-26",
+      "corr": 0.08043464518481917,
+      "pred_std": 0.0038815338705485833,
+      "direction": "LONG_ONLY",
+      "tp_pct": 0.02,
+      "sl_pct": 0.02,
+      "conv_min": 1.0,
+      "tier": 2
+    },
+    "BTC": {
+      "n_samples": 15654,
+      "date_range": "2019-01-04 to 2026-02-26",
+      "corr": 0.09351974947405009,
+      "pred_std": 0.0026813002508517757,
+      "direction": "LONG_ONLY",
+      "tp_pct": 0.02,
+      "sl_pct": 0.02,
+      "conv_min": 1.0,
+      "tier": 2
+    }
+  },
+  "excluded_pairs": {
+    "ETH": {
+      "reason": "Negative PnL in walk-forward",
+      "potential": "LONG_ONLY"
+    },
+    "BNB": {
+      "reason": "Only 1/5 folds profitable",
+      "potential": "LONG_ONLY"
+    },
+    "LINK": {
+      "reason": "Negative PnL despite high consistency",
+      "potential": "LONG_ONLY"
+    },
+    "NEAR": {
+      "reason": "Inconsistent correlation (65/100)",
+      "potential": "LONG_ONLY"
+    },
+    "AVAX": {
+      "reason": "Not enough data for full validation",
+      "potential": "LONG_ONLY"
+    }
+  },
+  "notes": [
+    "Low-overfitting model validated with walk-forward",
+    "Tested in bear market (Jan-Feb 2026) with positive results",
+    "LONG_ONLY - model does not predict shorts accurately",
+    "Re-train monthly for best results"
+  ]
+}

@@ -335,6 +335,43 @@ ML_SHADOW_ENABLED = False    # Sin shadow en V13
 # ADVERTENCIA: Posible overfitting - ver docs/ANALISIS_CRITICO_OVERFITTING.md
 ML_V13_VERSION = "V13.03"
 
+# =============================================================================
+# V13.04 LOW-OVERFITTING MODELS (Ridge con 7 features)
+# =============================================================================
+# Validado con walk-forward 5 ventanas + bear market test (Ene-Feb 2026)
+# SOLO LONG - el modelo no predice shorts con precision
+#
+# Resultados Ene-Feb 2026 (bear market -20%):
+# - DOGE: 81% WR, +$128
+# - ADA:  70% WR, +$88
+# - DOT:  77% WR, +$69
+# - XRP:  54% WR, +$27
+# - BTC:  50% WR, -$1 (peor en bear, mejor overall)
+#
+# Para activar V13.04, cambiar ML_V1304_ENABLED = True
+# =============================================================================
+ML_V1304_ENABLED = False  # Feature flag: set True to use V13.04 models
+
+ML_V1304_PAIRS = [
+    'DOGE/USDT',  # Tier 1: 81% WR bear, 90/100 walk-forward
+    'ADA/USDT',   # Tier 1: 70% WR bear, 90/100 walk-forward
+    'DOT/USDT',   # Tier 1: 77% WR bear
+    'XRP/USDT',   # Tier 2: 54% WR bear, 85/100 walk-forward
+    'BTC/USDT',   # Tier 2: 50% WR bear, 100/100 walk-forward
+]
+
+# V13.04 usa configuracion desde v1304_meta.json
+# Defaults si no se encuentra el archivo:
+ML_V1304_DEFAULTS = {
+    'tp_pct': 0.02,       # 2% TP
+    'sl_pct': 0.02,       # 2% SL
+    'conv_min': 1.0,      # Conviction minima
+    'direction': 'LONG_ONLY',
+}
+
+# Pares excluidos de V13.04 (para futuro re-entrenamiento)
+ML_V1304_EXCLUDED = ['ETH/USDT', 'BNB/USDT', 'LINK/USDT', 'NEAR/USDT', 'AVAX/USDT']
+
 
 def validate_config() -> bool:
     """Valida que la configuracion este completa."""
