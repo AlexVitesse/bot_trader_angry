@@ -25,6 +25,7 @@ from config.settings import (
     LOGS_DIR, INITIAL_CAPITAL, ML_MAX_DAILY_LOSS_PCT,
     ML_SHADOW_ENABLED, ML_V9_ENABLED, ML_TIMEFRAME,
     ML_MAX_CONCURRENT, ML_V13_VERSION,
+    ML_V1304_ENABLED, ML_V1304_PAIRS,
 )
 from src.ml_strategy import MLStrategy
 from src.portfolio_manager import PortfolioManager
@@ -219,19 +220,19 @@ class MLBot:
         regime = self.strategy.regime
         regime_emoji = {'BULL': '🟢🐂', 'BEAR': '🔴🐻', 'RANGE': '🟡↔️'}.get(regime, '⚪')
         n_pos = len(self.portfolio.positions)
-        extras = []
-        if self.strategy.v84_enabled:
-            extras.append(
-                f"🌐 Macro: score={self.strategy.macro_score:.2f}, "
-                f"sizing={self.strategy.get_sizing_multiplier():.2f}x"
-            )
-        if self.strategy.v85_enabled:
-            extras.append("🎯 ConvictionScorer: ON")
-        if self.shadow_enabled:
-            extras.append(
-                f"👻 Shadow: {len(self.shadow_portfolio.positions)} pos"
-            )
-        extra_str = "\n" + "\n".join(extras) if extras else ""
+
+        # V13.04 info
+        if ML_V1304_ENABLED:
+            v1304_pairs = [p.replace('/USDT', '') for p in ML_V1304_PAIRS]
+            model_str = f"🔬 Ridge LONG_ONLY\n📊 Pares: {', '.join(v1304_pairs)}"
+        else:
+            extras = []
+            if self.strategy.v84_enabled:
+                extras.append(f"🌐 Macro: {self.strategy.macro_score:.2f}")
+            if self.strategy.v85_enabled:
+                extras.append("🎯 Conv: ON")
+            model_str = " | ".join(extras) if extras else ""
+
         send_alert(
             f"🚀 <b>{ML_V13_VERSION} INICIADO</b>\n"
             f"━━━━━━━━━━━━━━━\n"
@@ -239,8 +240,8 @@ class MLBot:
             f"{regime_emoji} Regime: {regime}\n"
             f"🧠 Modelos: {count} pares\n"
             f"📈 Posiciones: {n_pos}/{ML_MAX_CONCURRENT}\n"
-            f"💰 Balance: <b>${self.portfolio.balance:,.2f}</b>"
-            f"{extra_str}"
+            f"💰 Balance: <b>${self.portfolio.balance:,.2f}</b>\n"
+            f"{model_str}"
         )
 
         # 7. Iniciar Telegram poller para comandos
@@ -298,22 +299,20 @@ class MLBot:
         total_pnl = sum(t['pnl'] for t in trades_today)
         pnl_emoji = '📈' if total_pnl >= 0 else '📉'
         paused_str = "\n⏸️ <b>PAUSADO</b> - usa /resume" if self.portfolio.paused else ""
-        if self.strategy.v84_enabled:
-            macro_str = (
-                f"\n🌐 Macro: {self.strategy.macro_score:.2f} | "
-                f"Sz: {self.strategy.get_sizing_multiplier():.2f}x | "
-                f"Th: {self.strategy.get_adaptive_threshold():.2f}"
-            )
+
+        # V13.04: Ridge LONG_ONLY
+        if ML_V1304_ENABLED:
+            model_str = "\n🔬 Ridge LONG_ONLY"
         else:
-            macro_str = ""
-        conv_str = "\n🎯 ConvictionScorer: ON" if self.strategy.v85_enabled else ""
-        shadow_str = ""
-        if self.shadow_enabled:
-            ss = self.shadow_portfolio.get_summary()
-            shadow_str = (
-                f"\n👻 Shadow: {ss['n_open']} pos | "
-                f"{ss['n_trades']} trades | ${ss['total_pnl']:+,.2f}"
-            )
+            model_str = ""
+            if self.strategy.v84_enabled:
+                model_str = (
+                    f"\n🌐 Macro: {self.strategy.macro_score:.2f} | "
+                    f"Sz: {self.strategy.get_sizing_multiplier():.2f}x"
+                )
+            if self.strategy.v85_enabled:
+                model_str += "\n🎯 Conv: ON"
+
         send_alert(
             f"📊 <b>STATUS {ML_V13_VERSION}</b>\n"
             f"━━━━━━━━━━━━━━━\n"
@@ -321,9 +320,7 @@ class MLBot:
             f"📈 Pos: {status['positions']}/{ML_MAX_CONCURRENT}\n"
             f"{pnl_emoji} PnL hoy: ${total_pnl:+,.2f} ({len(trades_today)}t)\n"
             f"📊 Regime: {self.strategy.regime}"
-            f"{macro_str}"
-            f"{conv_str}"
-            f"{shadow_str}\n"
+            f"{model_str}\n"
             f"⚠️ DD: {status['dd']:.1%}\n"
             f"⏱️ Uptime: {uptime_h:.1f}h"
             f"{paused_str}"
@@ -993,15 +990,15 @@ class MLBot:
         trades_today = self.portfolio.get_today_trades_from_db()  # Solo V9
         total_pnl = sum(t['pnl'] for t in trades_today)
 
-        # Contador de demo V13: 14 dias desde 2026-02-26 -> fin 2026-03-12
-        demo_end = datetime(2026, 3, 12, tzinfo=timezone.utc)
+        # Contador de demo V13.04: 14 dias desde 2026-02-28 -> fin 2026-03-14
+        demo_end = datetime(2026, 3, 14, tzinfo=timezone.utc)
         days_left = (demo_end - datetime.now(timezone.utc)).days
         if days_left > 0:
-            demo_str = f"📅 V13 Demo: {days_left} dias restantes"
+            demo_str = f"📅 Demo: {days_left}d restantes"
         elif days_left == 0:
-            demo_str = "📅 V13 Demo: ULTIMO DIA - revisar resultados!"
+            demo_str = "📅 Demo: ULTIMO DIA!"
         else:
-            demo_str = "📅 V13 Demo: FINALIZADA - revisar resultados!"
+            demo_str = "📅 Demo: FINALIZADA"
 
         if self.recent_errors:
             errors_str = "\n".join(f"  ⚠️ {e[:80]}" for e in self.recent_errors[-5:])
@@ -1020,22 +1017,22 @@ class MLBot:
             self.recent_errors.clear()
         else:
             pnl_emoji = '📈' if total_pnl >= 0 else '📉'
-            if self.strategy.v84_enabled:
-                macro_str = (
-                    f"🌐 Macro: {self.strategy.macro_score:.2f} | "
-                    f"Sz: {self.strategy.get_sizing_multiplier():.2f}x | "
-                    f"Th: {self.strategy.get_adaptive_threshold():.2f}\n"
-                )
+
+            # V13.04: modelo Ridge LONG_ONLY
+            if ML_V1304_ENABLED:
+                model_str = "🔬 Ridge LONG_ONLY\n"
             else:
-                macro_str = ""
-            conv_str = "🎯 ConvictionScorer: ON\n" if self.strategy.v85_enabled else ""
-            shadow_hb = ""
-            if self.shadow_enabled:
-                ss = self.shadow_portfolio.get_summary()
-                shadow_hb = (
-                    f"👻 Shadow: {ss['n_open']}pos | "
-                    f"{ss['n_trades']}t | ${ss['total_pnl']:+,.2f}\n"
-                )
+                # Legacy V13.03 con Macro/Conviction
+                if self.strategy.v84_enabled:
+                    model_str = (
+                        f"🌐 Macro: {self.strategy.macro_score:.2f} | "
+                        f"Sz: {self.strategy.get_sizing_multiplier():.2f}x\n"
+                    )
+                else:
+                    model_str = ""
+                if self.strategy.v85_enabled:
+                    model_str += "🎯 Conv: ON\n"
+
             send_alert(
                 f"🟢 <b>{ML_V13_VERSION} OK</b>\n"
                 f"━━━━━━━━━━━━━━━\n"
@@ -1043,9 +1040,7 @@ class MLBot:
                 f"📈 Pos: {status['positions']}/{ML_MAX_CONCURRENT}\n"
                 f"{pnl_emoji} PnL hoy: ${total_pnl:+,.2f} ({len(trades_today)}t)\n"
                 f"📊 Regime: {self.strategy.regime}\n"
-                f"{macro_str}"
-                f"{conv_str}"
-                f"{shadow_hb}"
+                f"{model_str}"
                 f"⚠️ DD: {status['dd']:.1%}\n"
                 f"⏱️ Uptime: {uptime_h:.1f}h\n"
                 f"{demo_str}"

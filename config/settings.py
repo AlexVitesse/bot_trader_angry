@@ -333,7 +333,7 @@ ML_SHADOW_ENABLED = False    # Sin shadow en V13
 # - Filtros de direccion: BNB/NEAR/DOT = SHORT ONLY
 # Backtest V13.03: 1,299 trades, 67.3% WR, $402.74 PnL, 10.1% MaxDD, PF 3.98
 # ADVERTENCIA: Posible overfitting - ver docs/ANALISIS_CRITICO_OVERFITTING.md
-ML_V13_VERSION = "V13.03"
+ML_V13_VERSION = "V13.04"
 
 # =============================================================================
 # V13.04 LOW-OVERFITTING MODELS (Ridge con 7 features)
