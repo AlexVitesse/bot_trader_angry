@@ -350,7 +350,7 @@ ML_V13_VERSION = "V13.03"
 #
 # Para activar V13.04, cambiar ML_V1304_ENABLED = True
 # =============================================================================
-ML_V1304_ENABLED = False  # Feature flag: set True to use V13.04 models
+ML_V1304_ENABLED = True   # Feature flag: V13.04 activo (Ridge low-overfitting)
 
 ML_V1304_PAIRS = [
     'DOGE/USDT',  # Tier 1: 81% WR bear, 90/100 walk-forward
