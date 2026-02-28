@@ -157,5 +157,102 @@ conv_min = 0.5
 
 ---
 
-*Documento generado: 2026-02-27*
-*Scripts: btc_model_experiments.py, btc_low_overfit_experiment.py, analyze_conviction_thresholds.py*
+## Multi-Pair Experiment (Actualizado)
+
+### Resultados por Par
+
+| Pair | Test Period | Corr Drop | Direction | Trades | WR | PnL |
+|------|-------------|-----------|-----------|--------|-----|-----|
+| **BTC** | 2024-09 a 2026-02 | **0.1%** | LONG_ONLY | 192 | **58.3%** | $322 |
+| **ADA** | 2024-12 a 2026-02 | **4.3%** | LONG_ONLY | 322 | **50.6%** | $412 |
+| XRP | 2024-12 a 2026-02 | -10.4% | LONG_ONLY | 660 | 39.8% | $592 |
+| LINK | 2024-12 a 2026-02 | 58.8% | LONG_ONLY | 670 | 39.4% | $556 |
+| DOGE | 2024-12 a 2026-02 | 79.9% | LONG_ONLY | 181 | 54.1% | $551 |
+| AVAX | 2025-01 a 2026-02 | 105.0% | LONG_ONLY | 367 | 41.1% | $401 |
+| NEAR | 2025-01 a 2026-02 | 120.6% | LONG_ONLY | 293 | 50.9% | $387 |
+| DOT | 2025-01 a 2026-02 | 95.8% | LONG_ONLY | 114 | 51.8% | $178 |
+| BNB | 2024-09 a 2026-02 | 93.9% | LONG_ONLY | 387 | 52.7% | $174 |
+| **ETH** | - | - | - | - | <40% | **EXCLUIDO** |
+
+### Pares Confiables (Low Overfitting + WR >= 50%)
+
+| Pair | Direction | TP | SL | Conv | Trades | WR | PnL | Overfit |
+|------|-----------|----|----|------|--------|-----|-----|---------|
+| **BTC** | LONG_ONLY | 2.0% | 2.0% | 1.0 | 192 | **58.3%** | $322 | **0.1%** |
+| **ADA** | LONG_ONLY | 2.0% | 1.5% | 1.0 | 322 | **50.6%** | $412 | **4.3%** |
+
+### Pares con Alto PnL pero Alto Overfitting
+
+| Pair | Direction | TP | SL | Conv | Trades | WR | PnL | Overfit |
+|------|-----------|----|----|------|--------|-----|-----|---------|
+| DOGE | LONG_ONLY | 2.0% | 1.0% | 1.0 | 181 | 54.1% | $551 | 79.9% |
+| NEAR | LONG_ONLY | 2.0% | 1.5% | 1.0 | 293 | 50.9% | $387 | 120.6% |
+| DOT | LONG_ONLY | 2.5% | 2.0% | 1.0 | 114 | 51.8% | $178 | 95.8% |
+| BNB | LONG_ONLY | 2.0% | 2.0% | 0.3 | 387 | 52.7% | $174 | 93.9% |
+
+**ADVERTENCIA**: Los pares con >30% overfitting pueden no mantener su rendimiento en produccion.
+
+### Pares Excluidos
+
+| Pair | Razon |
+|------|-------|
+| ETH | WR < 40% en todas las configuraciones |
+| XRP | WR 39.8% (no confiable a pesar de alto PnL) |
+| LINK | WR 39.4% (no confiable a pesar de alto PnL) |
+| AVAX | WR 41.1% + 105% overfitting |
+
+## Configuracion Recomendada para Produccion
+
+### Tier 1: Alta Confianza (bajo overfitting)
+```python
+# BTC - MEJOR OPCION
+PAIR_CONFIG['BTC/USDT'] = {
+    'model': Ridge(alpha=100),
+    'features': ['ret_1', 'ret_5', 'ret_20', 'vol20', 'rsi14', 'ema21_d', 'vr'],
+    'direction': 'LONG_ONLY',
+    'tp_pct': 0.02,
+    'sl_pct': 0.02,
+    'conv_min': 1.0,
+    'expected_wr': '58%',
+    'overfitting': '0.1%'
+}
+
+# ADA - SEGUNDA OPCION
+PAIR_CONFIG['ADA/USDT'] = {
+    'model': Ridge(alpha=100),
+    'features': ['ret_1', 'ret_5', 'ret_20', 'vol20', 'rsi14', 'ema21_d', 'vr'],
+    'direction': 'LONG_ONLY',
+    'tp_pct': 0.02,
+    'sl_pct': 0.015,
+    'conv_min': 1.0,
+    'expected_wr': '51%',
+    'overfitting': '4.3%'
+}
+```
+
+### Tier 2: Media Confianza (usar con cautela)
+- DOGE, NEAR, DOT, BNB tienen WR >= 50% pero alto overfitting
+- Monitorear de cerca en produccion
+- Reducir posicion size vs Tier 1
+
+### Excluidos
+- ETH: No funciona con este modelo
+- XRP, LINK, AVAX: WR < 45%
+
+## Resumen Ejecutivo
+
+| Metrica | Valor |
+|---------|-------|
+| Pares Tier 1 | BTC, ADA |
+| Pares Tier 2 | DOGE, NEAR, DOT, BNB |
+| Pares Excluidos | ETH, XRP, LINK, AVAX |
+| PnL Total Tier 1 | $734 (sobre $100 cada par) |
+| PnL Total Tier 2 | $1,290 (riesgo alto) |
+| Modelo | Ridge(alpha=100) |
+| Features | 7 (minimal set) |
+| Direction | LONG_ONLY |
+
+---
+
+*Documento actualizado: 2026-02-27*
+*Scripts: btc_model_experiments.py, btc_low_overfit_experiment.py, analyze_conviction_thresholds.py, multi_pair_low_overfit.py*
