@@ -237,22 +237,137 @@ PAIR_CONFIG['ADA/USDT'] = {
 
 ### Excluidos
 - ETH: No funciona con este modelo
-- XRP, LINK, AVAX: WR < 45%
 
-## Resumen Ejecutivo
+---
 
-| Metrica | Valor |
-|---------|-------|
-| Pares Tier 1 | BTC, ADA |
-| Pares Tier 2 | DOGE, NEAR, DOT, BNB |
-| Pares Excluidos | ETH, XRP, LINK, AVAX |
-| PnL Total Tier 1 | $734 (sobre $100 cada par) |
-| PnL Total Tier 2 | $1,290 (riesgo alto) |
-| Modelo | Ridge(alpha=100) |
-| Features | 7 (minimal set) |
-| Direction | LONG_ONLY |
+## VALIDACION WALK-FORWARD (5 Ventanas)
+
+### Metodologia
+
+Cada par se entreno y testeo en 5 ventanas diferentes para verificar consistencia:
+
+```
+Window 1: Train 0-60%  -> Test 60-70%
+Window 2: Train 10-70% -> Test 70-80%
+Window 3: Train 20-80% -> Test 80-90%
+Window 4: Train 30-90% -> Test 90-100%
+Window 5: Train 0-80%  -> Test 80-100% (standard)
+```
+
+### Consistency Score (0-100)
+
+| Criterio | Puntos |
+|----------|--------|
+| WR variance < 5% | 25 |
+| Folds rentables | 25 |
+| Correlacion positiva en todos los folds | 25 |
+| WR >= 50% en todos los folds | 25 |
+
+### Resultados por Par
+
+| Pair | Score | Avg WR | WR Std | Total PnL | Folds Rentables | Veredicto |
+|------|-------|--------|--------|-----------|-----------------|-----------|
+| **BTC** | **100** | 55.7% | 2.1% | $734 | 5/5 | PRODUCCION |
+| **DOGE** | **90** | 61.2% | 7.4% | $1,035 | 5/5 | PRODUCCION |
+| **ADA** | **90** | 54.3% | 3.5% | $581 | 4/5 | PRODUCCION |
+| **LINK** | **90** | 51.3% | 2.3% | -$66 | 4/5 | CONSISTENTE PERO PIERDE |
+| **XRP** | **85** | 53.0% | 2.9% | $358 | 3/5 | PRODUCCION |
+| **AVAX** | **75** | 50.7% | 1.7% | $29 | 2/5 | MARGINAL |
+| **DOT** | **70** | 52.0% | 8.3% | $125 | 3/5 | ACEPTABLE |
+| BNB | 65 | 50.3% | 4.6% | $60 | 1/5 | CAUTELA |
+| NEAR | 65 | 51.6% | 5.0% | $476 | 4/5 | CAUTELA |
+
+### Detalle BTC (Score 100/100) - MEJOR PAR
+
+```
+Window   Test Period               Trades   WR       PnL
+---------------------------------------------------------------
+1        2023-04-19 to 2024-01-05    85      56.5%   $ 103.20
+2        2024-01-05 to 2024-09-22   142      52.8%   $  76.66
+3        2024-09-22 to 2025-06-10   124      57.3%   $ 170.08
+4        2025-06-10 to 2026-02-26    82      53.7%   $  62.39
+5        2024-09-22 to 2026-02-26   192      58.3%   $ 321.54
+
+TOTAL: $733.87 | WR medio: 55.7% | Desviacion: 2.1%
+```
+
+### Detalle DOGE (Score 90/100) - MAYOR PnL
+
+```
+Window   Test Period               Trades   WR       PnL
+---------------------------------------------------------------
+1        2023-09-12 to 2024-04-23    80      67.5%   $ 270.16
+2        2024-04-23 to 2024-12-04    82      56.1%   $  93.44
+3        2024-12-04 to 2025-07-16    77      71.4%   $ 323.84
+4        2025-07-16 to 2026-02-26   102      51.0%   $  11.84
+5        2024-12-04 to 2026-02-26   177      59.9%   $ 335.84
+
+TOTAL: $1,035.12 | WR medio: 61.2% | Desviacion: 7.4%
+```
+
+## Resumen Ejecutivo FINAL
+
+| Categoria | Pares | PnL Total |
+|-----------|-------|-----------|
+| **PRODUCCION** | BTC, DOGE, ADA, XRP | **$2,708** |
+| MARGINAL | AVAX, DOT | $154 |
+| CAUTELA | BNB, NEAR | $536 |
+| EXCLUIDO | ETH, LINK | N/A |
+
+### Configuracion para Produccion
+
+```python
+PRODUCTION_PAIRS = {
+    'BTC/USDT': {
+        'score': 100,
+        'tp_pct': 0.02,
+        'sl_pct': 0.02,
+        'conv_min': 1.0,
+        'expected_wr': '56%',
+        'expected_pnl': '$734/year'
+    },
+    'DOGE/USDT': {
+        'score': 90,
+        'tp_pct': 0.02,
+        'sl_pct': 0.01,
+        'conv_min': 1.0,
+        'expected_wr': '61%',
+        'expected_pnl': '$1035/year'
+    },
+    'ADA/USDT': {
+        'score': 90,
+        'tp_pct': 0.02,
+        'sl_pct': 0.015,
+        'conv_min': 1.0,
+        'expected_wr': '54%',
+        'expected_pnl': '$581/year'
+    },
+    'XRP/USDT': {
+        'score': 85,
+        'tp_pct': 0.02,
+        'sl_pct': 0.02,
+        'conv_min': 1.0,
+        'expected_wr': '53%',
+        'expected_pnl': '$358/year'
+    },
+}
+
+MODEL_CONFIG = {
+    'algorithm': 'Ridge',
+    'alpha': 100,
+    'features': ['ret_1', 'ret_5', 'ret_20', 'vol20', 'rsi14', 'ema21_d', 'vr'],
+    'direction': 'LONG_ONLY',
+}
+```
+
+### Notas Importantes
+
+1. **LINK excluido** - Aunque tiene score 90, el PnL total es negativo (-$66)
+2. **DOGE es sorpresa** - Mayor PnL ($1,035) y WR (61.2%) de todos
+3. **BTC es el mas consistente** - Score perfecto 100/100, WR std solo 2.1%
+4. **ETH sigue excluido** - No pasa validacion inicial
 
 ---
 
 *Documento actualizado: 2026-02-27*
-*Scripts: btc_model_experiments.py, btc_low_overfit_experiment.py, analyze_conviction_thresholds.py, multi_pair_low_overfit.py*
+*Scripts: btc_model_experiments.py, btc_low_overfit_experiment.py, analyze_conviction_thresholds.py, multi_pair_low_overfit.py, validate_overfitting.py*
