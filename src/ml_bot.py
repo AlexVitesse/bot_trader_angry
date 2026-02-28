@@ -255,6 +255,7 @@ class MLBot:
             '/install': self._cmd_install,
             '/restart': self._cmd_restart,
             '/retrain': self._cmd_retrain,
+            '/export_v1304': self._cmd_export_v1304,
             '/clearlog': self._cmd_clearlog,
             '/resetdb': self._cmd_resetdb,
         })
@@ -285,7 +286,8 @@ class MLBot:
             f"  /update - Pull + Install + Restart\n"
             f"  /pull - git stash + pull\n"
             f"  /install - poetry install\n"
-            f"  /retrain - Reentrenar modelos"
+            f"  /retrain - Reentrenar modelos V7-V9\n"
+            f"  /export_v1304 - Exportar modelos V13.04"
         )
 
     def _cmd_status(self):
@@ -590,6 +592,51 @@ class MLBot:
                 logger.error(f"[BOT] retrain error: {e}")
 
         threading.Thread(target=_do_retrain, daemon=True).start()
+
+    def _cmd_export_v1304(self):
+        """Responde al comando /export_v1304 - exporta modelos V13.04 Ridge."""
+        send_alert(
+            f"🔬 <b>EXPORTANDO V13.04</b>\n"
+            f"━━━━━━━━━━━━━━━\n"
+            f"📊 Modelo: Ridge(alpha=100)\n"
+            f"📈 Pares: DOGE, ADA, DOT, XRP, BTC\n"
+            f"⏱️ Tiempo estimado: 1-2 minutos"
+        )
+        logger.info("[BOT] Export V13.04 solicitado via /export_v1304")
+        project_root = str(Path(__file__).parent.parent)
+
+        def _do_export():
+            try:
+                result = subprocess.run(
+                    [sys.executable, 'ml_export_v1304.py'],
+                    capture_output=True, text=True,
+                    timeout=300, cwd=project_root,
+                )
+                ok = result.returncode == 0
+                output = result.stdout.strip() or result.stderr.strip() or "Sin output"
+
+                if ok:
+                    # Extraer lineas con info de pares
+                    lines = output.split('\n')
+                    pair_lines = [l for l in lines if any(p in l for p in ['DOGE:', 'ADA:', 'DOT:', 'XRP:', 'BTC:'])]
+                    if pair_lines:
+                        summary = '\n'.join(pair_lines[:5])
+                        send_alert(f"✅ <b>V13.04 EXPORTADO</b>\n<code>{summary}</code>")
+                    else:
+                        send_alert("✅ <b>V13.04 EXPORTADO</b>\nModelos listos en models/")
+                else:
+                    error_msg = output[-300:]
+                    send_alert(f"❌ <b>V13.04 ERROR</b>\n<code>{error_msg}</code>")
+
+                logger.info(f"[BOT] export_v1304: rc={result.returncode}")
+            except subprocess.TimeoutExpired:
+                send_alert("❌ <b>V13.04 TIMEOUT</b>\nSuperados 5 minutos")
+                logger.error("[BOT] export_v1304 timeout (5min)")
+            except Exception as e:
+                send_alert(f"❌ Error en export V13.04: {e}")
+                logger.error(f"[BOT] export_v1304 error: {e}")
+
+        threading.Thread(target=_do_export, daemon=True).start()
 
     def _shutdown(self):
         """Limpieza al cerrar."""

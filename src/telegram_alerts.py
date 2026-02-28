@@ -6,8 +6,10 @@ Envia alertas asincronas via Telegram sin bloquear el trading.
 
 import logging
 import threading
+import subprocess
 import requests
 from datetime import datetime
+from pathlib import Path
 
 from config.settings import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, TELEGRAM_ENABLED, SYMBOL
 
@@ -182,12 +184,112 @@ def alert_status(balance: float, in_position: bool, side: str,
 
 
 # =====================================================================
+# COMANDOS DE MANTENIMIENTO
+# =====================================================================
+
+def run_git_pull():
+    """Ejecuta git pull y notifica resultado."""
+    send_alert("\U0001F504 Ejecutando git pull...")
+    try:
+        project_root = Path(__file__).parent.parent
+        result = subprocess.run(
+            ['git', 'pull', 'origin', 'main'],
+            cwd=project_root,
+            capture_output=True,
+            text=True,
+            timeout=60
+        )
+        if result.returncode == 0:
+            # Extraer resumen del output
+            output = result.stdout.strip()
+            if 'Already up to date' in output:
+                send_alert("\u2705 Git: Ya actualizado")
+            else:
+                lines = output.split('\n')[-3:]  # Ultimas 3 lineas
+                send_alert(f"\u2705 Git pull OK:\n<code>{chr(10).join(lines)}</code>")
+        else:
+            send_alert(f"\u274C Git pull ERROR:\n<code>{result.stderr[:200]}</code>")
+    except subprocess.TimeoutExpired:
+        send_alert("\u274C Git pull TIMEOUT (60s)")
+    except Exception as e:
+        send_alert(f"\u274C Git pull ERROR: {e}")
+
+
+def run_export_v1304():
+    """Ejecuta ml_export_v1304.py para regenerar modelos."""
+    send_alert("\U0001F52C Exportando modelos V13.04...\nEsto puede tomar 1-2 minutos.")
+    try:
+        project_root = Path(__file__).parent.parent
+        result = subprocess.run(
+            ['poetry', 'run', 'python', 'ml_export_v1304.py'],
+            cwd=project_root,
+            capture_output=True,
+            text=True,
+            timeout=300  # 5 minutos max
+        )
+        if result.returncode == 0:
+            # Extraer resumen
+            lines = result.stdout.strip().split('\n')
+            # Buscar lineas con resultados de pares
+            summary_lines = [l for l in lines if any(p in l for p in ['DOGE:', 'ADA:', 'DOT:', 'XRP:', 'BTC:'])]
+            if summary_lines:
+                summary = '\n'.join(summary_lines[:5])
+                send_alert(f"\u2705 V13.04 exportado:\n<code>{summary}</code>")
+            else:
+                send_alert("\u2705 V13.04 modelos exportados correctamente")
+        else:
+            error_msg = result.stderr[:300] if result.stderr else result.stdout[:300]
+            send_alert(f"\u274C Export V13.04 ERROR:\n<code>{error_msg}</code>")
+    except subprocess.TimeoutExpired:
+        send_alert("\u274C Export V13.04 TIMEOUT (5min)")
+    except Exception as e:
+        send_alert(f"\u274C Export V13.04 ERROR: {e}")
+
+
+def run_pull_and_export():
+    """Ejecuta git pull + export V13.04 en secuencia."""
+    send_alert("\U0001F680 Iniciando actualizacion completa...")
+
+    # 1. Git pull
+    try:
+        project_root = Path(__file__).parent.parent
+        result = subprocess.run(
+            ['git', 'pull', 'origin', 'main'],
+            cwd=project_root,
+            capture_output=True,
+            text=True,
+            timeout=60
+        )
+        if result.returncode != 0:
+            send_alert(f"\u274C Git pull fallo:\n<code>{result.stderr[:200]}</code>")
+            return
+
+        if 'Already up to date' in result.stdout:
+            send_alert("\u2705 Git: Sin cambios nuevos")
+        else:
+            send_alert("\u2705 Git pull OK")
+    except Exception as e:
+        send_alert(f"\u274C Git pull ERROR: {e}")
+        return
+
+    # 2. Export models
+    run_export_v1304()
+
+
+# =====================================================================
 # POLLING DE COMANDOS (para /status)
 # =====================================================================
 
 class TelegramPoller:
     """Escucha comandos de Telegram en background.
-    Comandos soportados: /status, /resume"""
+
+    Comandos soportados:
+    - /status: Estado actual del bot
+    - /resume: Reanudar trading
+    - /pull: Git pull desde main
+    - /export_v1304: Exportar modelos V13.04
+    - /update: Git pull + exportar modelos (combo)
+    """
 
     def __init__(self, callbacks: dict = None):
         self.running = False
