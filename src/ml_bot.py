@@ -802,37 +802,27 @@ class MLBot:
                     sl_dir = '↗️ sube'
                 sm = signal.get('sizing_mult', 1.0)
                 cm = signal.get('conviction_mult', 1.0)
-                intel_parts = []
-                if self.strategy.v84_enabled:
-                    intel_parts.append(
-                        f"🌐 Macro: {self.strategy.macro_score:.2f} | "
-                        f"Th: {self.strategy.get_adaptive_threshold():.2f}"
-                    )
-                if self.strategy.v85_enabled:
-                    intel_parts.append(
-                        f"🎯 Conv: {cm:.2f}x | Total: {sm:.2f}x"
-                    )
-                macro_str = "\n" + "\n".join(intel_parts) if intel_parts else ""
+                # V13.04: Ridge LONG_ONLY, sin Macro/Conv
+                if ML_V1304_ENABLED:
+                    model_str = "🔬 Ridge LONG_ONLY"
+                else:
+                    intel_parts = []
+                    if self.strategy.v84_enabled:
+                        intel_parts.append(f"🌐 Macro: {self.strategy.macro_score:.2f}")
+                    if self.strategy.v85_enabled:
+                        intel_parts.append(f"🎯 Conv: {cm:.2f}x")
+                    model_str = " | ".join(intel_parts) if intel_parts else ""
+
                 send_alert(
-                    f"{side_emoji} <b>TRADE ABIERTO - {action}</b>\n"
+                    f"{side_emoji} <b>TRADE ABIERTO</b>\n"
                     f"━━━━━━━━━━━━━━━\n"
-                    f"💎 {signal['pair']} -> <b>{side}</b>\n"
-                    f"\n"
-                    f"📥 <b>Entrada</b>\n"
-                    f"   Precio: ${pos.entry_price:,.2f}\n"
-                    f"   Cantidad: {pos.quantity} {coin}\n"
-                    f"   Notional: ${pos.notional:,.2f}\n"
-                    f"   Margen: ${margin:,.2f} ({pos.leverage}x leverage)\n"
-                    f"\n"
-                    f"🎯 <b>Objetivos</b>\n"
-                    f"   TP: ${pos.tp_price:,.2f} (si {tp_dir} {pos.tp_pct:.1%})\n"
-                    f"   SL: ${pos.sl_price:,.2f} (si {sl_dir} {pos.sl_pct:.1%})\n"
-                    f"   Max hold: {pos.max_hold} velas ({pos.max_hold * 4}h)\n"
-                    f"\n"
-                    f"{conf_bar} Confianza: {signal['confidence']:.2f}\n"
-                    f"📊 Regime: {self.strategy.regime}"
-                    f"{macro_str}\n"
-                    f"{explain}"
+                    f"💎 {signal['pair']} <b>{side}</b>\n"
+                    f"📥 Entry: ${pos.entry_price:,.2f}\n"
+                    f"📦 Notional: ${pos.notional:,.2f} ({pos.leverage}x)\n"
+                    f"🎯 TP: ${pos.tp_price:,.2f} ({pos.tp_pct:.1%})\n"
+                    f"🛡️ SL: ${pos.sl_price:,.2f} ({pos.sl_pct:.1%})\n"
+                    f"{conf_bar} Conf: {signal['confidence']:.2f}\n"
+                    f"📊 {self.strategy.regime} | {model_str}"
                 )
 
     def _execute_shadow_signal(self, signal):
@@ -925,23 +915,11 @@ class MLBot:
                 f"{result_emoji} <b>TRADE CERRADO</b>\n"
                 f"━━━━━━━━━━━━━━━\n"
                 f"💎 {trade['symbol']} <b>{trade['side'].upper()}</b>\n"
-                f"\n"
-                f"📥 <b>Entrada → Salida</b>\n"
-                f"   Entry: ${trade['entry_price']:,.2f}\n"
-                f"   Exit:  ${trade['exit_price']:,.2f}\n"
-                f"   Cambio: {price_change_pct:+.2%} (${price_change:+,.2f})\n"
-                f"\n"
-                f"💰 <b>Resultado</b>\n"
-                f"   Notional: ${trade['notional']:,.2f} ({trade['leverage']}x)\n"
-                f"   PnL bruto: ${gross_pnl:+,.2f}\n"
-                f"   Comisiones: -${trade['commission']:.2f}\n"
-                f"   <b>PnL neto: ${trade['pnl']:+,.2f}</b>\n"
-                f"\n"
-                f"⏱️ Duracion: {dur_str}\n"
-                f"{reason_emoji} {reason_text}\n"
-                f"\n"
-                f"💰 Balance: <b>${self.portfolio.balance:,.2f}</b>\n"
-                f"{explain}"
+                f"📥 ${trade['entry_price']:,.2f} → ${trade['exit_price']:,.2f}\n"
+                f"📊 Cambio: {price_change_pct:+.2%}\n"
+                f"💰 <b>PnL: ${trade['pnl']:+,.2f}</b>\n"
+                f"⏱️ {dur_str} | {reason_emoji} {trade['exit_reason']}\n"
+                f"💵 Balance: <b>${self.portfolio.balance:,.2f}</b>"
             )
 
     # =========================================================================
