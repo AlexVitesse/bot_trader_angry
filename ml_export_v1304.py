@@ -36,13 +36,13 @@ DATA_DIR = Path('data')
 MODELS_DIR = Path('models')
 MODELS_DIR.mkdir(exist_ok=True)
 
-# Pares para V13.04 (ordenados por confianza)
+# Pares para V13.04 - PARAMETROS DE docs/LOW_OVERFIT_MODEL_RESULTS.md
 V1304_PAIRS = {
-    'DOGE': {'direction': 'LONG_ONLY', 'tp_pct': 0.02, 'sl_pct': 0.02, 'conv_min': 1.0, 'tier': 1},
-    'ADA':  {'direction': 'LONG_ONLY', 'tp_pct': 0.02, 'sl_pct': 0.02, 'conv_min': 1.0, 'tier': 1},
-    'DOT':  {'direction': 'LONG_ONLY', 'tp_pct': 0.02, 'sl_pct': 0.02, 'conv_min': 1.0, 'tier': 1},
-    'XRP':  {'direction': 'LONG_ONLY', 'tp_pct': 0.02, 'sl_pct': 0.02, 'conv_min': 1.0, 'tier': 2},
-    'BTC':  {'direction': 'LONG_ONLY', 'tp_pct': 0.02, 'sl_pct': 0.02, 'conv_min': 1.0, 'tier': 2},
+    'BTC':  {'direction': 'LONG_ONLY', 'tp_pct': 0.02, 'sl_pct': 0.02,  'conv_min': 1.0, 'tier': 1},  # Score 100
+    'DOGE': {'direction': 'LONG_ONLY', 'tp_pct': 0.02, 'sl_pct': 0.01,  'conv_min': 1.0, 'tier': 1},  # Score 90, SL 1%
+    'ADA':  {'direction': 'LONG_ONLY', 'tp_pct': 0.02, 'sl_pct': 0.015, 'conv_min': 1.0, 'tier': 1},  # Score 90, SL 1.5%
+    'XRP':  {'direction': 'LONG_ONLY', 'tp_pct': 0.02, 'sl_pct': 0.02,  'conv_min': 1.0, 'tier': 2},  # Score 85
+    'DOT':  {'direction': 'LONG_ONLY', 'tp_pct': 0.025,'sl_pct': 0.02,  'conv_min': 1.0, 'tier': 2},  # Score 70
 }
 
 # Pares excluidos (para futuro re-entrenamiento)
@@ -113,19 +113,28 @@ def train_and_export_pair(pair, config):
         print(f'  {pair}: ERROR - Insufficient data ({len(X)} samples)')
         return None
 
-    # Train on ALL data (no split - we already validated with walk-forward)
+    # Split 80/20 - entrenar en 80%, validar en 20% (out-of-sample real)
+    split_idx = int(len(X) * 0.80)
+    X_train, X_test = X.iloc[:split_idx], X.iloc[split_idx:]
+    y_train, y_test = y.iloc[:split_idx], y.iloc[split_idx:]
+
+    # Entrenar scaler y modelo SOLO en datos de train
     scaler = StandardScaler()
-    X_scaled = scaler.fit_transform(X)
+    X_train_scaled = scaler.fit_transform(X_train)
+    X_test_scaled = scaler.transform(X_test)
 
     model = Ridge(alpha=100.0)
-    model.fit(X_scaled, y)
+    model.fit(X_train_scaled, y_train)
 
-    # Compute pred_std for conviction calculation
-    preds = model.predict(X_scaled)
-    pred_std = float(np.std(preds))
+    # Compute pred_std en train (para conviction)
+    preds_train = model.predict(X_train_scaled)
+    pred_std = float(np.std(preds_train))
 
-    # Correlation (train)
-    corr = float(np.corrcoef(preds, y)[0, 1])
+    # Correlation en TEST (out-of-sample real)
+    preds_test = model.predict(X_test_scaled)
+    corr = float(np.corrcoef(preds_test, y_test)[0, 1])
+
+    print(f'  {pair}: Train {len(X_train):,} | Test {len(X_test):,} | corr_test={corr:.4f}')
 
     # Export model
     model_path = MODELS_DIR / f'v1304_{pair}.pkl'
@@ -135,14 +144,14 @@ def train_and_export_pair(pair, config):
     scaler_path = MODELS_DIR / f'v1304_{pair}_scaler.pkl'
     joblib.dump(scaler, scaler_path)
 
-    print(f'  {pair}: {len(X):,} samples | corr={corr:.4f} | pred_std={pred_std:.6f}')
-
     return {
         'pair': pair,
-        'n_samples': len(X),
-        'date_start': str(X.index.min().date()),
-        'date_end': str(X.index.max().date()),
-        'corr': corr,
+        'n_train': len(X_train),
+        'n_test': len(X_test),
+        'train_end': str(X_train.index.max().date()),
+        'test_start': str(X_test.index.min().date()),
+        'test_end': str(X_test.index.max().date()),
+        'corr_test': corr,
         'pred_std': pred_std,
         'config': config,
     }
@@ -174,11 +183,11 @@ def main():
         'model_params': {'alpha': 100.0},
         'feature_cols': FEATURE_COLS,
         'direction': 'LONG_ONLY',
+        'train_split': 0.80,
         'pairs': {},
         'excluded_pairs': EXCLUDED_PAIRS,
         'notes': [
-            'Low-overfitting model validated with walk-forward',
-            'Tested in bear market (Jan-Feb 2026) with positive results',
+            'Train/Test split 80/20 - out-of-sample validation real',
             'LONG_ONLY - model does not predict shorts accurately',
             'Re-train monthly for best results',
         ],
@@ -186,9 +195,11 @@ def main():
 
     for pair, result in results.items():
         meta['pairs'][pair] = {
-            'n_samples': result['n_samples'],
-            'date_range': f"{result['date_start']} to {result['date_end']}",
-            'corr': result['corr'],
+            'n_train': result['n_train'],
+            'n_test': result['n_test'],
+            'train_end': result['train_end'],
+            'test_range': f"{result['test_start']} to {result['test_end']}",
+            'corr_test': result['corr_test'],
             'pred_std': result['pred_std'],
             'direction': result['config']['direction'],
             'tp_pct': result['config']['tp_pct'],
@@ -204,13 +215,12 @@ def main():
 
     print(f'\n[3/3] Summary')
     print('=' * 70)
-    print(f"\n{'Pair':<6} {'Samples':<10} {'Corr':<8} {'Tier':<6} {'Direction':<12}")
+    print(f"\n{'Pair':<6} {'Train':<8} {'Test':<8} {'Corr_Test':<10} {'Tier':<6}")
     print('-' * 50)
 
     for pair, result in sorted(results.items(), key=lambda x: x[1]['config']['tier']):
         tier = result['config']['tier']
-        direction = result['config']['direction']
-        print(f"{pair:<6} {result['n_samples']:<10,} {result['corr']:<8.4f} {tier:<6} {direction:<12}")
+        print(f"{pair:<6} {result['n_train']:<8,} {result['n_test']:<8,} {result['corr_test']:<10.4f} {tier:<6}")
 
     print('-' * 50)
     print(f"\nModels exported to: {MODELS_DIR.absolute()}")

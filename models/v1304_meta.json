@@ -1,6 +1,6 @@
 {
   "version": "v13.04",
-  "trained_at": "2026-02-28T04:12:55.485747",
+  "trained_at": "2026-02-28T22:07:07.807843",
   "model_type": "Ridge",
   "model_params": {
     "alpha": 100.0
@@ -15,58 +15,69 @@
     "vr"
   ],
   "direction": "LONG_ONLY",
+  "train_split": 0.8,
   "pairs": {
-    "DOGE": {
-      "n_samples": 13469,
-      "date_range": "2020-01-04 to 2026-02-26",
-      "corr": 0.23029506906393957,
-      "pred_std": 0.022163448761703904,
+    "BTC": {
+      "n_train": 12523,
+      "n_test": 3131,
+      "train_end": "2024-09-22",
+      "test_range": "2024-09-22 to 2026-02-26",
+      "corr_test": 0.09205276589604701,
+      "pred_std": 0.0027666458100404612,
       "direction": "LONG_ONLY",
       "tp_pct": 0.02,
       "sl_pct": 0.02,
+      "conv_min": 1.0,
+      "tier": 1
+    },
+    "DOGE": {
+      "n_train": 10775,
+      "n_test": 2694,
+      "train_end": "2024-12-04",
+      "test_range": "2024-12-04 to 2026-02-26",
+      "corr_test": 0.04894532830930493,
+      "pred_std": 0.025598829726257353,
+      "direction": "LONG_ONLY",
+      "tp_pct": 0.02,
+      "sl_pct": 0.01,
       "conv_min": 1.0,
       "tier": 1
     },
     "ADA": {
-      "n_samples": 13469,
-      "date_range": "2020-01-04 to 2026-02-26",
-      "corr": 0.13090958494793428,
-      "pred_std": 0.006180498373623192,
+      "n_train": 10775,
+      "n_test": 2694,
+      "train_end": "2024-12-04",
+      "test_range": "2024-12-04 to 2026-02-26",
+      "corr_test": 0.12323733000973212,
+      "pred_std": 0.006037800730599512,
       "direction": "LONG_ONLY",
       "tp_pct": 0.02,
-      "sl_pct": 0.02,
-      "conv_min": 1.0,
-      "tier": 1
-    },
-    "DOT": {
-      "n_samples": 12085,
-      "date_range": "2020-08-22 to 2026-02-26",
-      "corr": 0.09035954971699699,
-      "pred_std": 0.0042916293647122005,
-      "direction": "LONG_ONLY",
-      "tp_pct": 0.02,
-      "sl_pct": 0.02,
+      "sl_pct": 0.015,
       "conv_min": 1.0,
       "tier": 1
     },
     "XRP": {
-      "n_samples": 13469,
-      "date_range": "2020-01-04 to 2026-02-26",
-      "corr": 0.08043464518481917,
-      "pred_std": 0.0038815338705485833,
+      "n_train": 10775,
+      "n_test": 2694,
+      "train_end": "2024-12-04",
+      "test_range": "2024-12-04 to 2026-02-26",
+      "corr_test": 0.08386938138817428,
+      "pred_std": 0.003809708818483993,
       "direction": "LONG_ONLY",
       "tp_pct": 0.02,
       "sl_pct": 0.02,
       "conv_min": 1.0,
       "tier": 2
     },
-    "BTC": {
-      "n_samples": 15654,
-      "date_range": "2019-01-04 to 2026-02-26",
-      "corr": 0.09351974947405009,
-      "pred_std": 0.0026813002508517757,
+    "DOT": {
+      "n_train": 9668,
+      "n_test": 2417,
+      "train_end": "2025-01-19",
+      "test_range": "2025-01-19 to 2026-02-26",
+      "corr_test": 0.0041843263553850854,
+      "pred_std": 0.004892860333423166,
       "direction": "LONG_ONLY",
-      "tp_pct": 0.02,
+      "tp_pct": 0.025,
       "sl_pct": 0.02,
       "conv_min": 1.0,
       "tier": 2
@@ -95,8 +106,7 @@
     }
   },
   "notes": [
-    "Low-overfitting model validated with walk-forward",
-    "Tested in bear market (Jan-Feb 2026) with positive results",
+    "Train/Test split 80/20 - out-of-sample validation real",
     "LONG_ONLY - model does not predict shorts accurately",
     "Re-train monthly for best results"
   ]
