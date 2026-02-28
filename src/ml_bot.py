@@ -225,6 +225,7 @@ class MLBot:
         if ML_V1304_ENABLED:
             v1304_pairs = [p.replace('/USDT', '') for p in ML_V1304_PAIRS]
             model_str = f"🔬 Ridge LONG_ONLY\n📊 Pares: {', '.join(v1304_pairs)}"
+            count = len(ML_V1304_PAIRS)  # Override count for V13.04
         else:
             extras = []
             if self.strategy.v84_enabled:
