@@ -44,11 +44,11 @@ EXPERTS = {
     'SOL': {'symbol': 'SOL/USDT', 'type': 'ensemble', 'tp': 0.06, 'sl': 0.04, 'model': 'ada'},
     'ATOM': {'symbol': 'ATOM/USDT', 'type': 'ensemble', 'tp': 0.06, 'sl': 0.04, 'model': 'ada'},
     'AVAX': {'symbol': 'AVAX/USDT', 'type': 'ensemble', 'tp': 0.06, 'sl': 0.04, 'model': 'ada'},
-    'MATIC': {'symbol': 'MATIC/USDT', 'type': 'ensemble', 'tp': 0.06, 'sl': 0.04, 'model': 'ada'},
+    'POL': {'symbol': 'POL/USDT', 'type': 'ensemble', 'tp': 0.06, 'sl': 0.04, 'model': 'ada'},  # ex-MATIC
     # === MODELO DOGE - Memecoins (3) ===
-    'SHIB': {'symbol': 'SHIB/USDT', 'type': 'ensemble', 'tp': 0.06, 'sl': 0.04, 'model': 'doge'},
-    'PEPE': {'symbol': 'PEPE/USDT', 'type': 'ensemble', 'tp': 0.06, 'sl': 0.04, 'model': 'doge'},
-    'FLOKI': {'symbol': 'FLOKI/USDT', 'type': 'ensemble', 'tp': 0.06, 'sl': 0.04, 'model': 'doge'},
+    'SHIB': {'symbol': '1000SHIB/USDT', 'type': 'ensemble', 'tp': 0.06, 'sl': 0.04, 'model': 'doge'},
+    'PEPE': {'symbol': '1000PEPE/USDT', 'type': 'ensemble', 'tp': 0.06, 'sl': 0.04, 'model': 'doge'},
+    'FLOKI': {'symbol': '1000FLOKI/USDT', 'type': 'ensemble', 'tp': 0.06, 'sl': 0.04, 'model': 'doge'},
     # === MODELO DOT - Infraestructura (4) ===
     'LINK': {'symbol': 'LINK/USDT', 'type': 'ensemble', 'tp': 0.05, 'sl': 0.03, 'model': 'dot'},
     'ALGO': {'symbol': 'ALGO/USDT', 'type': 'ensemble', 'tp': 0.05, 'sl': 0.03, 'model': 'dot'},
