@@ -27,10 +27,13 @@ FEATURE_COLS = ['rsi', 'macd_norm', 'adx', 'bb_pct', 'atr_pct',
 
 # Pares a validar y su modelo base
 PAIRS_TO_VALIDATE = {
-    'SOL/USDT': 'ada',    # Smart contract platform
-    'ATOM/USDT': 'ada',   # Smart contract platform
-    'SHIB/USDT': 'doge',  # Memecoin
-    'PEPE/USDT': 'doge',  # Memecoin
+    # Smart contracts (modelo ADA)
+    'AVAX/USDT': 'ada',
+    'MATIC/USDT': 'ada',
+    # Memecoins (modelo DOGE)
+    'FLOKI/USDT': 'doge',
+    'BONK/USDT': 'doge',
+    'WIF/USDT': 'doge',
 }
 
 

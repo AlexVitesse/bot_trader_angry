@@ -32,19 +32,31 @@ LOG_FILE = 'logs/v14_paper_trade.log'
 SIGNALS_FILE = 'data/v14_paper_signals.json'
 INITIAL_CAPITAL = 100
 
-# Expertos V14 (9 pares)
+# Expertos V14.1 (21 pares)
 EXPERTS = {
-    # Originales
+    # === ORIGINALES (5) ===
     'BTC': {'symbol': 'BTC/USDT', 'type': 'btc_v14', 'tp': 0.04, 'sl': 0.015},
     'ETH': {'symbol': 'ETH/USDT', 'type': 'setups', 'tp': 0.04, 'sl': 0.02},
     'DOGE': {'symbol': 'DOGE/USDT', 'type': 'ensemble', 'tp': 0.06, 'sl': 0.04},
     'ADA': {'symbol': 'ADA/USDT', 'type': 'ensemble', 'tp': 0.06, 'sl': 0.04},
     'DOT': {'symbol': 'DOT/USDT', 'type': 'ensemble', 'tp': 0.05, 'sl': 0.03},
-    # V14.1 - Nuevos pares validados
+    # === MODELO ADA - Smart Contracts (5) ===
     'SOL': {'symbol': 'SOL/USDT', 'type': 'ensemble', 'tp': 0.06, 'sl': 0.04, 'model': 'ada'},
     'ATOM': {'symbol': 'ATOM/USDT', 'type': 'ensemble', 'tp': 0.06, 'sl': 0.04, 'model': 'ada'},
+    'AVAX': {'symbol': 'AVAX/USDT', 'type': 'ensemble', 'tp': 0.06, 'sl': 0.04, 'model': 'ada'},
+    'MATIC': {'symbol': 'MATIC/USDT', 'type': 'ensemble', 'tp': 0.06, 'sl': 0.04, 'model': 'ada'},
+    'NEAR': {'symbol': 'NEAR/USDT', 'type': 'ensemble', 'tp': 0.06, 'sl': 0.04, 'model': 'ada'},
+    # === MODELO DOGE - Memecoins (5) ===
     'SHIB': {'symbol': 'SHIB/USDT', 'type': 'ensemble', 'tp': 0.06, 'sl': 0.04, 'model': 'doge'},
     'PEPE': {'symbol': 'PEPE/USDT', 'type': 'ensemble', 'tp': 0.06, 'sl': 0.04, 'model': 'doge'},
+    'FLOKI': {'symbol': 'FLOKI/USDT', 'type': 'ensemble', 'tp': 0.06, 'sl': 0.04, 'model': 'doge'},
+    'BONK': {'symbol': 'BONK/USDT', 'type': 'ensemble', 'tp': 0.06, 'sl': 0.04, 'model': 'doge'},
+    'WIF': {'symbol': 'WIF/USDT', 'type': 'ensemble', 'tp': 0.06, 'sl': 0.04, 'model': 'doge'},
+    # === MODELO DOT - Infraestructura (4) ===
+    'LINK': {'symbol': 'LINK/USDT', 'type': 'ensemble', 'tp': 0.05, 'sl': 0.03, 'model': 'dot'},
+    'ALGO': {'symbol': 'ALGO/USDT', 'type': 'ensemble', 'tp': 0.05, 'sl': 0.03, 'model': 'dot'},
+    'FIL': {'symbol': 'FIL/USDT', 'type': 'ensemble', 'tp': 0.05, 'sl': 0.03, 'model': 'dot'},
+    'INJ': {'symbol': 'INJ/USDT', 'type': 'ensemble', 'tp': 0.05, 'sl': 0.03, 'model': 'dot'},
 }
 
 # Features para ensemble simple
