@@ -11,7 +11,7 @@ import requests
 from datetime import datetime
 from pathlib import Path
 
-from config.settings import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, TELEGRAM_ENABLED, SYMBOL
+from config.settings import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, TELEGRAM_ENABLED, SYMBOL, BOT_VERSION
 
 logger = logging.getLogger(__name__)
 
@@ -336,7 +336,7 @@ class TelegramPoller:
 if __name__ == "__main__":
     if TELEGRAM_ENABLED:
         print(f"[OK] Telegram configurado. Enviando test...")
-        _send_message("\U0001F916 Bot de trading conectado. Alertas activas.")
+        _send_message(f"\U0001F916 Bot de trading {BOT_VERSION} conectado. Alertas activas.")
         print("[OK] Mensaje enviado. Revisa tu Telegram.")
     else:
         print("[WARN] TELEGRAM_BOT_TOKEN o TELEGRAM_CHAT_ID no configurados en .env")

@@ -1,0 +1,23 @@
+{
+  "symbol": "SOL/USDT",
+  "tp": 0.06,
+  "sl": 0.04,
+  "features": [
+    "rsi",
+    "macd_norm",
+    "adx",
+    "bb_pct",
+    "atr_pct",
+    "ret_3",
+    "ret_5",
+    "ret_10",
+    "vol_ratio",
+    "trend"
+  ],
+  "validation": {
+    "folds_positive": 6,
+    "total_pnl": 182,
+    "total_trades": 317,
+    "avg_wr": 0.404
+  }
+}

@@ -24,10 +24,12 @@ from config.settings import (
     ML_DB_FILE, MODELS_DIR, TELEGRAM_ENABLED, LOG_LEVEL,
     LOGS_DIR, INITIAL_CAPITAL, ML_MAX_DAILY_LOSS_PCT,
     ML_SHADOW_ENABLED, ML_V9_ENABLED, ML_TIMEFRAME,
-    ML_MAX_CONCURRENT, ML_V13_VERSION,
+    ML_MAX_CONCURRENT, BOT_VERSION,
     ML_V1304_ENABLED, ML_V1304_PAIRS,
+    ML_V14_ENABLED, ML_V14_EXPERTS,
 )
 from src.ml_strategy import MLStrategy
+from src.ml_strategy_v14 import MLStrategyV14
 from src.portfolio_manager import PortfolioManager
 from src.shadow_portfolio_manager import ShadowPortfolioManager
 from src.telegram_alerts import send_alert, send_document, TelegramPoller
@@ -41,7 +43,13 @@ class MLBot:
     def __init__(self):
         self.exchange_public = self._init_exchange_public()
         self.exchange = self._init_exchange()
-        self.strategy = MLStrategy()
+        # Usar estrategia V14 si esta habilitada
+        if ML_V14_ENABLED:
+            self.strategy = MLStrategyV14()
+            self.v14_mode = True
+        else:
+            self.strategy = MLStrategy()
+            self.v14_mode = False
         self.portfolio = PortfolioManager(self.exchange, ML_DB_FILE)
         self.shadow_enabled = ML_SHADOW_ENABLED and ML_V9_ENABLED
         self.shadow_portfolio = ShadowPortfolioManager(strategy='v9_shadow') if self.shadow_enabled else None
@@ -221,8 +229,13 @@ class MLBot:
         regime_emoji = {'BULL': '🟢🐂', 'BEAR': '🔴🐻', 'RANGE': '🟡↔️'}.get(regime, '⚪')
         n_pos = len(self.portfolio.positions)
 
+        # V14 info
+        if self.v14_mode:
+            n_experts = len(ML_V14_EXPERTS)
+            model_str = f"🤖 Ensemble Voting\n📊 {n_experts} expertos activos"
+            count = n_experts
         # V13.04 info
-        if ML_V1304_ENABLED:
+        elif ML_V1304_ENABLED:
             v1304_pairs = [p.replace('/USDT', '') for p in ML_V1304_PAIRS]
             model_str = f"🔬 Ridge LONG_ONLY\n📊 Pares: {', '.join(v1304_pairs)}"
             count = len(ML_V1304_PAIRS)  # Override count for V13.04
@@ -235,7 +248,7 @@ class MLBot:
             model_str = " | ".join(extras) if extras else ""
 
         send_alert(
-            f"🚀 <b>{ML_V13_VERSION} INICIADO</b>\n"
+            f"🚀 <b>{BOT_VERSION} INICIADO</b>\n"
             f"━━━━━━━━━━━━━━━\n"
             f"📊 Modo: {TRADING_MODE.upper()}\n"
             f"{regime_emoji} Regime: {regime}\n"
@@ -256,8 +269,8 @@ class MLBot:
             '/pull': self._cmd_pull,
             '/install': self._cmd_install,
             '/restart': self._cmd_restart,
-            '/retrain': self._cmd_retrain,
-            '/export_v1304': self._cmd_export_v1304,
+            '/retrain': self._cmd_export_v14,  # Alias para V14
+            '/export_v14': self._cmd_export_v14,
             '/clearlog': self._cmd_clearlog,
             '/resetdb': self._cmd_resetdb,
         })
@@ -269,7 +282,7 @@ class MLBot:
     def _cmd_help(self):
         """Responde al comando /help - lista de comandos disponibles."""
         send_alert(
-            f"📋 <b>COMANDOS DISPONIBLES</b>\n"
+            f"📋 <b>COMANDOS {BOT_VERSION}</b>\n"
             f"━━━━━━━━━━━━━━━\n"
             f"<b>Monitoreo:</b>\n"
             f"  /status - Estado del bot\n"
@@ -288,8 +301,7 @@ class MLBot:
             f"  /update - Pull + Install + Restart\n"
             f"  /pull - git stash + pull\n"
             f"  /install - poetry install\n"
-            f"  /retrain - Reentrenar modelos V7-V9\n"
-            f"  /export_v1304 - Exportar modelos V13.04"
+            f"  /retrain - Reentrenar modelos {BOT_VERSION}"
         )
 
     def _cmd_status(self):
@@ -315,7 +327,7 @@ class MLBot:
                 model_str += "\n🎯 Conv: ON"
 
         send_alert(
-            f"📊 <b>STATUS {ML_V13_VERSION}</b>\n"
+            f"📊 <b>STATUS {BOT_VERSION}</b>\n"
             f"━━━━━━━━━━━━━━━\n"
             f"💰 Balance: ${status['balance']:,.2f}\n"
             f"📈 Pos: {status['positions']}/{ML_MAX_CONCURRENT}\n"
@@ -417,7 +429,7 @@ class MLBot:
                 f"━━━━━━━━━━━━━━━\n"
                 f"🗂️ {count_before} trades eliminados\n"
                 f"📊 Peak reseteado a balance actual\n"
-                f"✅ Listo para V13 limpio"
+                f"✅ Listo para {BOT_VERSION} limpio"
             )
             logger.info(f"[BOT] BD reseteada via /resetdb: {count_before} trades eliminados")
         except Exception as e:
@@ -551,88 +563,48 @@ class MLBot:
 
         threading.Thread(target=_do_update, daemon=True).start()
 
-    def _cmd_retrain(self):
-        """Responde al comando /retrain - ejecuta ml_export_models.py en background."""
-        n_pos = len(self.portfolio.positions)
-        if n_pos > 0:
-            send_alert(
-                f"⚠️ <b>NO SE PUEDE REENTRENAR</b>\n"
-                f"Hay {n_pos} posiciones abiertas.\n"
-                f"Cierra posiciones primero o espera a que se cierren."
-            )
-            return
+    def _cmd_export_v14(self):
+        """Responde al comando /export_v14 - exporta modelos V14 Ensemble."""
         send_alert(
-            f"🧠 Ejecutando ml_export_models.py...\n"
-            f"⏱️ Esto puede tardar varios minutos"
-        )
-        logger.info("[BOT] Retrain solicitado via /retrain")
-        project_root = str(Path(__file__).parent.parent)
-
-        def _do_retrain():
-            try:
-                result = subprocess.run(
-                    [sys.executable, 'ml_export_models.py'],
-                    capture_output=True, text=True,
-                    timeout=1800, cwd=project_root,
-                )
-                ok = result.returncode == 0
-                emoji = "✅" if ok else "❌"
-                # Last 500 chars of output (most relevant part)
-                output = result.stdout.strip() or result.stderr.strip() or "Sin output"
-                output = output[-500:]
-                send_alert(f"{emoji} <b>RETRAIN</b>\n<code>{output}</code>")
-                logger.info(f"[BOT] retrain: rc={result.returncode}")
-            except subprocess.TimeoutExpired:
-                send_alert("❌ <b>RETRAIN TIMEOUT</b>\nSuperados 30 minutos")
-                logger.error("[BOT] retrain timeout (30min)")
-            except Exception as e:
-                send_alert(f"❌ Error en retrain: {e}")
-                logger.error(f"[BOT] retrain error: {e}")
-
-        threading.Thread(target=_do_retrain, daemon=True).start()
-
-    def _cmd_export_v1304(self):
-        """Responde al comando /export_v1304 - exporta modelos V13.04 Ridge."""
-        send_alert(
-            f"🔬 <b>EXPORTANDO V13.04</b>\n"
+            f"🔬 <b>EXPORTANDO {BOT_VERSION}</b>\n"
             f"━━━━━━━━━━━━━━━\n"
-            f"📊 Modelo: Ridge(alpha=100)\n"
-            f"📈 Pares: DOGE, ADA, DOT, XRP, BTC\n"
-            f"⏱️ Tiempo estimado: 1-2 minutos"
+            f"📊 Modelo: Ensemble (RF+GB+LR)\n"
+            f"📈 Pares: DOGE, ADA, DOT, SOL\n"
+            f"⏱️ Tiempo estimado: 3-5 minutos"
         )
-        logger.info("[BOT] Export V13.04 solicitado via /export_v1304")
+        logger.info(f"[BOT] Export {BOT_VERSION} solicitado via /export_v14")
         project_root = str(Path(__file__).parent.parent)
 
         def _do_export():
             try:
                 result = subprocess.run(
-                    [sys.executable, 'ml_export_v1304.py'],
+                    [sys.executable, 'ml_export_v14.py', '--force'],
                     capture_output=True, text=True,
-                    timeout=300, cwd=project_root,
+                    timeout=600, cwd=project_root,
                 )
                 ok = result.returncode == 0
                 output = result.stdout.strip() or result.stderr.strip() or "Sin output"
 
                 if ok:
-                    # Extraer lineas con info de pares
+                    # Extraer resumen
                     lines = output.split('\n')
-                    pair_lines = [l for l in lines if any(p in l for p in ['DOGE:', 'ADA:', 'DOT:', 'XRP:', 'BTC:'])]
-                    if pair_lines:
-                        summary = '\n'.join(pair_lines[:5])
-                        send_alert(f"✅ <b>V13.04 EXPORTADO</b>\n<code>{summary}</code>")
+                    summary_lines = [l for l in lines if any(s in l for s in ['DOGE:', 'ADA:', 'DOT:', 'SOL:', '✓', '✗'])]
+                    if summary_lines:
+                        summary = '\n'.join(summary_lines[-6:])
+                        send_alert(f"✅ <b>{BOT_VERSION} EXPORTADO</b>\n<code>{summary}</code>")
                     else:
-                        send_alert("✅ <b>V13.04 EXPORTADO</b>\nModelos listos en models/")
+                        send_alert(f"✅ <b>{BOT_VERSION} EXPORTADO</b>\nModelos listos en strategies/*/models/")
                 else:
                     error_msg = output[-300:]
-                    send_alert(f"❌ <b>V13.04 ERROR</b>\n<code>{error_msg}</code>")
+                    send_alert(f"❌ <b>{BOT_VERSION} ERROR</b>\n<code>{error_msg}</code>")
 
-                logger.info(f"[BOT] export_v1304: rc={result.returncode}")
+                logger.info(f"[BOT] export_v14: rc={result.returncode}")
             except subprocess.TimeoutExpired:
-                send_alert("❌ <b>V13.04 TIMEOUT</b>\nSuperados 5 minutos")
-                logger.error("[BOT] export_v1304 timeout (5min)")
+                send_alert(f"❌ <b>{BOT_VERSION} TIMEOUT</b>\nSuperados 10 minutos")
+                logger.error("[BOT] export_v14 timeout (10min)")
             except Exception as e:
-                send_alert(f"❌ Error en export V13.04: {e}")
-                logger.error(f"[BOT] export_v1304 error: {e}")
+                send_alert(f"❌ Error en export {BOT_VERSION}: {e}")
+                logger.error(f"[BOT] export_v14 error: {e}")
 
         threading.Thread(target=_do_export, daemon=True).start()
 
@@ -676,14 +648,14 @@ class MLBot:
         """Procesa nueva vela de 4h: genera senales y abre posiciones."""
         logger.info("[BOT] Nueva vela 4h - generando senales...")
 
-        # Actualizar regime y macro diariamente
+        # Actualizar regime diariamente
         today = datetime.now(timezone.utc).strftime('%Y-%m-%d')
         if today != self.last_regime_date:
             self.strategy.update_regime(self.exchange_public)
             self.last_regime_date = today
 
-            # V8.4: Refresh macro data daily
-            if self.strategy.v84_enabled:
+            # V8.4: Refresh macro data daily (solo para estrategia legacy)
+            if not self.v14_mode and hasattr(self.strategy, 'v84_enabled') and self.strategy.v84_enabled:
                 logger.info("[BOT] Actualizando macro (V8.4)...")
                 self.strategy.update_macro()
                 logger.info(f"[BOT] Macro: score={self.strategy.macro_score:.3f}, "
@@ -693,11 +665,31 @@ class MLBot:
         # Actualizar balance
         self.portfolio.refresh_balance()
 
-        # Generar senales (dual-mode si V9 activo)
-        if self.shadow_enabled and self.strategy.v9_enabled:
+        # V14: Flujo simplificado
+        if self.v14_mode:
+            self._on_new_candle_v14()
+        # Legacy: dual-mode si V9 activo
+        elif self.shadow_enabled and self.strategy.v9_enabled:
             self._on_new_candle_dual()
         else:
             self._on_new_candle_single()
+
+    def _on_new_candle_v14(self):
+        """V14: Flujo simplificado con multiples expertos."""
+        open_symbols = set(self.portfolio.positions.keys())
+        signals = self.strategy.generate_signals(self.exchange_public, open_symbols)
+
+        if signals:
+            logger.info(f"[V14] {len(signals)} senales generadas:")
+            for s in signals:
+                side = 'LONG' if s['direction'] == 1 else 'SHORT'
+                logger.info(f"  {s['pair']} {side} | conf={s['confidence']:.2f} | "
+                            f"${s['price']:,.2f} | {s.get('setup', '')}")
+        else:
+            logger.info("[V14] Sin senales en este ciclo")
+
+        for signal in signals:
+            self._execute_v14_signal(signal)
 
     def _on_new_candle_single(self):
         """Modo legacy: generate_signals sin shadow."""
@@ -768,6 +760,42 @@ class MLBot:
         # Execute V9 signals on shadow portfolio
         for signal in v9_signals:
             self._execute_shadow_signal(signal)
+
+    def _execute_v14_signal(self, signal):
+        """Execute a V14 signal with per-pair TP/SL."""
+        if not self.portfolio.can_open(signal['pair'], signal['direction']):
+            return
+
+        # V14 usa TP/SL del signal (especifico por par)
+        success = self.portfolio.open_position(
+            pair=signal['pair'],
+            direction=signal['direction'],
+            confidence=signal['confidence'],
+            regime=self.strategy.regime,
+            price=signal['price'],
+            atr_pct=0.02,  # Default, V14 usa TP/SL fijos
+            sizing_mult=1.0,
+            tp_pct_override=signal.get('tp_pct'),
+            sl_pct_override=signal.get('sl_pct'),
+        )
+
+        if success:
+            pos = self.portfolio.positions.get(signal['pair'])
+            if pos:
+                side = 'LONG' if signal['direction'] == 1 else 'SHORT'
+                side_emoji = '🟢' if signal['direction'] == 1 else '🔴'
+                setup = signal.get('setup', 'ENSEMBLE')
+                send_alert(
+                    f"{side_emoji} <b>{BOT_VERSION} TRADE ABIERTO</b>\n"
+                    f"━━━━━━━━━━━━━━━\n"
+                    f"💎 {signal['pair']} <b>{side}</b>\n"
+                    f"📥 Entry: ${pos.entry_price:,.2f}\n"
+                    f"📦 Notional: ${pos.notional:,.2f} ({pos.leverage}x)\n"
+                    f"🎯 TP: ${pos.tp_price:,.2f} ({pos.tp_pct:.1%})\n"
+                    f"🛡️ SL: ${pos.sl_price:,.2f} ({pos.sl_pct:.1%})\n"
+                    f"📊 Setup: {setup}\n"
+                    f"🔮 Regime: {self.strategy.regime}"
+                )
 
     def _execute_v9_signal(self, signal):
         """Execute a signal on the real portfolio (V9 or legacy)."""
@@ -983,7 +1011,7 @@ class MLBot:
             errors_str = "\n".join(f"  ⚠️ {e[:80]}" for e in self.recent_errors[-5:])
             n_errors = len(self.recent_errors)
             send_alert(
-                f"🔴 <b>{ML_V13_VERSION} ERRORES ({n_errors})</b>\n"
+                f"🔴 <b>{BOT_VERSION} ERRORES ({n_errors})</b>\n"
                 f"━━━━━━━━━━━━━━━\n"
                 f"{errors_str}\n"
                 f"\n"
@@ -1013,7 +1041,7 @@ class MLBot:
                     model_str += "🎯 Conv: ON\n"
 
             send_alert(
-                f"🟢 <b>{ML_V13_VERSION} OK</b>\n"
+                f"🟢 <b>{BOT_VERSION} OK</b>\n"
                 f"━━━━━━━━━━━━━━━\n"
                 f"💰 Balance: ${status['balance']:,.2f}\n"
                 f"📈 Pos: {status['positions']}/{ML_MAX_CONCURRENT}\n"
@@ -1045,7 +1073,7 @@ class MLBot:
 
         pnl_emoji = '📈' if total_pnl >= 0 else '📉'
         send_alert(
-            f"📊 <b>RESUMEN DIARIO {ML_V13_VERSION}</b>\n"
+            f"📊 <b>RESUMEN DIARIO {BOT_VERSION}</b>\n"
             f"━━━━━━━━━━━━━━━\n"
             f"📈 Trades: {len(trades_today)} | "
             f"✅ {wins} ❌ {losses} | WR {wr:.0f}%\n"

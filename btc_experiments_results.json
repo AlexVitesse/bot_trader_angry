@@ -1,0 +1,122 @@
+[
+  {
+    "name": "Baseline (Ridge, 7 feat, target=5)",
+    "n_features": 7,
+    "target_periods": 5,
+    "model_type": "ridge",
+    "corr_train": 0.09179990971834404,
+    "corr_val": 0.07619006389338284,
+    "corr_test": 0.09378325910676841,
+    "val_pnl": 46.41070752390674,
+    "test_trades": 113,
+    "test_wr": 38.05309734513274,
+    "test_pnl": -24.997008170180045,
+    "test_pf": 0.810571442507012,
+    "passed": "False",
+    "best_params": {
+      "tp": 0.02,
+      "sl": 0.01,
+      "conv": 0.5
+    }
+  },
+  {
+    "name": "XGBoost + 25 features",
+    "n_features": 28,
+    "target_periods": 5,
+    "model_type": "xgboost",
+    "corr_train": 0.5091033164440139,
+    "corr_val": -0.0045438703688094545,
+    "corr_test": 0.12901606517835132,
+    "val_pnl": 36.66515432427621,
+    "test_trades": 28,
+    "test_wr": 39.285714285714285,
+    "test_pnl": 14.82588679377342,
+    "test_pf": 1.4026816988401598,
+    "passed": "False",
+    "best_params": {
+      "tp": 0.04,
+      "sl": 0.01,
+      "conv": 0.5
+    }
+  },
+  {
+    "name": "Ridge target=20 periodos",
+    "n_features": 7,
+    "target_periods": 20,
+    "model_type": "ridge",
+    "corr_train": 0.08440744951318976,
+    "corr_val": -0.056656886497812246,
+    "corr_test": 0.05810369390950587,
+    "val_pnl": 38.02807199241299,
+    "test_trades": 61,
+    "test_wr": 27.86885245901639,
+    "test_pnl": -21.260352591973636,
+    "test_pf": 0.7409468013582011,
+    "passed": "False",
+    "best_params": {
+      "tp": 0.03,
+      "sl": 0.01,
+      "conv": 1.0
+    }
+  },
+  {
+    "name": "XGBoost target=20 periodos",
+    "n_features": 28,
+    "target_periods": 20,
+    "model_type": "xgboost",
+    "corr_train": 0.5564844497531835,
+    "corr_val": 0.07700777115279818,
+    "corr_test": 0.07919720049846293,
+    "val_pnl": 38.5152857602417,
+    "test_trades": 35,
+    "test_wr": 28.57142857142857,
+    "test_pnl": -5.224286106986494,
+    "test_pf": 0.8999516147480129,
+    "passed": "False",
+    "best_params": {
+      "tp": 0.04,
+      "sl": 0.01,
+      "conv": 0.5
+    }
+  },
+  {
+    "name": "XGBoost + Features Macro",
+    "n_features": 34,
+    "target_periods": 5,
+    "model_type": "xgboost",
+    "corr_train": 0.5590371822285795,
+    "corr_val": -0.04756890911166123,
+    "corr_test": 0.11059244046964212,
+    "val_pnl": 29.04706484680694,
+    "test_trades": 7,
+    "test_wr": 28.57142857142857,
+    "test_pnl": -2.5965926530582224,
+    "test_pf": 0.7934355538961197,
+    "passed": "False",
+    "best_params": {
+      "tp": 0.04,
+      "sl": 0.015,
+      "conv": 1.0
+    }
+  },
+  {
+    "name": "XGBoost + Macro + target=20",
+    "n_features": 34,
+    "target_periods": 20,
+    "model_type": "xgboost",
+    "corr_train": 0.6518171626061969,
+    "corr_val": 0.02387355626331003,
+    "corr_test": 0.09756679274199005,
+    "val_pnl": 15.807683616409573,
+    "test_trades": 20,
+    "test_wr": 25.0,
+    "test_pnl": -17.807818915293826,
+    "test_pf": 0.5697393120292056,
+    "passed": "False",
+    "best_params": {
+      "tp": 0.04,
+      "sl": 0.02,
+      "conv": 0.5
+    }
+  }
+]

@@ -1,0 +1,190 @@
+{
+  "timestamp": "2026-03-01T14:43:28.586192",
+  "methodology": "Synthetic data specific to coin type",
+  "results": [
+    {
+      "model": "DOGE",
+      "market_type": "bull",
+      "trades": 146,
+      "wins": 73,
+      "losses": 73,
+      "wr": 50.0,
+      "pnl": 400.5
+    },
+    {
+      "model": "DOGE",
+      "market_type": "bear",
+      "trades": 116,
+      "wins": 49,
+      "losses": 67,
+      "wr": 42.2,
+      "pnl": 209.6
+    },
+    {
+      "model": "DOGE",
+      "market_type": "range",
+      "trades": 26,
+      "wins": 10,
+      "losses": 16,
+      "wr": 38.5,
+      "pnl": 25.6
+    },
+    {
+      "model": "DOGE",
+      "market_type": "mixed",
+      "trades": 152,
+      "wins": 64,
+      "losses": 88,
+      "wr": 42.1,
+      "pnl": 404.6
+    },
+    {
+      "model": "DOGE",
+      "market_type": "volatile",
+      "trades": 338,
+      "wins": 164,
+      "losses": 174,
+      "wr": 48.5,
+      "pnl": 1264.8
+    },
+    {
+      "model": "ADA",
+      "market_type": "bull",
+      "trades": 2,
+      "wins": 0,
+      "losses": 2,
+      "wr": 0.0,
+      "pnl": -8.0
+    },
+    {
+      "model": "ADA",
+      "market_type": "bear",
+      "trades": 14,
+      "wins": 7,
+      "losses": 7,
+      "wr": 50.0,
+      "pnl": 19.5
+    },
+    {
+      "model": "ADA",
+      "market_type": "range",
+      "trades": 1,
+      "wins": 1,
+      "losses": 0,
+      "wr": 100.0,
+      "pnl": 7.9
+    },
+    {
+      "model": "ADA",
+      "market_type": "mixed",
+      "trades": 2,
+      "wins": 1,
+      "losses": 1,
+      "wr": 50.0,
+      "pnl": 2.3
+    },
+    {
+      "model": "ADA",
+      "market_type": "volatile",
+      "trades": 79,
+      "wins": 33,
+      "losses": 46,
+      "wr": 41.8,
+      "pnl": 120.5
+    },
+    {
+      "model": "DOT",
+      "market_type": "bear",
+      "trades": 22,
+      "wins": 0,
+      "losses": 22,
+      "wr": 0.0,
+      "pnl": -66.0
+    },
+    {
+      "model": "DOT",
+      "market_type": "mixed",
+      "trades": 59,
+      "wins": 0,
+      "losses": 59,
+      "wr": 0.0,
+      "pnl": -177.0
+    },
+    {
+      "model": "DOT",
+      "market_type": "volatile",
+      "trades": 6,
+      "wins": 3,
+      "losses": 3,
+      "wr": 50.0,
+      "pnl": 11.9
+    },
+    {
+      "model": "SOL",
+      "market_type": "bull",
+      "trades": 26,
+      "wins": 14,
+      "losses": 12,
+      "wr": 53.8,
+      "pnl": 71.2
+    },
+    {
+      "model": "SOL",
+      "market_type": "bear",
+      "trades": 47,
+      "wins": 17,
+      "losses": 30,
+      "wr": 36.2,
+      "pnl": 17.9
+    },
+    {
+      "model": "SOL",
+      "market_type": "range",
+      "trades": 2,
+      "wins": 2,
+      "losses": 0,
+      "wr": 100.0,
+      "pnl": 14.9
+    },
+    {
+      "model": "SOL",
+      "market_type": "mixed",
+      "trades": 64,
+      "wins": 31,
+      "losses": 33,
+      "wr": 48.4,
+      "pnl": 144.8
+    },
+    {
+      "model": "SOL",
+      "market_type": "volatile",
+      "trades": 126,
+      "wins": 52,
+      "losses": 74,
+      "wr": 41.3,
+      "pnl": 194.3
+    }
+  ],
+  "model_analysis": {
+    "DOGE": {
+      "total_trades": 778,
+      "wins": 360,
+      "losses": 418
+    },
+    "ADA": {
+      "total_trades": 98,
+      "wins": 42,
+      "losses": 56
+    },
+    "DOT": {
+      "total_trades": 87,
+      "wins": 3,
+      "losses": 84
+    },
+    "SOL": {
+      "total_trades": 265,
+      "wins": 116,
+      "losses": 149
+    }
+  }
+}

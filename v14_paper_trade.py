@@ -35,18 +35,21 @@ INITIAL_CAPITAL = 100
 # Expertos V14.1 (16 pares - solo aprobados)
 EXPERTS = {
     # === ORIGINALES (5) ===
-    'BTC': {'symbol': 'BTC/USDT', 'type': 'btc_v14', 'tp': 0.04, 'sl': 0.015},
+    # BTC: TP/SL de validation.py (3%/1.5%) - validado con 37% WR, +3490% PnL
+    'BTC': {'symbol': 'BTC/USDT', 'type': 'btc_v14', 'tp': 0.03, 'sl': 0.015},
     'ETH': {'symbol': 'ETH/USDT', 'type': 'setups', 'tp': 0.04, 'sl': 0.02},
     'DOGE': {'symbol': 'DOGE/USDT', 'type': 'ensemble', 'tp': 0.06, 'sl': 0.04},
     'ADA': {'symbol': 'ADA/USDT', 'type': 'ensemble', 'tp': 0.06, 'sl': 0.04},
     'DOT': {'symbol': 'DOT/USDT', 'type': 'ensemble', 'tp': 0.05, 'sl': 0.03},
-    # === MODELO ADA - Smart Contracts (4) ===
-    'SOL': {'symbol': 'SOL/USDT', 'type': 'ensemble', 'tp': 0.06, 'sl': 0.04, 'model': 'ada'},
+    # === SOL - Dedicated Model ===
+    'SOL': {'symbol': 'SOL/USDT', 'type': 'ensemble', 'tp': 0.06, 'sl': 0.04, 'model': 'sol'},
+    # === MODELO ADA - Smart Contracts (3) ===
     'ATOM': {'symbol': 'ATOM/USDT', 'type': 'ensemble', 'tp': 0.06, 'sl': 0.04, 'model': 'ada'},
     'AVAX': {'symbol': 'AVAX/USDT', 'type': 'ensemble', 'tp': 0.06, 'sl': 0.04, 'model': 'ada'},
     'POL': {'symbol': 'POL/USDT', 'type': 'ensemble', 'tp': 0.06, 'sl': 0.04, 'model': 'ada'},  # ex-MATIC
-    # === MODELO DOGE - Memecoins (3) ===
-    'SHIB': {'symbol': '1000SHIB/USDT', 'type': 'ensemble', 'tp': 0.06, 'sl': 0.04, 'model': 'doge'},
+    # === MODELO DOGE - Memecoins (2) ===
+    # SHIB DESHABILITADO: 0% signal rate - modelo DOGE no es compatible
+    # 'SHIB': {'symbol': '1000SHIB/USDT', 'type': 'ensemble', 'tp': 0.06, 'sl': 0.04, 'model': 'doge'},
     'PEPE': {'symbol': '1000PEPE/USDT', 'type': 'ensemble', 'tp': 0.06, 'sl': 0.04, 'model': 'doge'},
     'FLOKI': {'symbol': '1000FLOKI/USDT', 'type': 'ensemble', 'tp': 0.06, 'sl': 0.04, 'model': 'doge'},
     # === MODELO DOT - Infraestructura (4) ===
@@ -59,6 +62,52 @@ EXPERTS = {
 # Features para ensemble simple
 ENSEMBLE_FEATURES = ['rsi', 'macd_norm', 'adx', 'bb_pct', 'atr_pct',
                      'ret_3', 'ret_5', 'ret_10', 'vol_ratio', 'trend']
+
+# =============================================================================
+# FILTROS ESPECIFICOS POR MODELO (basado en analisis de trades fallidos)
+# =============================================================================
+# BTC: Sin filtro ML - los setups ya funcionan (32% WR, +3871% PnL sin ML)
+#      El filtro ML ensemble EMPEORA resultados (29% WR con filtro)
+# SOL: ret_3 > -0.03 mejora 82.1% -> 86.8%
+# ADA: vol_ratio > 2.0 mejora 58.2% -> 65.6%
+# DOGE: bb_pct < 0.7 mejora 79.3% -> 87.3%
+# DOT: vol_ratio < 4.15 mejora 84.8% -> 92.6% (retiene 82% trades)
+
+BTC_ENABLED = True  # Habilitado - sin filtro ML
+BTC_USE_ML_FILTER = False  # NO usar filtro ML para BTC (empeora resultados)
+
+MODEL_FILTERS = {
+    'SOL': {'filter': 'ret_3', 'op': '>', 'value': -0.03},
+    'ADA': {'filter': 'vol_ratio', 'op': '>', 'value': 2.0},
+    'DOGE': {'filter': 'bb_pct', 'op': '<', 'value': 0.7},
+    'DOT': {'filter': 'vol_ratio', 'op': '<', 'value': 4.15},  # 84.8% -> 92.6% WR
+}
+
+def check_model_filter(model_name, features):
+    """Verifica si el trade pasa el filtro del modelo"""
+    # Obtener filtro para el modelo base
+    filter_config = MODEL_FILTERS.get(model_name)
+    if filter_config is None:
+        return True, ""
+
+    feat_name = filter_config['filter']
+    op = filter_config['op']
+    threshold = filter_config['value']
+    value = features.get(feat_name, 0)
+
+    if op == '>':
+        passed = value > threshold
+    elif op == '<':
+        passed = value < threshold
+    elif op == '>=':
+        passed = value >= threshold
+    elif op == '<=':
+        passed = value <= threshold
+    else:
+        passed = True
+
+    reason = f"{feat_name}={value:.3f} {'>' if op == '>' else '<'} {threshold}" if not passed else ""
+    return passed, reason
 
 # =============================================================================
 # BTC V14 - Clases y funciones
@@ -78,13 +127,15 @@ class Strategy(Enum):
     BREAKOUT_LONG = "BREAKOUT_LONG"
     BREAKOUT_SHORT = "BREAKOUT_SHORT"
 
+# BTC: Usar TP/SL fijos de validation.py (37% WR, +3490% PnL validado)
+# Los params variables del framework daban peores resultados
 BTC_STRATEGY_PARAMS = {
-    Strategy.TREND_FOLLOW_LONG: {'tp': 0.04, 'sl': 0.015},
-    Strategy.TREND_FOLLOW_SHORT: {'tp': 0.04, 'sl': 0.015},
-    Strategy.MEAN_REVERSION_LONG: {'tp': 0.025, 'sl': 0.012},
-    Strategy.MEAN_REVERSION_SHORT: {'tp': 0.025, 'sl': 0.012},
-    Strategy.BREAKOUT_LONG: {'tp': 0.05, 'sl': 0.02},
-    Strategy.BREAKOUT_SHORT: {'tp': 0.05, 'sl': 0.02},
+    Strategy.TREND_FOLLOW_LONG: {'tp': 0.03, 'sl': 0.015},
+    Strategy.TREND_FOLLOW_SHORT: {'tp': 0.03, 'sl': 0.015},
+    Strategy.MEAN_REVERSION_LONG: {'tp': 0.03, 'sl': 0.015},
+    Strategy.MEAN_REVERSION_SHORT: {'tp': 0.03, 'sl': 0.015},
+    Strategy.BREAKOUT_LONG: {'tp': 0.03, 'sl': 0.015},
+    Strategy.BREAKOUT_SHORT: {'tp': 0.03, 'sl': 0.015},
 }
 
 # =============================================================================
@@ -515,45 +566,62 @@ def main():
                         df = fetch_ohlcv(exchange, symbol, limit=100)
                         signals = []
 
-                        # BTC V14: Régimen + Setups + Ensemble
-                        if config['type'] == 'btc_v14' and btc_models_exist:
+                        # BTC V14: Régimen + Setups (SIN filtro ML - empeora resultados)
+                        if config['type'] == 'btc_v14':
+                            if not BTC_ENABLED:
+                                log(f"BTC: DESACTIVADO")
+                                continue
+
                             feat = compute_btc_features(df)
                             regime = detect_btc_regime(feat)
                             strategy, setup_name = detect_btc_setup(feat, regime)
 
                             if strategy:
                                 direction = 'LONG' if 'LONG' in strategy.value else 'SHORT'
-                                confidence = get_btc_ensemble_confidence(feat, None, direction.lower())
+                                params = BTC_STRATEGY_PARAMS.get(strategy, {'tp': 0.04, 'sl': 0.015})
 
-                                if confidence >= 0.35:  # Umbral mínimo
-                                    params = BTC_STRATEGY_PARAMS.get(strategy, {'tp': 0.04, 'sl': 0.015})
-                                    signals.append({
-                                        'setup': f"{regime.value}:{setup_name}",
-                                        'direction': direction,
-                                        'prob': confidence,
-                                        'tp': params['tp'],
-                                        'sl': params['sl'],
-                                    })
-                                    log(f"BTC: {regime.value} | {setup_name} | conf={confidence:.1%}")
+                                if BTC_USE_ML_FILTER:
+                                    # Filtro ML (desactivado por defecto - empeora resultados)
+                                    confidence = get_btc_ensemble_confidence(feat, None, direction.lower())
+                                    if confidence < 0.35:
+                                        log(f"BTC: {regime.value} | {setup_name} | SKIP ML (conf={confidence:.1%})")
+                                        continue
                                 else:
-                                    log(f"BTC: {regime.value} | {setup_name} | SKIP (conf={confidence:.1%})")
+                                    confidence = 0.5  # Sin filtro ML
+
+                                signals.append({
+                                    'setup': f"{regime.value}:{setup_name}",
+                                    'direction': direction,
+                                    'prob': confidence,
+                                    'tp': params['tp'],
+                                    'sl': params['sl'],
+                                })
+                                log(f"BTC: {regime.value} | {setup_name} | {direction}")
                             else:
                                 log(f"BTC: {regime.value} | No setup")
 
-                        # Ensemble simple (DOGE/ADA/DOT)
+                        # Ensemble simple (DOGE/ADA/DOT/SOL + cross-pairs)
                         elif config['type'] == 'ensemble' and asset in ensemble_models:
                             df_feat = compute_ensemble_features(df)
                             features = df_feat[ENSEMBLE_FEATURES].iloc[-1].values
                             should_trade, prob = predict_ensemble(ensemble_models[asset], features)
 
                             if should_trade:
-                                signals.append({
-                                    'setup': 'ENSEMBLE_VOTE',
-                                    'direction': 'LONG',
-                                    'prob': prob,
-                                    'tp': config['tp'],
-                                    'sl': config['sl'],
-                                })
+                                # Filtro especifico por modelo
+                                model_base = config.get('model', asset).upper()
+                                feat_dict = {col: df_feat[col].iloc[-1] for col in ENSEMBLE_FEATURES}
+                                filter_passed, filter_reason = check_model_filter(model_base, feat_dict)
+
+                                if not filter_passed:
+                                    log(f"{asset}: FILTERED by {model_base} filter ({filter_reason})")
+                                else:
+                                    signals.append({
+                                        'setup': 'ENSEMBLE_VOTE',
+                                        'direction': 'LONG',
+                                        'prob': prob,
+                                        'tp': config['tp'],
+                                        'sl': config['sl'],
+                                    })
                             else:
                                 log(f"{asset}: No signal (prob={prob:.1%})")
 

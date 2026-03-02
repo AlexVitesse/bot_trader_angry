@@ -1,0 +1,171 @@
+{
+  "timestamp": "2026-03-01T14:08:03.951561",
+  "methodology": "Test as originally validated - no additional filters",
+  "results": [
+    {
+      "model": "BTC",
+      "pair": "BTCUSDT",
+      "trades": 5768,
+      "wins": 2143,
+      "wr": 37.2,
+      "pnl": 3465.5,
+      "tp": 0.03,
+      "sl": 0.015,
+      "status": "OK"
+    },
+    {
+      "model": "ETH",
+      "pair": "ETHUSDT",
+      "trades": 5710,
+      "wins": 2150,
+      "wr": 37.7,
+      "pnl": 4142.0,
+      "tp": 0.03,
+      "sl": 0.015,
+      "status": "OK"
+    },
+    {
+      "model": "DOGE",
+      "pair": "DOGEUSDT",
+      "trades": 121,
+      "wins": 82,
+      "wr": 67.8,
+      "pnl": 988.3,
+      "tp": 0.06,
+      "sl": 0.04,
+      "status": "OK"
+    },
+    {
+      "model": "DOGE_MEME",
+      "pair": "1000PEPEUSDT",
+      "trades": 6,
+      "wins": 4,
+      "wr": 66.7,
+      "pnl": 25.4,
+      "tp": 0.06,
+      "sl": 0.04,
+      "status": "OK"
+    },
+    {
+      "model": "DOGE_MEME",
+      "pair": "1000FLOKIUSDT",
+      "trades": 3,
+      "wins": 1,
+      "wr": 33.3,
+      "pnl": 0.2,
+      "tp": 0.06,
+      "sl": 0.04,
+      "status": "OK"
+    },
+    {
+      "model": "ADA",
+      "pair": "ADAUSDT",
+      "trades": 107,
+      "wins": 92,
+      "wr": 86.0,
+      "pnl": 735.2,
+      "tp": 0.06,
+      "sl": 0.04,
+      "status": "OK"
+    },
+    {
+      "model": "ADA_CROSS",
+      "pair": "ATOMUSDT",
+      "trades": 117,
+      "wins": 69,
+      "wr": 59.0,
+      "pnl": 413.9,
+      "tp": 0.06,
+      "sl": 0.04,
+      "status": "OK"
+    },
+    {
+      "model": "ADA_CROSS",
+      "pair": "AVAXUSDT",
+      "trades": 120,
+      "wins": 56,
+      "wr": 46.7,
+      "pnl": 257.6,
+      "tp": 0.06,
+      "sl": 0.04,
+      "status": "OK"
+    },
+    {
+      "model": "ADA_CROSS",
+      "pair": "POLUSDT",
+      "trades": 2,
+      "wins": 1,
+      "wr": 50.0,
+      "pnl": 3.3,
+      "tp": 0.06,
+      "sl": 0.04,
+      "status": "OK"
+    },
+    {
+      "model": "DOT",
+      "pair": "DOTUSDT",
+      "trades": 33,
+      "wins": 28,
+      "wr": 84.8,
+      "pnl": 210.7,
+      "tp": 0.05,
+      "sl": 0.03,
+      "status": "OK"
+    },
+    {
+      "model": "DOT_INFRA",
+      "pair": "LINKUSDT",
+      "trades": 27,
+      "wins": 14,
+      "wr": 51.9,
+      "pnl": 92.0,
+      "tp": 0.05,
+      "sl": 0.03,
+      "status": "OK"
+    },
+    {
+      "model": "DOT_INFRA",
+      "pair": "ALGOUSDT",
+      "trades": 31,
+      "wins": 20,
+      "wr": 64.5,
+      "pnl": 130.6,
+      "tp": 0.05,
+      "sl": 0.03,
+      "status": "OK"
+    },
+    {
+      "model": "DOT_INFRA",
+      "pair": "FILUSDT",
+      "trades": 37,
+      "wins": 24,
+      "wr": 64.9,
+      "pnl": 137.2,
+      "tp": 0.05,
+      "sl": 0.03,
+      "status": "OK"
+    },
+    {
+      "model": "DOT_INFRA",
+      "pair": "NEARUSDT",
+      "trades": 29,
+      "wins": 18,
+      "wr": 62.1,
+      "pnl": 116.4,
+      "tp": 0.05,
+      "sl": 0.03,
+      "status": "OK"
+    },
+    {
+      "model": "SOL",
+      "pair": "SOLUSDT",
+      "trades": 94,
+      "wins": 62,
+      "wr": 66.0,
+      "pnl": 441.4,
+      "tp": 0.06,
+      "sl": 0.04,
+      "status": "OK"
+    }
+  ]
+}

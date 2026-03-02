@@ -558,8 +558,12 @@ class PortfolioManager:
 
     def open_position(self, pair: str, direction: int, confidence: float,
                       regime: str, price: float, atr_pct: float,
-                      sizing_mult: float = 1.0) -> bool:
-        """Abre una nueva posicion. sizing_mult from V8.4 macro intelligence."""
+                      sizing_mult: float = 1.0,
+                      tp_pct_override: float = None,
+                      sl_pct_override: float = None) -> bool:
+        """Abre una nueva posicion. sizing_mult from V8.4 macro intelligence.
+        tp_pct_override/sl_pct_override permiten valores personalizados (V14).
+        """
         if not self.can_open(pair, direction):
             return False
 
@@ -575,8 +579,11 @@ class PortfolioManager:
         risk_pct *= sizing_mult
 
         risk_amt = INITIAL_CAPITAL * risk_pct  # FLAT sizing
-        # V13.01: per-pair TP/SL
-        pair_tp, pair_sl = get_pair_tp_sl(pair)
+        # V14: override TP/SL si se especifican, sino usar por-par
+        if tp_pct_override is not None and sl_pct_override is not None:
+            pair_tp, pair_sl = tp_pct_override, sl_pct_override
+        else:
+            pair_tp, pair_sl = get_pair_tp_sl(pair)
         notional = risk_amt / pair_sl if pair_sl > 0 else risk_amt
         notional = min(notional, ML_MAX_NOTIONAL)
 

@@ -373,6 +373,61 @@ ML_V1304_DEFAULTS = {
 ML_V1304_EXCLUDED = ['ETH/USDT', 'BNB/USDT', 'LINK/USDT', 'NEAR/USDT', 'AVAX/USDT']
 
 
+# =============================================================================
+# VERSION DEL BOT (centralizado para Telegram y logs)
+# =============================================================================
+BOT_VERSION = "V14"  # Cambiar aqui para actualizar todos los mensajes
+
+# =============================================================================
+# V14 ENSEMBLE STRATEGY (Paper Trading Validado)
+# =============================================================================
+# Validado con walk-forward + datos sinteticos
+# - BTC: Regimen + Setups (sin ML filter - mejor rendimiento)
+# - ETH: Setups simples (RSI, volumen)
+# - DOGE/ADA/DOT/SOL: Ensemble voting (RF + GB + LR)
+# - Cross-pairs: Usan modelo base correspondiente
+# =============================================================================
+ML_V14_ENABLED = True   # Feature flag: V14 activo
+
+ML_V14_EXPERTS = {
+    # === ORIGINALES (6) ===
+    'BTC': {'symbol': 'BTC/USDT', 'type': 'btc_v14', 'tp': 0.03, 'sl': 0.015},
+    'ETH': {'symbol': 'ETH/USDT', 'type': 'setups', 'tp': 0.04, 'sl': 0.02},
+    'DOGE': {'symbol': 'DOGE/USDT', 'type': 'ensemble', 'tp': 0.06, 'sl': 0.04},
+    'ADA': {'symbol': 'ADA/USDT', 'type': 'ensemble', 'tp': 0.06, 'sl': 0.04},
+    'DOT': {'symbol': 'DOT/USDT', 'type': 'ensemble', 'tp': 0.05, 'sl': 0.03},
+    'SOL': {'symbol': 'SOL/USDT', 'type': 'ensemble', 'tp': 0.06, 'sl': 0.04, 'model': 'sol'},
+    # === MODELO ADA - Smart Contracts (3) ===
+    'ATOM': {'symbol': 'ATOM/USDT', 'type': 'ensemble', 'tp': 0.06, 'sl': 0.04, 'model': 'ada'},
+    'AVAX': {'symbol': 'AVAX/USDT', 'type': 'ensemble', 'tp': 0.06, 'sl': 0.04, 'model': 'ada'},
+    'POL': {'symbol': 'POL/USDT', 'type': 'ensemble', 'tp': 0.06, 'sl': 0.04, 'model': 'ada'},
+    # === MODELO DOGE - Memecoins (2) ===
+    'PEPE': {'symbol': '1000PEPE/USDT', 'type': 'ensemble', 'tp': 0.06, 'sl': 0.04, 'model': 'doge'},
+    'FLOKI': {'symbol': '1000FLOKI/USDT', 'type': 'ensemble', 'tp': 0.06, 'sl': 0.04, 'model': 'doge'},
+    # === MODELO DOT - Infraestructura (4) ===
+    'LINK': {'symbol': 'LINK/USDT', 'type': 'ensemble', 'tp': 0.05, 'sl': 0.03, 'model': 'dot'},
+    'ALGO': {'symbol': 'ALGO/USDT', 'type': 'ensemble', 'tp': 0.05, 'sl': 0.03, 'model': 'dot'},
+    'FIL': {'symbol': 'FIL/USDT', 'type': 'ensemble', 'tp': 0.05, 'sl': 0.03, 'model': 'dot'},
+    'NEAR': {'symbol': 'NEAR/USDT', 'type': 'ensemble', 'tp': 0.05, 'sl': 0.03, 'model': 'dot'},
+}
+
+# Filtros especificos por modelo (basado en analisis de trades fallidos)
+# SOL: ret_3 > -0.03 mejora 82.1% -> 86.8%
+# ADA: vol_ratio > 2.0 mejora 58.2% -> 65.6%
+# DOGE: bb_pct < 0.7 mejora 79.3% -> 87.3%
+# DOT: vol_ratio < 4.15 mejora 84.8% -> 92.6% (retiene 82% trades)
+ML_V14_MODEL_FILTERS = {
+    'SOL': {'filter': 'ret_3', 'op': '>', 'value': -0.03},
+    'ADA': {'filter': 'vol_ratio', 'op': '>', 'value': 2.0},
+    'DOGE': {'filter': 'bb_pct', 'op': '<', 'value': 0.7},
+    'DOT': {'filter': 'vol_ratio', 'op': '<', 'value': 4.15},
+}
+
+# Features para ensemble
+ML_V14_FEATURES = ['rsi', 'macd_norm', 'adx', 'bb_pct', 'atr_pct',
+                   'ret_3', 'ret_5', 'ret_10', 'vol_ratio', 'trend']
+
+
 def validate_config() -> bool:
     """Valida que la configuracion este completa."""
     errors = []

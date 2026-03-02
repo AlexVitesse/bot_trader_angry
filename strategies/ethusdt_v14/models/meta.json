@@ -1,0 +1,231 @@
+{
+  "symbol": "ETH/USDT",
+  "version": "14.0",
+  "trained_at": "2026-02-28T20:18:15.586257",
+  "timeframe": "4h",
+  "regime_results": {
+    "feature_cols": [
+      "adx",
+      "di_plus",
+      "di_minus",
+      "di_diff",
+      "chop",
+      "volatility",
+      "trend"
+    ],
+    "train_acc": 0.9285104566794707,
+    "test_acc": 0.8768136557610242,
+    "regime_distribution": {
+      "RANGE": 0.4500654413019974,
+      "TREND_DOWN": 0.20417686223183293,
+      "VOLATILE": 0.1854549593125818,
+      "TREND_UP": 0.1603027371535879
+    }
+  },
+  "ensemble_results": {
+    "context_LONG": {
+      "feature_cols": [
+        "rsi",
+        "bb_pct",
+        "trend_strength"
+      ],
+      "train_acc": 0.6250263324204761,
+      "test_acc": 0.6239820275203595,
+      "train_auc": 0.6114114006874879,
+      "test_auc": 0.5159257888716947
+    },
+    "momentum_LONG": {
+      "feature_cols": [
+        "roc_5",
+        "roc_10",
+        "roc_20",
+        "macd_hist",
+        "momentum"
+      ],
+      "train_acc": 0.6224282002668352,
+      "test_acc": 0.6245436675091266,
+      "train_auc": 0.6167787032064617,
+      "test_auc": 0.5069092713449506
+    },
+    "volume_LONG": {
+      "feature_cols": [
+        "volume_ratio",
+        "obv_trend",
+        "mfi"
+      ],
+      "train_acc": 0.6228495189944526,
+      "test_acc": 0.6237012075259758,
+      "train_auc": 0.5956966972766062,
+      "test_auc": 0.5091832066204669
+    },
+    "context_SHORT": {
+      "feature_cols": [
+        "rsi",
+        "bb_pct",
+        "trend_strength"
+      ],
+      "train_acc": 0.6206727055684291,
+      "test_acc": 0.6155574276888515,
+      "train_auc": 0.6154857606496615,
+      "test_auc": 0.5424965102759464
+    },
+    "momentum_SHORT": {
+      "feature_cols": [
+        "roc_5",
+        "roc_10",
+        "roc_20",
+        "macd_hist",
+        "momentum"
+      ],
+      "train_acc": 0.6163190787163823,
+      "test_acc": 0.615838247683235,
+      "train_auc": 0.6240510656584342,
+      "test_auc": 0.49629506241525545
+    },
+    "volume_SHORT": {
+      "feature_cols": [
+        "volume_ratio",
+        "obv_trend",
+        "mfi"
+      ],
+      "train_acc": 0.6176532546871708,
+      "test_acc": 0.6127492277450154,
+      "train_auc": 0.5875158052489354,
+      "test_auc": 0.4966092208670506
+    }
+  },
+  "backtest_results": {
+    "folds": [
+      {
+        "fold": 1,
+        "trades": 1144,
+        "pnl": 96.0,
+        "wr": 0.34265734265734266,
+        "positive": true
+      },
+      {
+        "fold": 2,
+        "trades": 1107,
+        "pnl": 396.0,
+        "wr": 0.37308039747064137,
+        "positive": true
+      },
+      {
+        "fold": 3,
+        "trades": 1064,
+        "pnl": 56.99999999999999,
+        "wr": 0.3392857142857143,
+        "positive": true
+      },
+      {
+        "fold": 4,
+        "trades": 1216,
+        "pnl": 410.99999999999994,
+        "wr": 0.37088815789473684,
+        "positive": true
+      },
+      {
+        "fold": 5,
+        "trades": 1177,
+        "pnl": -488.99999999999994,
+        "wr": 0.28717077315208156,
+        "positive": false
+      },
+      {
+        "fold": 6,
+        "trades": 1159,
+        "pnl": -138.0,
+        "wr": 0.3201035375323555,
+        "positive": false
+      },
+      {
+        "fold": 7,
+        "trades": 921,
+        "pnl": -450.0,
+        "wr": 0.27904451682953313,
+        "positive": false
+      },
+      {
+        "fold": 8,
+        "trades": 554,
+        "pnl": -177.0,
+        "wr": 0.29783393501805056,
+        "positive": false
+      },
+      {
+        "fold": 9,
+        "trades": 1001,
+        "pnl": -213.0,
+        "wr": 0.3096903096903097,
+        "positive": false
+      },
+      {
+        "fold": 10,
+        "trades": 1004,
+        "pnl": -123.0,
+        "wr": 0.3197211155378486,
+        "positive": false
+      },
+      {
+        "fold": 11,
+        "trades": 1106,
+        "pnl": -618.0,
+        "wr": 0.27124773960216997,
+        "positive": false
+      },
+      {
+        "fold": 12,
+        "trades": 1023,
+        "pnl": 252.0,
+        "wr": 0.36070381231671556,
+        "positive": true
+      }
+    ],
+    "positive_folds": 5,
+    "total_folds": 12,
+    "total_pnl": -996.0,
+    "passed": false
+  },
+  "validation_results": {
+    "results": [
+      {
+        "market": "bull",
+        "trades": 425,
+        "pnl": -24.0,
+        "wr": 0.3270588235294118,
+        "positive": false
+      },
+      {
+        "market": "bear",
+        "trades": 425,
+        "pnl": -32.99999999999999,
+        "wr": 0.3247058823529412,
+        "positive": false
+      },
+      {
+        "market": "range",
+        "trades": 417,
+        "pnl": -216.0,
+        "wr": 0.27577937649880097,
+        "positive": false
+      },
+      {
+        "market": "volatile",
+        "trades": 425,
+        "pnl": 290.99999999999994,
+        "wr": 0.40941176470588236,
+        "positive": true
+      },
+      {
+        "market": "mixed",
+        "trades": 425,
+        "pnl": 110.99999999999999,
+        "wr": 0.3623529411764706,
+        "positive": true
+      }
+    ],
+    "positive_markets": 2,
+    "passed": false
+  },
+  "status": "NEEDS_REVIEW"
+}

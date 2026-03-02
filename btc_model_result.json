@@ -1,0 +1,29 @@
+{
+  "pair": "BTC",
+  "train_samples": 13122,
+  "val_samples": 1458,
+  "test_samples": 1079,
+  "train_range": "2019-01-04 to 2024-12-31",
+  "val_range": "2024-12-31 to 2025-08-31",
+  "test_range": "2025-08-31 to 2026-02-26",
+  "corr_train": 0.09179990971834404,
+  "corr_val": 0.07619006389338284,
+  "corr_test": 0.09378325910676841,
+  "best_params": {
+    "tp": 0.02,
+    "sl": 0.01,
+    "conv": 0.7
+  },
+  "test_result": {
+    "n_trades": 92,
+    "win_rate": 35.869565217391305,
+    "total_pnl": -43.10849402305906,
+    "pf": 0.6417119137117302
+  },
+  "passed": false,
+  "reasons": [
+    "PnL negativo: -43.11%",
+    "WinRate < 50%: 35.9%",
+    "Profit Factor < 1: 0.64"
+  ]
+}

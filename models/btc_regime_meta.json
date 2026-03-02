@@ -1,0 +1,59 @@
+{
+  "version": "v13.05",
+  "pair": "BTC",
+  "feature_cols": [
+    "adx",
+    "di_diff",
+    "ema_align",
+    "ema20_dist",
+    "ema50_dist",
+    "atr_pct",
+    "bb_width",
+    "vol_ratio",
+    "chop",
+    "rsi14",
+    "roc_10",
+    "roc_20",
+    "ret_5",
+    "ret_20",
+    "vol_ma_ratio"
+  ],
+  "regimes": [
+    "NEUTRAL",
+    "FAVORABLE",
+    "UNFAVORABLE"
+  ],
+  "regime_stats": [
+    {
+      "regime": "NEUTRAL",
+      "count": 8252,
+      "pct": 62.79105159032111,
+      "avg_ret_5": 0.1354858833332252,
+      "avg_ret_20": 0.5351953325113028,
+      "pos_rate_5": 51.43653776215299,
+      "pos_rate_20": 53.01687507587714
+    },
+    {
+      "regime": "FAVORABLE",
+      "count": 4067,
+      "pct": 30.946583472835187,
+      "avg_ret_5": 0.17472354587212513,
+      "avg_ret_20": 0.8153439196536493,
+      "pos_rate_5": 53.57757560855667,
+      "pos_rate_20": 54.511925252028526
+    },
+    {
+      "regime": "UNFAVORABLE",
+      "count": 823,
+      "pct": 6.262364936843707,
+      "avg_ret_5": 0.5004050264610738,
+      "avg_ret_20": 1.4515262590342615,
+      "pos_rate_5": 54.08038976857491,
+      "pos_rate_20": 56.60146699266504
+    }
+  ],
+  "train_samples": 13142,
+  "val_samples": 1458,
+  "train_end": "2024-12-31",
+  "validation_end": "2025-08-31"
+}
