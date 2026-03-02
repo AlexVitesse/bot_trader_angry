@@ -201,8 +201,8 @@ class MLBot:
         self.last_regime_date = datetime.now(timezone.utc).strftime('%Y-%m-%d')
         logger.info(f"[BOT] Regime: {self.strategy.regime}")
 
-        # 2b. Update macro intelligence (V8.4)
-        if self.strategy.v84_enabled:
+        # 2b. Update macro intelligence (V8.4) - solo para estrategia legacy
+        if not self.v14_mode and hasattr(self.strategy, 'v84_enabled') and self.strategy.v84_enabled:
             logger.info("[BOT] Actualizando datos macro (V8.4)...")
             self.strategy.update_macro()
             logger.info(f"[BOT] Macro: score={self.strategy.macro_score:.3f}, "
@@ -241,9 +241,9 @@ class MLBot:
             count = len(ML_V1304_PAIRS)  # Override count for V13.04
         else:
             extras = []
-            if self.strategy.v84_enabled:
+            if hasattr(self.strategy, 'v84_enabled') and self.strategy.v84_enabled:
                 extras.append(f"🌐 Macro: {self.strategy.macro_score:.2f}")
-            if self.strategy.v85_enabled:
+            if hasattr(self.strategy, 'v85_enabled') and self.strategy.v85_enabled:
                 extras.append("🎯 Conv: ON")
             model_str = " | ".join(extras) if extras else ""
 
@@ -313,17 +313,20 @@ class MLBot:
         pnl_emoji = '📈' if total_pnl >= 0 else '📉'
         paused_str = "\n⏸️ <b>PAUSADO</b> - usa /resume" if self.portfolio.paused else ""
 
+        # V14: Ensemble Voting
+        if self.v14_mode:
+            model_str = f"\n🤖 Ensemble Voting ({len(ML_V14_EXPERTS)} expertos)"
         # V13.04: Ridge LONG_ONLY
-        if ML_V1304_ENABLED:
+        elif ML_V1304_ENABLED:
             model_str = "\n🔬 Ridge LONG_ONLY"
         else:
             model_str = ""
-            if self.strategy.v84_enabled:
+            if hasattr(self.strategy, 'v84_enabled') and self.strategy.v84_enabled:
                 model_str = (
                     f"\n🌐 Macro: {self.strategy.macro_score:.2f} | "
                     f"Sz: {self.strategy.get_sizing_multiplier():.2f}x"
                 )
-            if self.strategy.v85_enabled:
+            if hasattr(self.strategy, 'v85_enabled') and self.strategy.v85_enabled:
                 model_str += "\n🎯 Conv: ON"
 
         send_alert(
@@ -831,14 +834,17 @@ class MLBot:
                     sl_dir = '↗️ sube'
                 sm = signal.get('sizing_mult', 1.0)
                 cm = signal.get('conviction_mult', 1.0)
+                # V14: Ensemble Voting
+                if self.v14_mode:
+                    model_str = f"🤖 Ensemble"
                 # V13.04: Ridge LONG_ONLY, sin Macro/Conv
-                if ML_V1304_ENABLED:
+                elif ML_V1304_ENABLED:
                     model_str = "🔬 Ridge LONG_ONLY"
                 else:
                     intel_parts = []
-                    if self.strategy.v84_enabled:
+                    if hasattr(self.strategy, 'v84_enabled') and self.strategy.v84_enabled:
                         intel_parts.append(f"🌐 Macro: {self.strategy.macro_score:.2f}")
-                    if self.strategy.v85_enabled:
+                    if hasattr(self.strategy, 'v85_enabled') and self.strategy.v85_enabled:
                         intel_parts.append(f"🎯 Conv: {cm:.2f}x")
                     model_str = " | ".join(intel_parts) if intel_parts else ""
 
@@ -1025,19 +1031,22 @@ class MLBot:
         else:
             pnl_emoji = '📈' if total_pnl >= 0 else '📉'
 
+            # V14: Ensemble Voting
+            if self.v14_mode:
+                model_str = f"🤖 Ensemble ({len(ML_V14_EXPERTS)} expertos)\n"
             # V13.04: modelo Ridge LONG_ONLY
-            if ML_V1304_ENABLED:
+            elif ML_V1304_ENABLED:
                 model_str = "🔬 Ridge LONG_ONLY\n"
             else:
                 # Legacy V13.03 con Macro/Conviction
-                if self.strategy.v84_enabled:
+                if hasattr(self.strategy, 'v84_enabled') and self.strategy.v84_enabled:
                     model_str = (
                         f"🌐 Macro: {self.strategy.macro_score:.2f} | "
                         f"Sz: {self.strategy.get_sizing_multiplier():.2f}x\n"
                     )
                 else:
                     model_str = ""
-                if self.strategy.v85_enabled:
+                if hasattr(self.strategy, 'v85_enabled') and self.strategy.v85_enabled:
                     model_str += "🎯 Conv: ON\n"
 
             send_alert(
