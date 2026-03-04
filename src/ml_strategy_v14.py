@@ -462,6 +462,7 @@ class MLStrategyV14:
 
     def predict_ensemble_short(self, models: dict, features: np.ndarray) -> tuple:
         """Prediccion ensemble voting SHORT.
+        Umbral estricto: 3/3 modelos deben concordar (WR SHORT < 40% en walk-forward).
         Returns: (should_trade, avg_prob) o (False, 0.0) si no hay modelos SHORT.
         """
         if 'rf_short' not in models:
@@ -475,10 +476,12 @@ class MLStrategyV14:
             prob_lr = models['lr_short'].predict_proba(X)[0, 1]
             votes = int(prob_rf > 0.5) + int(prob_gb > 0.5) + int(prob_lr > 0.5)
             avg_prob = (prob_rf + prob_gb + prob_lr) / 3
-            return votes >= 2, avg_prob
+            # SHORT requiere 3/3 (mas conservador que LONG 2/3)
+            return votes == 3, avg_prob
         else:
+            # Sin LR (DOT): solo 2 modelos SHORT, requiere 2/2
             votes = int(prob_rf > 0.5) + int(prob_gb > 0.5)
-            return votes >= 2, (prob_rf + prob_gb) / 2
+            return votes == 2, (prob_rf + prob_gb) / 2
 
     def check_model_filter(self, model_name: str, features: dict) -> tuple:
         """Verifica si el trade pasa el filtro del modelo."""
