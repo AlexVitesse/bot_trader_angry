@@ -67,6 +67,7 @@ class MLStrategyV14:
         self.model_filters = ML_V14_MODEL_FILTERS
         self.features = ML_V14_FEATURES
         self.ensemble_models = {}  # {asset: {rf, gb, lr, scaler}}
+        self.btc_models = {}       # {direction: {context, momentum, volume}}
         self.pairs = []
         self.regime = 'RANGE'
         self.regime_updated = None
@@ -108,10 +109,20 @@ class MLStrategyV14:
             except Exception as e:
                 logger.error(f"[V14] Error cargando {asset}: {e}")
 
-        # Verificar modelos BTC
-        btc_models_path = strategies_dir / 'btc_v14' / 'models' / 'context_long.pkl'
-        btc_ok = btc_models_path.exists()
-        logger.info(f"[V14] BTC models: {'OK' if btc_ok else 'MISSING'}")
+        # Cargar modelos BTC (context/momentum/volume por direccion)
+        btc_model_dir = strategies_dir / 'btc_v14' / 'models'
+        for direction in ['long', 'short']:
+            dir_models = {}
+            for mtype in ['context', 'momentum', 'volume']:
+                pkl = btc_model_dir / f'{mtype}_{direction}.pkl'
+                if pkl.exists():
+                    dir_models[mtype] = joblib.load(pkl)
+            if dir_models:
+                self.btc_models[direction] = dir_models
+        if self.btc_models:
+            logger.info(f"[V14] BTC ensemble cargado: {list(self.btc_models.keys())}")
+        else:
+            logger.warning("[V14] BTC ensemble NO encontrado - usando solo reglas")
 
         self.pairs = list(self.experts.keys())
         logger.info(f"[V14] {count} ensemble models cargados, {len(self.pairs)} pares activos")
@@ -172,6 +183,9 @@ class MLStrategyV14:
         feat['vol_ratio'] = float(v.iloc[-1] / vol_ma.iloc[-1]) if vol_ma.iloc[-1] > 0 else 1
         vol_trend = v.rolling(5).mean() / vol_ma
         feat['vol_trend'] = float(vol_trend.iloc[-1]) if not np.isnan(vol_trend.iloc[-1]) else 1
+        obv = (np.sign(c.diff()) * v).cumsum()
+        obv_slope = obv.pct_change(10) * 100
+        feat['obv_slope'] = float(obv_slope.iloc[-1]) if not np.isnan(obv_slope.iloc[-1]) else 0
 
         high_20 = h.rolling(20).max()
         low_20 = l.rolling(20).min()
@@ -184,6 +198,27 @@ class MLStrategyV14:
         feat['consec_down'] = float(consec_down.iloc[-1])
 
         return feat
+
+    def predict_btc_confidence(self, feat: dict, direction: str) -> float:
+        """Calcula confianza ensemble BTC para 'long' o 'short'. Retorna 0.5 si no hay modelos."""
+        if direction not in self.btc_models:
+            return 0.5
+        weights = {'context': 0.4, 'momentum': 0.35, 'volume': 0.25}
+        weighted_prob = 0.0
+        total_weight = 0.0
+        for mtype, weight in weights.items():
+            mdata = self.btc_models[direction].get(mtype)
+            if mdata is None:
+                continue
+            model = mdata['model']
+            features = mdata['features']
+            X = np.array([[feat.get(f, 0) for f in features]])
+            if 'scaler' in mdata:
+                X = mdata['scaler'].transform(X)
+            prob = model.predict_proba(X)[0, 1]
+            weighted_prob += prob * weight
+            total_weight += weight
+        return weighted_prob / total_weight if total_weight > 0 else 0.5
 
     def detect_btc_regime(self, row: dict) -> Regime:
         """Detecta regimen BTC."""
@@ -385,7 +420,7 @@ class MLStrategyV14:
 
                 asset_signals = []
 
-                # BTC V14: Regimen + Setups (SIN filtro ML)
+                # BTC V14: Regimen + Setups + Ensemble ML confianza
                 if config['type'] == 'btc_v14':
                     feat = self.compute_btc_features(df)
                     regime = self.detect_btc_regime(feat)
@@ -393,18 +428,26 @@ class MLStrategyV14:
 
                     if strategy:
                         direction = 1 if 'LONG' in strategy.value else -1
+                        direction_str = 'long' if direction == 1 else 'short'
                         params = BTC_STRATEGY_PARAMS.get(strategy, {'tp': 0.03, 'sl': 0.015})
 
-                        asset_signals.append({
-                            'pair': symbol,
-                            'direction': direction,
-                            'confidence': 1.0,
-                            'setup': f"{regime.value}:{setup_name}",
-                            'price': float(df['close'].iloc[-1]),
-                            'tp_pct': params['tp'],
-                            'sl_pct': params['sl'],
-                        })
-                        logger.info(f"[V14] {asset}: {regime.value} | {setup_name} | {'LONG' if direction == 1 else 'SHORT'}")
+                        # Ensemble ML: calcular confianza (paso 3 arquitectura)
+                        confidence = self.predict_btc_confidence(feat, direction_str)
+                        SKIP_THRESHOLD = 0.35
+
+                        if confidence < SKIP_THRESHOLD:
+                            logger.info(f"[V14] BTC: {setup_name} RECHAZADO por ensemble (conf={confidence:.2%})")
+                        else:
+                            asset_signals.append({
+                                'pair': symbol,
+                                'direction': direction,
+                                'confidence': confidence,
+                                'setup': f"{regime.value}:{setup_name}",
+                                'price': float(df['close'].iloc[-1]),
+                                'tp_pct': params['tp'],
+                                'sl_pct': params['sl'],
+                            })
+                            logger.info(f"[V14] BTC: {regime.value} | {setup_name} | {'LONG' if direction == 1 else 'SHORT'} | conf={confidence:.2%}")
                     else:
                         logger.info(f"[V14] {asset}: {regime.value} | No setup (rsi={feat.get('rsi14',0):.1f} bb_pct={feat.get('bb_pct',0):.2f})")
 
