@@ -10,6 +10,7 @@ Ejecutar: poetry run python -m src.ml_bot
 import sys
 import time
 import logging
+import logging.handlers
 import subprocess
 import threading
 import ccxt
@@ -1121,13 +1122,20 @@ class MLBot:
 
 
 def setup_logging():
-    """Configura logging para el ML bot."""
+    """Configura logging para el ML bot con rotacion automatica."""
     LOGS_DIR.mkdir(exist_ok=True)
     log_file = LOGS_DIR / "ml_bot.log"
 
+    rotating = logging.handlers.RotatingFileHandler(
+        log_file,
+        maxBytes=5 * 1024 * 1024,  # 5 MB por archivo
+        backupCount=5,              # Conserva ml_bot.log.1 .. .5
+        encoding='utf-8',
+    )
+
     handlers = [
         logging.StreamHandler(),
-        logging.FileHandler(log_file, encoding='utf-8'),
+        rotating,
     ]
 
     logging.basicConfig(
