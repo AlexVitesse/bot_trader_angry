@@ -322,10 +322,17 @@ class TelegramPoller:
                         self.last_update_id = update["update_id"]
                         msg = update.get("message", {})
                         text = (msg.get("text", "") or "").strip()
-                        cmd = text.split()[0] if text else ""
+                        parts = text.split(None, 1) if text else []
+                        cmd = parts[0] if parts else ""
+                        arg = parts[1] if len(parts) > 1 else ""
                         if cmd in self.callbacks:
                             try:
-                                self.callbacks[cmd]()
+                                import inspect
+                                cb = self.callbacks[cmd]
+                                if arg and len(inspect.signature(cb).parameters) > 0:
+                                    cb(arg)
+                                else:
+                                    cb()
                             except Exception as e:
                                 logger.warning(f"[TG] Error ejecutando {cmd}: {e}")
             except Exception as e:

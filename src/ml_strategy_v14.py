@@ -406,7 +406,7 @@ class MLStrategyV14:
                         })
                         logger.info(f"[V14] {asset}: {regime.value} | {setup_name} | {'LONG' if direction == 1 else 'SHORT'}")
                     else:
-                        logger.debug(f"[V14] {asset}: {regime.value} | No setup")
+                        logger.info(f"[V14] {asset}: {regime.value} | No setup (rsi={feat.get('rsi14',0):.1f} bb_pct={feat.get('bb_pct',0):.2f})")
 
                 # ETH: Setups simples
                 elif config['type'] == 'setups' and asset == 'ETH':
@@ -423,7 +423,9 @@ class MLStrategyV14:
                             'sl_pct': config['sl'],
                         })
                     if not eth_signals:
-                        logger.debug(f"[V14] ETH: No setup")
+                        rsi_eth = ta.momentum.rsi(df['close'], window=14).iloc[-1]
+                        vol_r = df['volume'].iloc[-1] / df['volume'].rolling(20).mean().iloc[-1]
+                        logger.info(f"[V14] ETH: No setup (rsi={rsi_eth:.1f} vol_ratio={vol_r:.2f})")
 
                 # Ensemble (DOGE/ADA/DOT/SOL + cross-pairs)
                 elif config['type'] == 'ensemble' and asset in self.ensemble_models:
@@ -450,7 +452,7 @@ class MLStrategyV14:
                                 'sl_pct': config['sl'],
                             })
                     else:
-                        logger.debug(f"[V14] {asset}: No signal (prob={prob:.1%})")
+                        logger.info(f"[V14] {asset}: No signal (prob={prob:.1%}, votes insuf.)")
 
                 signals.extend(asset_signals)
 

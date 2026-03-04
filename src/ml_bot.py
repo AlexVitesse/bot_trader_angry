@@ -362,14 +362,28 @@ class MLBot:
         else:
             send_alert("✅ Bot ya esta operando normalmente")
 
-    def _cmd_log(self):
-        """Responde al comando /log - envia el archivo de log por Telegram."""
-        log_file = LOGS_DIR / "ml_bot.log"
+    def _cmd_log(self, arg: str = ""):
+        """Responde al comando /log [N] - envia log actual o rotado N (1-5)."""
+        import re
+        n = int(arg.strip()) if arg.strip().isdigit() else 0
+        if n > 0:
+            log_file = LOGS_DIR / f"ml_bot.log.{n}"
+        else:
+            log_file = LOGS_DIR / "ml_bot.log"
+
         if log_file.exists():
             size_kb = log_file.stat().st_size / 1024
-            send_document(str(log_file), f"📄 Log ({size_kb:.0f} KB)")
+            # Listar todos los archivos disponibles
+            rotados = sorted(LOGS_DIR.glob("ml_bot.log.*"))
+            extras = f" | Rotados: {', '.join(f'.{r.suffix[1:]}' for r in rotados)}" if rotados else ""
+            send_document(str(log_file), f"📄 {log_file.name} ({size_kb:.0f} KB){extras}")
         else:
-            send_alert("⚠️ Archivo de log no encontrado")
+            rotados = sorted(LOGS_DIR.glob("ml_bot.log.*"))
+            if rotados:
+                lista = "\n".join(f"  /log {i+1} → {r.name}" for i, r in enumerate(rotados))
+                send_alert(f"⚠️ ml_bot.log.{n} no existe\nDisponibles:\n{lista}")
+            else:
+                send_alert("⚠️ Archivo de log no encontrado")
 
     def _cmd_backup(self):
         """Responde al comando /backup - envia backup de la BD por Telegram."""
