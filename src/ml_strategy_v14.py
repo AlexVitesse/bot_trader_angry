@@ -68,6 +68,7 @@ class MLStrategyV14:
         self.features = ML_V14_FEATURES
         self.ensemble_models = {}  # {asset: {rf, gb, lr, scaler}}
         self.btc_models = {}       # {direction: {context, momentum, volume}}
+        self.eth_models = {}       # {regime_detector, context_long, ..., volume_short}
         self.pairs = []
         self.regime = 'RANGE'
         self.regime_updated = None
@@ -100,11 +101,25 @@ class MLStrategyV14:
                 if lr_path.exists():
                     models['lr'] = joblib.load(lr_path)
 
+                # Modelos SHORT (opcionales - entrenados con train_ensemble_short.py)
+                short_scaler = model_dir / 'scaler_short.pkl'
+                short_rf = model_dir / 'random_forest_short.pkl'
+                short_gb = model_dir / 'gradient_boosting_short.pkl'
+                short_lr = model_dir / 'logistic_regression_short.pkl'
+                if short_scaler.exists() and short_rf.exists() and short_gb.exists():
+                    models['scaler_short'] = joblib.load(short_scaler)
+                    models['rf_short'] = joblib.load(short_rf)
+                    models['gb_short'] = joblib.load(short_gb)
+                    if short_lr.exists():
+                        models['lr_short'] = joblib.load(short_lr)
+
                 self.ensemble_models[asset] = models
                 count += 1
 
+                has_short = 'rf_short' in models
                 source = f" (using {model_name.upper()} model)" if model_name != asset.lower() else ""
-                logger.info(f"[V14] Loaded {asset} ensemble{source}")
+                dirs = "LONG+SHORT" if has_short else "LONG only"
+                logger.info(f"[V14] Loaded {asset} ensemble{source} [{dirs}]")
 
             except Exception as e:
                 logger.error(f"[V14] Error cargando {asset}: {e}")
@@ -123,6 +138,24 @@ class MLStrategyV14:
             logger.info(f"[V14] BTC ensemble cargado: {list(self.btc_models.keys())}")
         else:
             logger.warning("[V14] BTC ensemble NO encontrado - usando solo reglas")
+
+        # Cargar modelos ETH (regime_detector + context/momentum/volume por direccion)
+        eth_model_dir = strategies_dir / 'ethusdt_v14' / 'models'
+        if eth_model_dir.exists():
+            eth_models = {}
+            regime_pkl = eth_model_dir / 'regime_detector.pkl'
+            if regime_pkl.exists():
+                eth_models['regime_detector'] = joblib.load(regime_pkl)
+            for direction in ['long', 'short']:
+                for mtype in ['context', 'momentum', 'volume']:
+                    pkl = eth_model_dir / f'ensemble_{mtype}_{direction}.pkl'
+                    if pkl.exists():
+                        eth_models[f'{mtype}_{direction}'] = joblib.load(pkl)
+            if 'regime_detector' in eth_models:
+                self.eth_models = eth_models
+                logger.info(f"[V14] ETH models cargados: {list(eth_models.keys())}")
+            else:
+                logger.warning("[V14] ETH regime_detector no encontrado")
 
         self.pairs = list(self.experts.keys())
         logger.info(f"[V14] {count} ensemble models cargados, {len(self.pairs)} pares activos")
@@ -219,6 +252,98 @@ class MLStrategyV14:
             weighted_prob += prob * weight
             total_weight += weight
         return weighted_prob / total_weight if total_weight > 0 else 0.5
+
+    # =========================================================================
+    # ETH V14 FEATURES + PREDICCION
+    # =========================================================================
+    def compute_eth_features(self, df: pd.DataFrame) -> dict:
+        """Computa features para ETH V14 (regime + ensemble)."""
+        c, h, l, v = df['close'], df['high'], df['low'], df['volume']
+        feat = {}
+
+        # --- Regime features ---
+        feat['adx'] = float(ta.trend.adx(h, l, c, window=14).iloc[-1])
+        feat['di_plus'] = float(ta.trend.adx_pos(h, l, c, window=14).iloc[-1])
+        feat['di_minus'] = float(ta.trend.adx_neg(h, l, c, window=14).iloc[-1])
+        feat['di_diff'] = feat['di_plus'] - feat['di_minus']
+        atr = ta.volatility.average_true_range(h, l, c, window=14)
+        high_14 = h.rolling(14).max()
+        low_14 = l.rolling(14).min()
+        chop_raw = 100 * np.log10(atr.rolling(14).sum() / (high_14 - low_14 + 1e-10)) / np.log10(14)
+        feat['chop'] = float(chop_raw.iloc[-1]) if not np.isnan(chop_raw.iloc[-1]) else 50.0
+        feat['volatility'] = float(c.pct_change().rolling(20).std().iloc[-1])
+        sma50 = c.rolling(50).mean()
+        sma200 = c.rolling(200).mean()
+        feat['trend'] = int(sma50.iloc[-1] > sma200.iloc[-1])
+
+        # --- Context features ---
+        feat['rsi'] = float(ta.momentum.rsi(c, window=14).iloc[-1])
+        bb = ta.volatility.BollingerBands(c, window=20, window_dev=2)
+        bb_range = bb.bollinger_hband().iloc[-1] - bb.bollinger_lband().iloc[-1]
+        feat['bb_pct'] = float((c.iloc[-1] - bb.bollinger_lband().iloc[-1]) / (bb_range + 1e-10))
+        feat['trend_strength'] = float((c.iloc[-1] - sma50.iloc[-1]) / sma50.iloc[-1])
+
+        # --- Momentum features ---
+        feat['roc_5'] = float(c.pct_change(5).iloc[-1])
+        feat['roc_10'] = float(c.pct_change(10).iloc[-1])
+        feat['roc_20'] = float(c.pct_change(20).iloc[-1])
+        macd = ta.trend.MACD(c)
+        feat['macd_hist'] = float(macd.macd_diff().iloc[-1])
+        feat['momentum'] = float(ta.momentum.roc(c, window=10).iloc[-1])
+
+        # --- Volume features ---
+        vol_sma = v.rolling(20).mean()
+        feat['volume_ratio'] = float(v.iloc[-1] / vol_sma.iloc[-1]) if vol_sma.iloc[-1] > 0 else 1.0
+        obv = ta.volume.on_balance_volume(c, v)
+        obv_sma = obv.rolling(20).mean()
+        feat['obv_trend'] = int(obv.iloc[-1] > obv_sma.iloc[-1])
+        feat['mfi'] = float(ta.volume.money_flow_index(h, l, c, v, window=14).iloc[-1])
+
+        return feat
+
+    def predict_eth_signal(self, feat: dict) -> tuple:
+        """Predice senal ETH usando regime detector + ensemble voting.
+        Requiere 3/3 modelos de acuerdo (umbral estricto - modelos con AUC ~0.5).
+        Returns: (direction, confidence) donde direction es 1 (LONG), -1 (SHORT), 0 (sin senal).
+        """
+        if 'regime_detector' not in self.eth_models:
+            return 0, 0.0
+
+        # Paso 1: detectar regimen
+        regime_cols = ['adx', 'di_plus', 'di_minus', 'di_diff', 'chop', 'volatility', 'trend']
+        X_regime = np.array([[feat.get(f, 0) for f in regime_cols]])
+        regime = self.eth_models['regime_detector'].predict(X_regime)[0]
+
+        context_cols = ['rsi', 'bb_pct', 'trend_strength']
+        momentum_cols = ['roc_5', 'roc_10', 'roc_20', 'macd_hist', 'momentum']
+        volume_cols = ['volume_ratio', 'obv_trend', 'mfi']
+
+        # Paso 2: votar por cada direccion (umbral estricto: 3/3)
+        ETH_MIN_PROB = 0.60
+        for direction_str, direction_int in [('long', 1), ('short', -1)]:
+            keys_cols = [
+                (f'context_{direction_str}', context_cols),
+                (f'momentum_{direction_str}', momentum_cols),
+                (f'volume_{direction_str}', volume_cols),
+            ]
+            if not all(k in self.eth_models for k, _ in keys_cols):
+                continue
+
+            probs = []
+            for key, cols in keys_cols:
+                X = np.array([[feat.get(f, 0) for f in cols]])
+                prob = self.eth_models[key].predict_proba(X)[0, 1]
+                probs.append(prob)
+
+            votes = sum(1 for p in probs if p > 0.5)
+            avg_prob = sum(probs) / len(probs)
+
+            # 3/3 agree AND avg prob above threshold
+            if votes == 3 and avg_prob >= ETH_MIN_PROB:
+                logger.info(f"[V14] ETH: {regime} | {'LONG' if direction_int == 1 else 'SHORT'} | prob={avg_prob:.2%} | 3/3 votos")
+                return direction_int, avg_prob
+
+        return 0, 0.0
 
     def detect_btc_regime(self, row: dict) -> Regime:
         """Detecta regimen BTC."""
@@ -318,7 +443,9 @@ class MLStrategyV14:
         return df.dropna()
 
     def predict_ensemble(self, models: dict, features: np.ndarray) -> tuple:
-        """Prediccion ensemble voting."""
+        """Prediccion ensemble voting LONG.
+        Returns: (should_trade, avg_prob)
+        """
         X = models['scaler'].transform(features.reshape(1, -1))
         prob_rf = models['rf'].predict_proba(X)[0, 1]
         prob_gb = models['gb'].predict_proba(X)[0, 1]
@@ -330,6 +457,26 @@ class MLStrategyV14:
             return votes >= 2, avg_prob
         else:
             # Solo 2 modelos (DOT)
+            votes = int(prob_rf > 0.5) + int(prob_gb > 0.5)
+            return votes >= 2, (prob_rf + prob_gb) / 2
+
+    def predict_ensemble_short(self, models: dict, features: np.ndarray) -> tuple:
+        """Prediccion ensemble voting SHORT.
+        Returns: (should_trade, avg_prob) o (False, 0.0) si no hay modelos SHORT.
+        """
+        if 'rf_short' not in models:
+            return False, 0.0
+
+        X = models['scaler_short'].transform(features.reshape(1, -1))
+        prob_rf = models['rf_short'].predict_proba(X)[0, 1]
+        prob_gb = models['gb_short'].predict_proba(X)[0, 1]
+
+        if 'lr_short' in models:
+            prob_lr = models['lr_short'].predict_proba(X)[0, 1]
+            votes = int(prob_rf > 0.5) + int(prob_gb > 0.5) + int(prob_lr > 0.5)
+            avg_prob = (prob_rf + prob_gb + prob_lr) / 3
+            return votes >= 2, avg_prob
+        else:
             votes = int(prob_rf > 0.5) + int(prob_gb > 0.5)
             return votes >= 2, (prob_rf + prob_gb) / 2
 
@@ -451,51 +598,82 @@ class MLStrategyV14:
                     else:
                         logger.info(f"[V14] {asset}: {regime.value} | No setup (rsi={feat.get('rsi14',0):.1f} bb_pct={feat.get('bb_pct',0):.2f})")
 
-                # ETH: Setups simples
-                elif config['type'] == 'setups' and asset == 'ETH':
-                    eth_signals = self.check_eth_setups(df)
-                    for sig in eth_signals:
-                        direction = 1 if sig['direction'] == 'LONG' else -1
-                        asset_signals.append({
-                            'pair': symbol,
-                            'direction': direction,
-                            'confidence': sig['prob'],
-                            'setup': sig['setup'],
-                            'price': float(df['close'].iloc[-1]),
-                            'tp_pct': config['tp'],
-                            'sl_pct': config['sl'],
-                        })
-                    if not eth_signals:
-                        rsi_eth = ta.momentum.rsi(df['close'], window=14).iloc[-1]
-                        vol_r = df['volume'].iloc[-1] / df['volume'].rolling(20).mean().iloc[-1]
-                        logger.info(f"[V14] ETH: No setup (rsi={rsi_eth:.1f} vol_ratio={vol_r:.2f})")
+                # ETH V14: Regime detector + Ensemble ML
+                elif config['type'] == 'eth_v14':
+                    if self.eth_models:
+                        feat = self.compute_eth_features(df)
+                        direction, confidence = self.predict_eth_signal(feat)
+                        if direction != 0:
+                            direction_label = 'LONG' if direction == 1 else 'SHORT'
+                            asset_signals.append({
+                                'pair': symbol,
+                                'direction': direction,
+                                'confidence': confidence,
+                                'setup': f'ETH_ML_{direction_label}',
+                                'price': float(df['close'].iloc[-1]),
+                                'tp_pct': config['tp'],
+                                'sl_pct': config['sl'],
+                            })
+                        else:
+                            rsi_eth = feat.get('rsi', 0)
+                            vol_r = feat.get('volume_ratio', 1)
+                            logger.info(f"[V14] ETH: No signal ML (rsi={rsi_eth:.1f} vol_ratio={vol_r:.2f})")
+                    else:
+                        logger.warning("[V14] ETH: modelos no cargados - sin senal")
 
                 # Ensemble (DOGE/ADA/DOT/SOL + cross-pairs)
                 elif config['type'] == 'ensemble' and asset in self.ensemble_models:
                     df_feat = self.compute_ensemble_features(df)
                     features = df_feat[self.features].iloc[-1].values
-                    should_trade, prob = self.predict_ensemble(self.ensemble_models[asset], features)
+                    models = self.ensemble_models[asset]
+                    model_base = config.get('model', asset).upper()
+                    feat_dict = {col: df_feat[col].iloc[-1] for col in self.features}
 
-                    if should_trade:
-                        # Filtro especifico por modelo
-                        model_base = config.get('model', asset).upper()
-                        feat_dict = {col: df_feat[col].iloc[-1] for col in self.features}
+                    # Probar LONG
+                    long_trade, long_prob = self.predict_ensemble(models, features)
+                    # Probar SHORT (si hay modelos entrenados)
+                    short_trade, short_prob = self.predict_ensemble_short(models, features)
+
+                    # Seleccionar la mejor senal (mayor prob gana si ambas activas)
+                    if long_trade and short_trade:
+                        # Ambas activas: tomar la de mayor confianza
+                        if long_prob >= short_prob:
+                            short_trade = False
+                        else:
+                            long_trade = False
+
+                    if long_trade:
                         filter_passed, filter_reason = self.check_model_filter(model_base, feat_dict)
-
                         if not filter_passed:
-                            logger.info(f"[V14] {asset}: FILTERED by {model_base} filter ({filter_reason})")
+                            logger.info(f"[V14] {asset}: LONG FILTERED by {model_base} ({filter_reason})")
                         else:
                             asset_signals.append({
                                 'pair': symbol,
-                                'direction': 1,  # Ensemble = LONG only
-                                'confidence': prob,
-                                'setup': 'ENSEMBLE_VOTE',
+                                'direction': 1,
+                                'confidence': long_prob,
+                                'setup': 'ENSEMBLE_LONG',
+                                'price': float(df['close'].iloc[-1]),
+                                'tp_pct': config['tp'],
+                                'sl_pct': config['sl'],
+                            })
+                    elif short_trade:
+                        filter_passed, filter_reason = self.check_model_filter(model_base, feat_dict)
+                        if not filter_passed:
+                            logger.info(f"[V14] {asset}: SHORT FILTERED by {model_base} ({filter_reason})")
+                        else:
+                            asset_signals.append({
+                                'pair': symbol,
+                                'direction': -1,
+                                'confidence': short_prob,
+                                'setup': 'ENSEMBLE_SHORT',
                                 'price': float(df['close'].iloc[-1]),
                                 'tp_pct': config['tp'],
                                 'sl_pct': config['sl'],
                             })
                     else:
-                        logger.info(f"[V14] {asset}: No signal (prob={prob:.1%}, votes insuf.)")
+                        has_short = 'rf_short' in models
+                        short_info = f"{short_prob:.1%}" if has_short else "N/A"
+                        logger.info(f"[V14] {asset}: No signal (long={long_prob:.1%} short={short_info}, votes insuf.)")
 
                 signals.extend(asset_signals)
 

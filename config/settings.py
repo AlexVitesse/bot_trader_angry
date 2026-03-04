@@ -383,7 +383,7 @@ BOT_VERSION = "V14"  # Cambiar aqui para actualizar todos los mensajes
 # =============================================================================
 # Validado con walk-forward + datos sinteticos
 # - BTC: Regimen + Setups (sin ML filter - mejor rendimiento)
-# - ETH: Setups simples (RSI, volumen)
+# - ETH: Regime detector + Ensemble ML (ethusdt_v14 - NEEDS_REVIEW, umbral estricto 3/3)
 # - DOGE/ADA/DOT/SOL: Ensemble voting (RF + GB + LR)
 # - Cross-pairs: Usan modelo base correspondiente
 # =============================================================================
@@ -392,7 +392,7 @@ ML_V14_ENABLED = True   # Feature flag: V14 activo
 ML_V14_EXPERTS = {
     # === ORIGINALES (6) ===
     'BTC': {'symbol': 'BTC/USDT', 'type': 'btc_v14', 'tp': 0.03, 'sl': 0.015},
-    'ETH': {'symbol': 'ETH/USDT', 'type': 'setups', 'tp': 0.04, 'sl': 0.02},
+    'ETH': {'symbol': 'ETH/USDT', 'type': 'eth_v14', 'tp': 0.04, 'sl': 0.02},
     'DOGE': {'symbol': 'DOGE/USDT', 'type': 'ensemble', 'tp': 0.06, 'sl': 0.04},
     'ADA': {'symbol': 'ADA/USDT', 'type': 'ensemble', 'tp': 0.06, 'sl': 0.04},
     'DOT': {'symbol': 'DOT/USDT', 'type': 'ensemble', 'tp': 0.05, 'sl': 0.03},
