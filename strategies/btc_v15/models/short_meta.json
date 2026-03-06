@@ -1,0 +1,32 @@
+{
+  "direction": "SHORT",
+  "tp_pct": 0.025,
+  "sl_pct": 0.015,
+  "threshold": 0.55,
+  "features": [
+    "ema200_dist",
+    "ema20_slope",
+    "ema50_slope",
+    "rsi14",
+    "rsi_slope",
+    "di_diff",
+    "adx14",
+    "bb_pct",
+    "bb_width",
+    "atr_pct",
+    "range_pos",
+    "vol_ratio",
+    "vol_slope",
+    "ret_1",
+    "ret_5",
+    "ret_10",
+    "consec_up",
+    "bull_1d"
+  ],
+  "wf_folds_ok": 4,
+  "oos_wr": 0.45317220543806647,
+  "oos_pf": 1.1619298449698385,
+  "oos_trades_pm": 6.834136269786649,
+  "verdict": "RECHAZADO",
+  "macro_filter": "bull_1d == 0  (EMA20_1d < EMA50_1d)"
+}

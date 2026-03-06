@@ -1,0 +1,216 @@
+{
+  "version": "V15",
+  "trained_at": "2026-03-04 12:25",
+  "pair": "BTC/USDT",
+  "timeframe": "4h",
+  "tp_pct": 0.03,
+  "sl_pct": 0.015,
+  "break_even_wr": 0.3333,
+  "setup_features": [
+    "body_ratio",
+    "upper_wick",
+    "lower_wick",
+    "inside_bar",
+    "prev_body_ratio",
+    "dist_swing_high",
+    "dist_swing_low",
+    "range_pos",
+    "bb_pct",
+    "bb_width",
+    "rsi14",
+    "rsi7",
+    "rsi_slope",
+    "stoch_k",
+    "macd_hist_norm",
+    "ret_1",
+    "ret_3",
+    "ret_5",
+    "atr_pct",
+    "consec_direction",
+    "fng_value",
+    "btc_ret_7d_1d",
+    "funding_rate",
+    "funding_zscore"
+  ],
+  "volume_features": [
+    "taker_buy_ratio",
+    "taker_buy_ratio_ma5",
+    "vol_ratio",
+    "vol_acceleration",
+    "obv_slope",
+    "large_candle_low_vol"
+  ],
+  "setup_threshold_long": 0.52,
+  "setup_threshold_short": 0.52,
+  "long": {
+    "approved": true,
+    "folds_positive": 3,
+    "avg_wr": 0.3147,
+    "avg_pf": 0.9472,
+    "folds": [
+      {
+        "n_trades": 53,
+        "wr": 0.34,
+        "pf": 1.029,
+        "wins": 18,
+        "losses": 35,
+        "positive": "True",
+        "fold": 1,
+        "test_start": "2022-01-01"
+      },
+      {
+        "n_trades": 20,
+        "wr": 0.35,
+        "pf": 1.077,
+        "wins": 7,
+        "losses": 13,
+        "positive": "True",
+        "fold": 2,
+        "test_start": "2022-04-01"
+      },
+      {
+        "n_trades": 0,
+        "wr": 0,
+        "pf": 0,
+        "positive": false,
+        "fold": 3,
+        "test_start": "2022-07-01"
+      },
+      {
+        "n_trades": 8,
+        "wr": 0.375,
+        "pf": 1.2,
+        "wins": 3,
+        "losses": 5,
+        "positive": "True",
+        "fold": 4,
+        "test_start": "2022-10-01"
+      },
+      {
+        "n_trades": 0,
+        "wr": 0,
+        "pf": 0,
+        "positive": false,
+        "fold": 5,
+        "test_start": "2023-01-01"
+      },
+      {
+        "n_trades": 3,
+        "wr": 0.0,
+        "pf": 0.0,
+        "wins": 0,
+        "losses": 3,
+        "positive": "False",
+        "fold": 6,
+        "test_start": "2023-04-01"
+      },
+      {
+        "n_trades": 36,
+        "wr": 0.194,
+        "pf": 0.483,
+        "wins": 7,
+        "losses": 29,
+        "positive": "False",
+        "fold": 7,
+        "test_start": "2023-07-01"
+      },
+      {
+        "n_trades": 0,
+        "wr": 0,
+        "pf": 0,
+        "positive": false,
+        "fold": 8,
+        "test_start": "2023-10-01"
+      },
+      {
+        "n_trades": 2,
+        "wr": 0.0,
+        "pf": 0.0,
+        "wins": 0,
+        "losses": 2,
+        "positive": "False",
+        "fold": 9,
+        "test_start": "2024-01-01"
+      },
+      {
+        "n_trades": 0,
+        "wr": 0,
+        "pf": 0,
+        "positive": false,
+        "fold": 10,
+        "test_start": "2024-04-01"
+      },
+      {
+        "n_trades": 1,
+        "wr": 1.0,
+        "pf": 300000000.0,
+        "wins": 1,
+        "losses": 0,
+        "positive": "True",
+        "fold": 11,
+        "test_start": "2024-07-01"
+      },
+      {
+        "n_trades": 0,
+        "wr": 0,
+        "pf": 0,
+        "positive": false,
+        "fold": 12,
+        "test_start": "2024-10-01"
+      },
+      {
+        "n_trades": 0,
+        "wr": 0,
+        "pf": 0,
+        "positive": false,
+        "fold": 13,
+        "test_start": "2025-01-01"
+      },
+      {
+        "n_trades": 0,
+        "wr": 0,
+        "pf": 0,
+        "positive": false,
+        "fold": 14,
+        "test_start": "2025-04-01"
+      },
+      {
+        "n_trades": 0,
+        "wr": 0,
+        "pf": 0,
+        "positive": false,
+        "fold": 15,
+        "test_start": "2025-07-01"
+      },
+      {
+        "n_trades": 0,
+        "wr": 0,
+        "pf": 0,
+        "positive": false,
+        "fold": 16,
+        "test_start": "2025-10-01"
+      }
+    ]
+  },
+  "short": {
+    "approved": false,
+    "folds_positive": 0,
+    "avg_wr": 0,
+    "avg_pf": 0,
+    "folds": []
+  },
+  "feb_2026_test": {
+    "note": "informativo \u2014 no determina aprobacion",
+    "long": {
+      "n_trades": 0,
+      "wr": 0,
+      "pf": 0,
+      "positive": false
+    },
+    "short": {
+      "n_trades": 0,
+      "wr": 0,
+      "pf": 0
+    }
+  }
+}
