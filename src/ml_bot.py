@@ -612,7 +612,9 @@ class MLBot:
         def _do_export():
             try:
                 cmd = [sys.executable, script]
-                if script == 'ml_export_v14.py':
+                if script == 'train_v15_prod.py':
+                    cmd.append('--refresh')
+                elif script == 'ml_export_v14.py':
                     cmd.append('--force')
                 result = subprocess.run(
                     cmd,

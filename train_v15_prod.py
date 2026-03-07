@@ -4,6 +4,10 @@ train_v15_prod.py — Train V15 SHORT model for production
 Trains GradientBoosting SHORT model on ALL BEAR bars before cutoff date.
 Saves model + scaler + meta to strategies/btc_v15/models/
 
+Usage:
+  python train_v15_prod.py              # Use existing CSV data
+  python train_v15_prod.py --refresh    # Download fresh data from Binance first
+
 Run with PRODUCTION Python to avoid sklearn version mismatch:
   C:\\Users\\pcdec\\AppData\\Local\\pypoetry\\Cache\\virtualenvs\\
   binance-scalper-bot-ofXWUGOe-py3.12\\Scripts\\python.exe train_v15_prod.py
@@ -14,6 +18,7 @@ warnings.filterwarnings('ignore')
 
 import sys
 import json
+import time
 import numpy as np
 import pandas as pd
 import joblib
@@ -23,12 +28,66 @@ from sklearn.ensemble import GradientBoostingClassifier
 from sklearn.preprocessing import StandardScaler
 
 ROOT = Path(__file__).parent
+DATA = ROOT / 'data'
 sys.path.insert(0, str(ROOT))
 
 from v15_framework import (
     load_btc_4h, compute_features_4h, compute_macro_daily,
     merge_daily_to_4h, load_funding, COMMISSION
 )
+
+
+def refresh_btc_data():
+    """Download fresh BTC 4H data from Binance and update CSV."""
+    import ccxt
+    print("\nDownloading fresh BTC/USDT 4H data from Binance...")
+
+    exchange = ccxt.binance({'enableRateLimit': True})
+    csv_path = DATA / 'BTCUSDT_4h.csv'
+
+    # Read existing data to find last timestamp
+    if csv_path.exists():
+        existing = pd.read_csv(csv_path)
+        existing['timestamp'] = pd.to_datetime(existing['timestamp'])
+        last_ts = int(existing['timestamp'].iloc[-1].timestamp() * 1000)
+        print(f"  Existing data until: {existing['timestamp'].iloc[-1]}")
+    else:
+        # Start from 2018
+        last_ts = int(datetime(2018, 1, 1).timestamp() * 1000)
+        existing = pd.DataFrame()
+        print("  No existing data, downloading from 2018...")
+
+    # Fetch new candles after last timestamp
+    all_new = []
+    since = last_ts + 1  # Next ms after last candle
+    while True:
+        candles = exchange.fetch_ohlcv('BTC/USDT', '4h', since=since, limit=1000)
+        if not candles:
+            break
+        all_new.extend(candles)
+        since = candles[-1][0] + 1
+        print(f"  Fetched {len(all_new)} new candles...", end='\r')
+        time.sleep(exchange.rateLimit / 1000)
+
+    if not all_new:
+        print("  Already up to date.")
+        return
+
+    # Convert to DataFrame
+    new_df = pd.DataFrame(all_new, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+    new_df['timestamp'] = pd.to_datetime(new_df['timestamp'], unit='ms')
+
+    # Merge with existing
+    if not existing.empty:
+        combined = pd.concat([existing, new_df], ignore_index=True)
+        combined = combined.drop_duplicates(subset='timestamp').sort_values('timestamp')
+    else:
+        combined = new_df.sort_values('timestamp')
+
+    combined.to_csv(csv_path, index=False)
+    print(f"  Updated: {len(combined)} total bars "
+          f"({combined['timestamp'].iloc[0].date()} - {combined['timestamp'].iloc[-1].date()})")
+    print(f"  Added {len(all_new)} new candles")
 
 # ============================================================
 # CONFIG (identical to validated backtest)
@@ -94,6 +153,10 @@ def main():
     print("=" * 60)
     print("V15 PRODUCTION TRAINING — SHORT GBM MODEL")
     print("=" * 60)
+
+    # Refresh data if requested
+    if '--refresh' in sys.argv:
+        refresh_btc_data()
 
     # Load data
     print("\nLoading data...")
