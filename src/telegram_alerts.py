@@ -215,39 +215,31 @@ def run_git_pull():
         send_alert(f"\u274C Git pull ERROR: {e}")
 
 
-def run_export_v1304():
-    """Ejecuta ml_export_v1304.py para regenerar modelos."""
-    send_alert("\U0001F52C Exportando modelos V13.04...\nEsto puede tomar 1-2 minutos.")
+def run_export_models():
+    """Ejecuta reentrenamiento de modelos (legacy, usar /retrain en bot)."""
+    send_alert("\U0001F52C Reentrenando modelos...\nEsto puede tomar 1-2 minutos.")
     try:
         project_root = Path(__file__).parent.parent
         result = subprocess.run(
-            ['poetry', 'run', 'python', 'ml_export_v1304.py'],
+            ['poetry', 'run', 'python', 'train_v15_prod.py'],
             cwd=project_root,
             capture_output=True,
             text=True,
-            timeout=300  # 5 minutos max
+            timeout=300
         )
         if result.returncode == 0:
-            # Extraer resumen
-            lines = result.stdout.strip().split('\n')
-            # Buscar lineas con resultados de pares
-            summary_lines = [l for l in lines if any(p in l for p in ['DOGE:', 'ADA:', 'DOT:', 'XRP:', 'BTC:'])]
-            if summary_lines:
-                summary = '\n'.join(summary_lines[:5])
-                send_alert(f"\u2705 V13.04 exportado:\n<code>{summary}</code>")
-            else:
-                send_alert("\u2705 V13.04 modelos exportados correctamente")
+            send_alert("\u2705 Modelos reentrenados correctamente")
         else:
             error_msg = result.stderr[:300] if result.stderr else result.stdout[:300]
-            send_alert(f"\u274C Export V13.04 ERROR:\n<code>{error_msg}</code>")
+            send_alert(f"\u274C Retrain ERROR:\n<code>{error_msg}</code>")
     except subprocess.TimeoutExpired:
-        send_alert("\u274C Export V13.04 TIMEOUT (5min)")
+        send_alert("\u274C Retrain TIMEOUT (5min)")
     except Exception as e:
-        send_alert(f"\u274C Export V13.04 ERROR: {e}")
+        send_alert(f"\u274C Retrain ERROR: {e}")
 
 
 def run_pull_and_export():
-    """Ejecuta git pull + export V13.04 en secuencia."""
+    """Ejecuta git pull + retrain en secuencia."""
     send_alert("\U0001F680 Iniciando actualizacion completa...")
 
     # 1. Git pull
@@ -272,8 +264,8 @@ def run_pull_and_export():
         send_alert(f"\u274C Git pull ERROR: {e}")
         return
 
-    # 2. Export models
-    run_export_v1304()
+    # 2. Retrain models
+    run_export_models()
 
 
 # =====================================================================
@@ -287,8 +279,8 @@ class TelegramPoller:
     - /status: Estado actual del bot
     - /resume: Reanudar trading
     - /pull: Git pull desde main
-    - /export_v1304: Exportar modelos V13.04
-    - /update: Git pull + exportar modelos (combo)
+    - /retrain: Reentrenar modelos
+    - /update: Git pull + retrain (combo)
     """
 
     def __init__(self, callbacks: dict = None):

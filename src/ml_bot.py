@@ -29,8 +29,17 @@ from config.settings import (
     ML_V1304_ENABLED, ML_V1304_PAIRS,
     ML_V14_ENABLED, ML_V14_EXPERTS,
 )
+
+# V15 import (conditional to avoid errors if file missing)
+try:
+    from config.settings import ML_V15_ENABLED
+except ImportError:
+    ML_V15_ENABLED = False
+
 from src.ml_strategy import MLStrategy
 from src.ml_strategy_v14 import MLStrategyV14
+if ML_V15_ENABLED:
+    from src.ml_strategy_v15 import MLStrategyV15
 from src.portfolio_manager import PortfolioManager
 from src.shadow_portfolio_manager import ShadowPortfolioManager
 from src.telegram_alerts import send_alert, send_document, TelegramPoller
@@ -44,8 +53,11 @@ class MLBot:
     def __init__(self):
         self.exchange_public = self._init_exchange_public()
         self.exchange = self._init_exchange()
-        # Usar estrategia V14 si esta habilitada
-        if ML_V14_ENABLED:
+        # Usar estrategia V15 (Expert Committee) o V14
+        if ML_V15_ENABLED:
+            self.strategy = MLStrategyV15()
+            self.v14_mode = True  # reuse V14 signal execution flow
+        elif ML_V14_ENABLED:
             self.strategy = MLStrategyV14()
             self.v14_mode = True
         else:
@@ -230,8 +242,11 @@ class MLBot:
         regime_emoji = {'BULL': '🟢🐂', 'BEAR': '🔴🐻', 'RANGE': '🟡↔️'}.get(regime, '⚪')
         n_pos = len(self.portfolio.positions)
 
-        # V14 info
-        if self.v14_mode:
+        # Model info for Telegram
+        if ML_V15_ENABLED:
+            model_str = f"🧠 Expert Committee\n📊 BTC/USDT only"
+            count = 1
+        elif self.v14_mode:
             n_experts = len(ML_V14_EXPERTS)
             model_str = f"🤖 Ensemble Voting\n📊 {n_experts} expertos activos"
             count = n_experts
@@ -270,8 +285,8 @@ class MLBot:
             '/pull': self._cmd_pull,
             '/install': self._cmd_install,
             '/restart': self._cmd_restart,
-            '/retrain': self._cmd_export_v14,  # Alias para V14
-            '/export_v14': self._cmd_export_v14,
+            '/retrain': self._cmd_retrain,
+            '/export_v14': self._cmd_retrain,  # Alias legacy
             '/clearlog': self._cmd_clearlog,
             '/resetdb': self._cmd_resetdb,
         })
@@ -314,21 +329,15 @@ class MLBot:
         pnl_emoji = '📈' if total_pnl >= 0 else '📉'
         paused_str = "\n⏸️ <b>PAUSADO</b> - usa /resume" if self.portfolio.paused else ""
 
-        # V14: Ensemble Voting
-        if self.v14_mode:
+        # Model info
+        if ML_V15_ENABLED:
+            model_str = f"\n🧠 Expert Committee | BTC/USDT"
+        elif self.v14_mode:
             model_str = f"\n🤖 Ensemble Voting ({len(ML_V14_EXPERTS)} expertos)"
-        # V13.04: Ridge LONG_ONLY
         elif ML_V1304_ENABLED:
             model_str = "\n🔬 Ridge LONG_ONLY"
         else:
             model_str = ""
-            if hasattr(self.strategy, 'v84_enabled') and self.strategy.v84_enabled:
-                model_str = (
-                    f"\n🌐 Macro: {self.strategy.macro_score:.2f} | "
-                    f"Sz: {self.strategy.get_sizing_multiplier():.2f}x"
-                )
-            if hasattr(self.strategy, 'v85_enabled') and self.strategy.v85_enabled:
-                model_str += "\n🎯 Conv: ON"
 
         send_alert(
             f"📊 <b>STATUS {BOT_VERSION}</b>\n"
@@ -348,6 +357,7 @@ class MLBot:
         if self.portfolio.paused:
             self.portfolio.paused = False
             self.portfolio.daily_pnl = 0.0  # Reset para que check_risk() no re-pause
+            self.portfolio.consecutive_losses = 0  # Reset racha
             self._pause_notified = False
             logger.info("[BOT] Reanudado via comando /resume (daily_pnl reset)")
             send_alert(
@@ -581,22 +591,31 @@ class MLBot:
 
         threading.Thread(target=_do_update, daemon=True).start()
 
-    def _cmd_export_v14(self):
-        """Responde al comando /export_v14 - exporta modelos V14 Ensemble."""
+    def _cmd_retrain(self):
+        """Responde al comando /retrain - reentrena modelos de la version activa."""
+        if ML_V15_ENABLED:
+            script = 'train_v15_prod.py'
+            desc = "SHORT GBM (BTC only)"
+        else:
+            script = 'ml_export_v14.py'
+            desc = "Ensemble (RF+GB+LR)"
+
         send_alert(
-            f"🔬 <b>EXPORTANDO {BOT_VERSION}</b>\n"
+            f"🔬 <b>REENTRENANDO {BOT_VERSION}</b>\n"
             f"━━━━━━━━━━━━━━━\n"
-            f"📊 Modelo: Ensemble (RF+GB+LR)\n"
-            f"📈 Pares: DOGE, ADA, DOT, SOL\n"
+            f"📊 Modelo: {desc}\n"
             f"⏱️ Tiempo estimado: 3-5 minutos"
         )
-        logger.info(f"[BOT] Export {BOT_VERSION} solicitado via /export_v14")
+        logger.info(f"[BOT] Retrain {BOT_VERSION} solicitado via /retrain")
         project_root = str(Path(__file__).parent.parent)
 
         def _do_export():
             try:
+                cmd = [sys.executable, script]
+                if script == 'ml_export_v14.py':
+                    cmd.append('--force')
                 result = subprocess.run(
-                    [sys.executable, 'ml_export_v14.py', '--force'],
+                    cmd,
                     capture_output=True, text=True,
                     timeout=600, cwd=project_root,
                 )
@@ -604,25 +623,20 @@ class MLBot:
                 output = result.stdout.strip() or result.stderr.strip() or "Sin output"
 
                 if ok:
-                    # Extraer resumen
-                    lines = output.split('\n')
-                    summary_lines = [l for l in lines if any(s in l for s in ['DOGE:', 'ADA:', 'DOT:', 'SOL:', '✓', '✗'])]
-                    if summary_lines:
-                        summary = '\n'.join(summary_lines[-6:])
-                        send_alert(f"✅ <b>{BOT_VERSION} EXPORTADO</b>\n<code>{summary}</code>")
-                    else:
-                        send_alert(f"✅ <b>{BOT_VERSION} EXPORTADO</b>\nModelos listos en strategies/*/models/")
+                    lines = output.split('\n')[-6:]
+                    summary = '\n'.join(lines)
+                    send_alert(f"✅ <b>{BOT_VERSION} REENTRENADO</b>\n<code>{summary}</code>")
                 else:
                     error_msg = output[-300:]
                     send_alert(f"❌ <b>{BOT_VERSION} ERROR</b>\n<code>{error_msg}</code>")
 
-                logger.info(f"[BOT] export_v14: rc={result.returncode}")
+                logger.info(f"[BOT] retrain: rc={result.returncode}")
             except subprocess.TimeoutExpired:
                 send_alert(f"❌ <b>{BOT_VERSION} TIMEOUT</b>\nSuperados 10 minutos")
-                logger.error("[BOT] export_v14 timeout (10min)")
+                logger.error("[BOT] retrain timeout (10min)")
             except Exception as e:
-                send_alert(f"❌ Error en export {BOT_VERSION}: {e}")
-                logger.error(f"[BOT] export_v14 error: {e}")
+                send_alert(f"❌ Error en retrain {BOT_VERSION}: {e}")
+                logger.error(f"[BOT] retrain error: {e}")
 
         threading.Thread(target=_do_export, daemon=True).start()
 
@@ -698,13 +712,13 @@ class MLBot:
         signals = self.strategy.generate_signals(self.exchange_public, open_symbols)
 
         if signals:
-            logger.info(f"[V14] {len(signals)} senales generadas:")
+            logger.info(f"[{BOT_VERSION}] {len(signals)} senales generadas:")
             for s in signals:
                 side = 'LONG' if s['direction'] == 1 else 'SHORT'
                 logger.info(f"  {s['pair']} {side} | conf={s['confidence']:.2f} | "
                             f"${s['price']:,.2f} | {s.get('setup', '')}")
         else:
-            logger.info("[V14] Sin senales en este ciclo")
+            logger.info(f"[{BOT_VERSION}] Sin senales en este ciclo")
 
         for signal in signals:
             self._execute_v14_signal(signal)
@@ -849,19 +863,15 @@ class MLBot:
                     sl_dir = '↗️ sube'
                 sm = signal.get('sizing_mult', 1.0)
                 cm = signal.get('conviction_mult', 1.0)
-                # V14: Ensemble Voting
-                if self.v14_mode:
+                # Model info for trade alert
+                if ML_V15_ENABLED:
+                    model_str = f"🧠 {signal.get('setup', 'V15')}"
+                elif self.v14_mode:
                     model_str = f"🤖 Ensemble"
-                # V13.04: Ridge LONG_ONLY, sin Macro/Conv
                 elif ML_V1304_ENABLED:
                     model_str = "🔬 Ridge LONG_ONLY"
                 else:
-                    intel_parts = []
-                    if hasattr(self.strategy, 'v84_enabled') and self.strategy.v84_enabled:
-                        intel_parts.append(f"🌐 Macro: {self.strategy.macro_score:.2f}")
-                    if hasattr(self.strategy, 'v85_enabled') and self.strategy.v85_enabled:
-                        intel_parts.append(f"🎯 Conv: {cm:.2f}x")
-                    model_str = " | ".join(intel_parts) if intel_parts else ""
+                    model_str = ""
 
                 send_alert(
                     f"{side_emoji} <b>TRADE ABIERTO</b>\n"
@@ -1046,23 +1056,15 @@ class MLBot:
         else:
             pnl_emoji = '📈' if total_pnl >= 0 else '📉'
 
-            # V14: Ensemble Voting
-            if self.v14_mode:
+            # Model info for heartbeat
+            if ML_V15_ENABLED:
+                model_str = f"🧠 Expert Committee | BTC/USDT\n"
+            elif self.v14_mode:
                 model_str = f"🤖 Ensemble ({len(ML_V14_EXPERTS)} expertos)\n"
-            # V13.04: modelo Ridge LONG_ONLY
             elif ML_V1304_ENABLED:
                 model_str = "🔬 Ridge LONG_ONLY\n"
             else:
-                # Legacy V13.03 con Macro/Conviction
-                if hasattr(self.strategy, 'v84_enabled') and self.strategy.v84_enabled:
-                    model_str = (
-                        f"🌐 Macro: {self.strategy.macro_score:.2f} | "
-                        f"Sz: {self.strategy.get_sizing_multiplier():.2f}x\n"
-                    )
-                else:
-                    model_str = ""
-                if hasattr(self.strategy, 'v85_enabled') and self.strategy.v85_enabled:
-                    model_str += "🎯 Conv: ON\n"
+                model_str = ""
 
             send_alert(
                 f"🟢 <b>{BOT_VERSION} OK</b>\n"

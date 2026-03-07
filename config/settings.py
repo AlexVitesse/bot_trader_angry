@@ -376,7 +376,7 @@ ML_V1304_EXCLUDED = ['ETH/USDT', 'BNB/USDT', 'LINK/USDT', 'NEAR/USDT', 'AVAX/USD
 # =============================================================================
 # VERSION DEL BOT (centralizado para Telegram y logs)
 # =============================================================================
-BOT_VERSION = "V14"  # Cambiar aqui para actualizar todos los mensajes
+BOT_VERSION = "V15"  # Cambiar aqui para actualizar todos los mensajes
 
 # =============================================================================
 # V14 ENSEMBLE STRATEGY (Paper Trading Validado)
@@ -387,7 +387,16 @@ BOT_VERSION = "V14"  # Cambiar aqui para actualizar todos los mensajes
 # - DOGE/ADA/DOT/SOL: Ensemble voting (RF + GB + LR)
 # - Cross-pairs: Usan modelo base correspondiente
 # =============================================================================
-ML_V14_ENABLED = True   # Feature flag: V14 activo
+ML_V14_ENABLED = False   # Feature flag: V14 desactivado (reemplazado por V15)
+
+# =============================================================================
+# V15 EXPERT COMMITTEE (BTC only — validado WF 8/12, OOS PF=1.35)
+# =============================================================================
+# BULL: Breakout B LONG + Pullback EMA20 LONG (reglas, ATR TP/SL)
+# BEAR: SHORT ML (GBM threshold=0.60)
+# RANGE: Breakout B LONG only
+# Gates: funding veto + regime dead zone 2%
+ML_V15_ENABLED = True    # Feature flag: V15 activo
 
 ML_V14_EXPERTS = {
     # === ORIGINALES (6) ===

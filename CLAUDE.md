@@ -1,4 +1,4 @@
-# CLAUDE.md - Bot de Trading ML V14
+# CLAUDE.md - Bot de Trading ML V15
 
 ## Objetivo del Proyecto
 
@@ -73,41 +73,31 @@ Múltiples documentos confirman:
 
 ---
 
-## Arquitectura V14 Aprobada (en main)
+## Arquitectura V15 Activa (Expert Committee)
 
-### BTC: Reglas técnicas + ML confianza
+### BTC: Expert Committee (3 regimenes)
 ```
-Datos → Régimen → Setup → Ensemble ML confianza → Position sizing
+Datos 1D → Régimen (BULL/BEAR/RANGE) → Setup por régimen → Position sizing
 ```
-- 4 regímenes: TREND_UP / TREND_DOWN / RANGE / VOLATILE
-- 8 setups técnicos por régimen (pullback, rally, bounce, rejection, breakout...)
-- Ensemble confianza: 3 modelos (context/momentum/volume), umbral skip < 0.35
-- TP 3% / SL 1.5% — **validado: 12/12 folds, cross-asset ETH +2829%**
 
-### ETH: Setups simples (reglas, SIN ML)
-- Regla: RSI<30 o vol_ratio>2
-- **BUG CONOCIDO en main**: RSI<30 genera señal SHORT (debería ser LONG — oversold = comprar)
-- ETH dispara raramente — contribuye a 0 trades
-- No conectar modelos ethusdt_v14 (AUC ~0.5, status NEEDS_REVIEW)
+| Régimen | Estrategia | Tipo | TP/SL |
+|---------|-----------|------|-------|
+| BULL | Breakout B + Pullback EMA20 | Reglas | ATR-based (adaptivo) |
+| BEAR | SHORT ML (GBM) | ML threshold=0.60 | Dinámico (max 3 bars * 1.003) |
+| RANGE | Breakout B solo | Reglas | Mismo que BULL |
 
-### DOGE/ADA/DOT/SOL: Ensemble Voting LONG only
-```
-Datos → Features → 3 modelos votan → Trade si 2/3 coinciden
-```
-- RandomForest + GradientBoosting + LogisticRegression
-- **LONG only**: memecoins/altcoins tienen sesgo alcista
-- Validados: DOGE 7/9 folds+ (cross: SHIB/PEPE ✓), ADA 11/12 (cross: DOT/SOL/ATOM ✓), DOT 6/8
-- Features: rsi, macd_norm, adx, bb_pct, atr_pct, ret_3, ret_5, ret_10, vol_ratio, trend
-- TP 6%/SL 4% (DOGE/ADA), TP 5%/SL 3% (DOT)
+- **Régimen**: EMA20/EMA50 diario, 2% dead zone + recovery filter (close>EMA200)
+- **Funding veto**: z-score > 2.0 bloquea LONG, < -1.5 bloquea SHORT
+- **Validado**: WF 8/12, OOS PF=1.35, WR=48%, $1K->$7.1K, CAGR ~37%, DD 35%
+- **2026**: +7% con 3 trades (BTC -23%) — conservador pero positivo
 
-### Cross-pairs (aprobados con walk-forward propio)
-| Modelo base | Cross-pairs validados | WF folds |
-|------------|----------------------|----------|
-| ADA | SOL 9/10, ATOM 8/10, AVAX 8/10, POL 8/10 | ✓ |
-| DOGE | SHIB 6/10, PEPE 6/10, FLOKI 6/10 | ✓ |
-| DOT | LINK 7/10, ALGO 7/10, FIL 6/10, NEAR 6/10 | ✓ |
+### Solo BTC — Expansión por par
+- V15 opera **solo BTC/USDT** (validado)
+- ETH rechazado en cross-asset (5/12 WF, PF=0.94)
+- Cada par nuevo necesita: WF>=7/12 + backtest propio + documentar antes de activar
 
-**Rechazados** (< 60% folds): INJ, BONK, WIF.
+### V14 (desactivada, preservada)
+V14 sigue en el código pero ML_V14_ENABLED=False. Se puede reactivar si necesario.
 
 ---
 
@@ -115,26 +105,23 @@ Datos → Features → 3 modelos votan → Trade si 2/3 coinciden
 
 | Rama | Usar | Descripción |
 |------|------|-------------|
-| `main` | ✓ Producción | V14 validado: BTC+ETH setups + ensemble LONG |
+| `main` | ✓ Producción | V14 validado (preservado, ML_V14_ENABLED=False) |
+| `v15/momentum-breakout` | ✓ Deploy | V15 Expert Committee BTC only |
 | `feature/v14.1-bidirectional` | ✗ Experimental | ETH ML (AUC~0.5) + SHORT ensemble (fallido) — NO mergear |
 
-### Qué tiene `feature/v14.1-bidirectional` que NO va a main
-1. ETH conectado a ethusdt_v14 models — AUC ~0.5, no predice nada útil
-2. Modelos SHORT DOGE/ADA/DOT/SOL — WR < 40%, sin cross-asset validation
-3. `train_ensemble_short.py` — útil como referencia, pero los modelos necesitan pasar validación
+### Flujo de deploy V15
+1. `v15/momentum-breakout` contiene todo el código V15 listo para producción
+2. Mergear a `main` cuando paper trading confirme que genera señales correctas
+3. V14 preservado y reactivable cambiando flags en settings.py
 
 ---
 
-## Problema Activo: 0 Trades en Producción
+## V15 Deployment Status
 
-El bot corre pero no genera trades. Causas conocidas:
-
-1. **BTC setups muy estrictos**: rsi14<40 AND bb_pct<0.3 AND ema200_dist>0 simultáneamente
-2. **ETH RSI bug**: RSI<30 → SHORT (invertido), vol_ratio>2 raro
-3. **Filtro ML confianza BTC**: si models no están cargando bien → skip todos
-4. **Log level**: confirmar que los `[V14]` INFO messages son visibles
-
-**Diagnóstico**: `/log` en Telegram y buscar líneas `[V14]` — debe haber al menos un log por par por vela 4h.
+- **V15 desplegado para BTC/USDT only** (paper trading testnet)
+- V14 desactivado (ML_V14_ENABLED=False)
+- Modelos entrenados con sklearn 1.8.0 (producción)
+- **Diagnóstico**: `/log` en Telegram y buscar líneas `[V15]` — debe haber logs cada vela 4h
 
 ---
 
@@ -162,37 +149,26 @@ Antes de agregar cualquier modelo/dirección a main:
 ```
 src/
   ml_bot.py              # Bot principal (loop 30s, señales 4h)
-  ml_strategy_v14.py     # Motor de señales V14 (archivo crítico)
+  ml_strategy_v15.py     # Motor de señales V15 Expert Committee (ACTIVO)
+  ml_strategy_v14.py     # Motor de señales V14 (desactivado, preservado)
   portfolio_manager.py   # Gestión posiciones + trailing stop
   telegram_alerts.py     # Alertas + TelegramPoller
 
 config/
-  settings.py            # BOT_VERSION, ML_V14_EXPERTS, ML_V14_FEATURES
+  settings.py            # BOT_VERSION="V15", ML_V15_ENABLED=True
 
 strategies/
-  btc_v14/models/        # context/momentum/volume _long/_short.pkl (aprobados)
-  eth_v14/models/        # NEEDS_REVIEW — no usar en bot
-  doge_v14/models/       # rf/gb/lr + scaler (LONG aprobados) + _short (NO aprobados)
-  ada_v14/models/        # ídem
-  dot_v14/models/        # ídem (sin lr.pkl)
-  sol_v14/models/        # ídem
+  btc_v15/models/        # V15: short_gbm.pkl, short_scaler.pkl, meta_v15.json
+  btc_v14/models/        # V14 (preservado)
 
-docs/                    # LEER ANTES DE CAMBIOS
-  ARQUITECTURA_V14.md
-  ANALISIS_CRITICO_OVERFITTING.md   ← crítico
-  LOW_OVERFIT_MODEL_RESULTS.md      ← crítico
-  WALKFORWARD_VALIDATION_RESULTS.md ← crítico
-  METODOLOGIA_TESTING.md            ← crítico
+V15 Scripts:
+  train_v15_prod.py        # Entrenar SHORT model para producción
+  backtest_v15_committee.py # Backtest completo del comité
+  v15_framework.py          # Framework compartido (sim, features, WF)
 
-METODOLOGIA_TESTING.md  # En raíz — proceso obligatorio de validación
-
-Scripts de entrenamiento:
-  train_btc_v14.py          # BTC (LONG+SHORT, ambos validados)
-  train_expert.py           # ETH expert (generó ethusdt_v14 — NEEDS_REVIEW)
-  train_ensemble_voting.py  # DOGE/ADA/DOT/SOL LONG (aprobados)
-  train_ensemble_short.py   # SHORT (entrenados pero NO validados cross-asset)
-  ml_export_v14.py          # Export/reentrenamiento mensual
-  validate_new_pairs.py     # Validación WF + sintéticos para nuevos pares
+docs/
+  V15_COMPARACION.md       # Comparación de 4 estrategias V15
+  V15_COMMITTEE_results.md # Resultados del comité validado
 ```
 
 ---
@@ -262,21 +238,21 @@ El objetivo no es el mejor modelo técnico posible, sino un sistema que genere *
 
 ## Próximos Pasos Prioritarios
 
-1. **Diagnóstico 0 trades** (prioridad máxima)
-   - Revisar `/log` en Telegram — buscar líneas `[V14]`
-   - ¿Llegan señales de BTC? ¿Se filtran por confianza?
-   - ¿El ensemble de DOGE/ADA/DOT/SOL genera votes?
+1. **Paper trade V15 BTC** (prioridad máxima)
+   - Verificar que el bot genera señales V15 en testnet
+   - `/log` debe mostrar `[V15]` con régimen y evaluación de setups cada 4h
+   - Acumular trades reales antes de cualquier expansión
 
-2. **Fix bug ETH** (opcional, bajo riesgo)
-   - En `check_eth_setups()`: cambiar RSI<30 de SHORT a LONG
-   - Es una línea en main directamente (no requiere rama)
+2. **Mergear v15/momentum-breakout a main**
+   - Solo después de confirmar señales correctas en paper trading
+   - Verificar que portfolio_manager ejecuta trades V15 correctamente
 
-3. **NO hacer hasta tener trades reales que analizar**
-   - No agregar más pares
-   - No habilitar SHORT
-   - No conectar ETH ML
-   - El paper trading es la única validación real
+3. **Expansión par a par** (después de validar BTC en producción)
+   - Cada par necesita: backtest propio con WF>=7/12 + documentar
+   - Candidatos: ETH (fallido cross-asset 5/12), SOL, ADA
+   - Adaptar features/thresholds por par, no reutilizar modelos BTC directamente
 
-4. **Reentrenamiento mensual** (cuando corresponda)
-   - Usar `ml_export_v14.py`
-   - Verificar walk-forward antes de deploy
+4. **Reentrenamiento mensual SHORT model**
+   - Usar `train_v15_prod.py` con production Python
+   - Actualizar cutoff date y verificar in-sample metrics
+   - Recalibrar threshold si distribución de probabilidades cambia
