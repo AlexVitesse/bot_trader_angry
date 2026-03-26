@@ -70,6 +70,46 @@ def load_btc_1d() -> pd.DataFrame:
     return df.sort_index()
 
 
+def load_pair_4h(pair: str = 'BTC') -> pd.DataFrame:
+    """OHLCV 4H generico para cualquier par (BTC, ETH, SOL...)."""
+    pair = pair.upper()
+    if pair == 'BTC':
+        return load_btc_4h()
+    # Otros pares: cargar desde parquet
+    fname = f'{pair}_USDT_4h_full.parquet'
+    fpath = DATA / fname
+    if not fpath.exists():
+        # Intentar CSV
+        csv_name = f'{pair}USDT_4h.csv'
+        csv_path = DATA / csv_name
+        if csv_path.exists():
+            df = pd.read_csv(csv_path)
+            df['timestamp'] = pd.to_datetime(df['timestamp'])
+            if df['timestamp'].dt.tz is None:
+                df['timestamp'] = df['timestamp'].dt.tz_localize('UTC')
+            return df.set_index('timestamp').sort_index()
+        raise FileNotFoundError(f"No data for {pair}: tried {fpath} and {csv_path}")
+    df = pd.read_parquet(fpath)
+    if df.index.tz is None:
+        df.index = df.index.tz_localize('UTC')
+    return df.sort_index()
+
+
+def load_pair_1d(pair: str = 'BTC') -> pd.DataFrame:
+    """OHLCV diario generico para cualquier par."""
+    pair = pair.upper()
+    if pair == 'BTC':
+        return load_btc_1d()
+    fname = f'{pair}_USDT_1d_history.parquet'
+    fpath = DATA / fname
+    if not fpath.exists():
+        raise FileNotFoundError(f"No daily data for {pair}: {fpath}")
+    df = pd.read_parquet(fpath)
+    if df.index.tz is None:
+        df.index = df.index.tz_localize('UTC')
+    return df.sort_index()
+
+
 def load_funding() -> pd.Series:
     """Funding rate 8H, resampled a 4H con ffill."""
     f = pd.read_parquet(DATA / 'btc_v15_funding.parquet')

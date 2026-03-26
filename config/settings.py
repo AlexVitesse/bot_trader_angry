@@ -392,11 +392,45 @@ ML_V14_ENABLED = False   # Feature flag: V14 desactivado (reemplazado por V15)
 # =============================================================================
 # V15 EXPERT COMMITTEE (BTC only — validado WF 8/12, OOS PF=1.35)
 # =============================================================================
-# BULL: Breakout B LONG + Pullback EMA20 LONG (reglas, ATR TP/SL)
-# BEAR: SHORT ML (GBM threshold=0.60)
-# RANGE: Breakout B LONG only
-# Gates: funding veto + regime dead zone 2%
-ML_V15_ENABLED = True    # Feature flag: V15 activo
+# BTC: Breakout B LONG + Pullback EMA20 LONG + SHORT ML (GBM)
+# ETH: BTC-follower LONG + Breakout ETH + SHORT multi-conf/BB (rule-based)
+# Gates: funding veto + regime dead zone 2% per pair
+ML_V15_ENABLED = True
+
+ML_V15_PAIRS = [
+    'BTC/USDT', 'ETH/USDT',
+    'ADA/USDT', 'SOL/USDT', 'DOGE/USDT',
+    'LINK/USDT', 'AVAX/USDT', 'DOT/USDT',
+    'NEAR/USDT', 'XRP/USDT', 'ATOM/USDT',
+    'INJ/USDT', 'ALGO/USDT', 'FIL/USDT',
+    '1000SHIB/USDT', 'BNB/USDT',
+    'LTC/USDT', 'ETC/USDT', 'BCH/USDT',
+    'UNI/USDT', 'AAVE/USDT', 'OP/USDT',
+]
+ML_V15_SIZING = {
+    'BTC/USDT': 1.0,    # Full sizing
+    'ETH/USDT': 0.5,    # Conservative (50% of BTC)
+    'ADA/USDT': 0.3,    # Trailing pairs (0.3x conservative)
+    'SOL/USDT': 0.3,
+    'DOGE/USDT': 0.3,
+    'LINK/USDT': 0.3,
+    'AVAX/USDT': 0.3,
+    'DOT/USDT': 0.3,
+    'NEAR/USDT': 0.3,
+    'XRP/USDT': 0.3,
+    'ATOM/USDT': 0.3,
+    'INJ/USDT': 0.3,
+    'ALGO/USDT': 0.3,
+    'FIL/USDT': 0.3,
+    '1000SHIB/USDT': 0.3,
+    'BNB/USDT': 0.3,
+    'LTC/USDT': 0.3,
+    'ETC/USDT': 0.3,
+    'BCH/USDT': 0.3,
+    'UNI/USDT': 0.3,
+    'AAVE/USDT': 0.3,
+    'OP/USDT': 0.3,
+}
 
 ML_V14_EXPERTS = {
     # === ORIGINALES (6) ===

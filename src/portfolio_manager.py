@@ -58,6 +58,8 @@ class Position:
     bars: int = 0
     max_hold: int = 30
     sl_order_id: Optional[str] = None
+    trail_mode: str = 'default'       # 'default' or 'tight' (ADA/SOL)
+    trail_fixed_dist: float = 0.0     # 0.008 = 0.8% for tight trailing
 
 
 class PortfolioManager:
@@ -73,6 +75,7 @@ class PortfolioManager:
         self.daily_date = datetime.now(timezone.utc).strftime('%Y-%m-%d')
         self.paused = False
         self.killed = False
+        self.consecutive_losses = 0  # Racha de SL consecutivos
         self.trade_log: List[dict] = []
         self._init_db()
 
@@ -148,6 +151,17 @@ class PortfolioManager:
                 conn.commit()
             except Exception:
                 pass  # Column already exists
+            # Migration: add trail_mode and trail_fixed_dist for tight trailing (ADA/SOL)
+            try:
+                conn.execute("ALTER TABLE ml_positions ADD COLUMN trail_mode TEXT DEFAULT 'default'")
+                conn.commit()
+            except Exception:
+                pass
+            try:
+                conn.execute("ALTER TABLE ml_positions ADD COLUMN trail_fixed_dist REAL DEFAULT 0.0")
+                conn.commit()
+            except Exception:
+                pass
         finally:
             conn.close()
 
@@ -159,15 +173,16 @@ class PortfolioManager:
                     (symbol, entry_time, side, direction, entry_price, quantity,
                      notional, leverage, tp_price, sl_price, tp_pct, sl_pct, atr_pct,
                      trail_active, trail_sl, peak_price, regime, confidence, bars,
-                     max_hold, sl_order_id, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     max_hold, sl_order_id, trail_mode, trail_fixed_dist, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 pos.pair, pos.entry_time.isoformat(), pos.side, pos.direction,
                 pos.entry_price, pos.quantity, pos.notional, pos.leverage,
                 pos.tp_price, pos.sl_price, pos.tp_pct, pos.sl_pct, pos.atr_pct,
                 1 if pos.trail_active else 0, pos.trail_sl, pos.peak_price,
                 pos.regime, pos.confidence, pos.bars, pos.max_hold,
-                pos.sl_order_id, datetime.now(timezone.utc).isoformat()
+                pos.sl_order_id, pos.trail_mode, pos.trail_fixed_dist,
+                datetime.now(timezone.utc).isoformat()
             ))
             conn.commit()
         finally:
@@ -242,6 +257,8 @@ class PortfolioManager:
                     entry_time=datetime.fromisoformat(r['entry_time']),
                     bars=r['bars'], max_hold=r['max_hold'],
                     sl_order_id=r.get('sl_order_id'),
+                    trail_mode=r.get('trail_mode', 'default') or 'default',
+                    trail_fixed_dist=float(r.get('trail_fixed_dist', 0) or 0),
                 )
                 self.positions[pos.pair] = pos
                 logger.info(f"[PM] Posicion recuperada (DB): {pos.pair} {pos.side} "
@@ -560,9 +577,12 @@ class PortfolioManager:
                       regime: str, price: float, atr_pct: float,
                       sizing_mult: float = 1.0,
                       tp_pct_override: float = None,
-                      sl_pct_override: float = None) -> bool:
+                      sl_pct_override: float = None,
+                      trail_mode: str = 'default',
+                      trail_fixed_dist: float = 0.0) -> bool:
         """Abre una nueva posicion. sizing_mult from V8.4 macro intelligence.
         tp_pct_override/sl_pct_override permiten valores personalizados (V14).
+        trail_mode='tight' activates immediate trailing with fixed distance (ADA/SOL).
         """
         if not self.can_open(pair, direction):
             return False
@@ -685,13 +705,27 @@ class PortfolioManager:
                 tp_pct=pair_tp, sl_pct=pair_sl,
                 atr_pct=atr_pct, regime=regime, confidence=confidence,
                 peak_price=fill_price, max_hold=max_hold,
+                trail_mode=trail_mode, trail_fixed_dist=trail_fixed_dist,
             )
+
+            # Tight trailing: activate immediately with fixed distance
+            if trail_mode == 'tight' and trail_fixed_dist > 0:
+                pos.trail_active = True
+                pos.peak_price = fill_price
+                if direction == 1:
+                    pos.trail_sl = fill_price * (1 - trail_fixed_dist)
+                    pos.tp_price = fill_price * 2.0  # safety net far away
+                else:
+                    pos.trail_sl = fill_price * (1 + trail_fixed_dist)
+                    pos.tp_price = fill_price * 0.5  # safety net far away
+                sl_price = pos.trail_sl  # exchange SL = trail SL
 
             self.positions[pair] = pos
             self._save_position(pos)
 
             # Place SL order on exchange as safety net
-            sl_id = self._place_exchange_sl(pair, side, filled_qty, sl_price)
+            effective_sl = pos.trail_sl if pos.trail_active and pos.trail_sl else sl_price
+            sl_id = self._place_exchange_sl(pair, side, filled_qty, effective_sl)
             if sl_id:
                 pos.sl_order_id = sl_id
                 self._save_position(pos)
@@ -739,11 +773,12 @@ class PortfolioManager:
             exit_price = None
             exit_reason = None
 
-            # 1. Check TP
-            if pos.direction == 1 and price >= pos.tp_price:
-                exit_price, exit_reason = pos.tp_price, 'TP'
-            elif pos.direction == -1 and price <= pos.tp_price:
-                exit_price, exit_reason = pos.tp_price, 'TP'
+            # 1. Check TP (skip for tight mode — trail handles exits)
+            if pos.trail_mode != 'tight':
+                if pos.direction == 1 and price >= pos.tp_price:
+                    exit_price, exit_reason = pos.tp_price, 'TP'
+                elif pos.direction == -1 and price <= pos.tp_price:
+                    exit_price, exit_reason = pos.tp_price, 'TP'
 
             # 2. Check Trailing Stop
             if exit_reason is None and pos.trail_active and pos.trail_sl is not None:
@@ -790,6 +825,23 @@ class PortfolioManager:
 
     def _update_trailing(self, pos: Position, price: float):
         """Actualiza trailing stop para una posicion."""
+        # Tight mode: fixed distance, always active
+        if pos.trail_mode == 'tight':
+            dist = pos.trail_fixed_dist
+            if pos.direction == 1:  # LONG
+                if price > (pos.peak_price or 0):
+                    pos.peak_price = price
+                new_sl = pos.peak_price * (1 - dist)
+                if pos.trail_sl is None or new_sl > pos.trail_sl:
+                    pos.trail_sl = new_sl
+            else:  # SHORT
+                if pos.peak_price is None or price < pos.peak_price:
+                    pos.peak_price = price
+                new_sl = pos.peak_price * (1 + dist)
+                if pos.trail_sl is None or new_sl < pos.trail_sl:
+                    pos.trail_sl = new_sl
+            return
+
         if pos.trail_active:
             # Actualizar peak y trail_sl
             if pos.direction == 1:
@@ -905,6 +957,15 @@ class PortfolioManager:
                     f"${pos.entry_price:,.2f} -> ${fill_price:,.2f} | "
                     f"PnL: ${pnl:{emoji}.2f} | Razon: {reason} | "
                     f"Balance: ${self.balance:.2f}")
+
+        # Racha de perdidas consecutivas (validado: C APROBADO)
+        if reason == 'SL':
+            self.consecutive_losses += 1
+            if self.consecutive_losses >= 3 and not self.paused:
+                self.paused = True
+                logger.warning(f"[PM] PAUSA: {self.consecutive_losses} SL consecutivos")
+        else:
+            self.consecutive_losses = 0
 
         self.trade_log.append(trade)
         return trade
