@@ -1,0 +1,193 @@
+{
+  "params": {
+    "commission": 0.0005,
+    "ema_fast_1d": 50,
+    "ema_slow_1d": 200,
+    "donchian_n": 55,
+    "vol_ma_n": 20,
+    "vol_ratio_min": 1.2,
+    "adx_n": 14,
+    "adx_min": 18,
+    "atr_n": 14,
+    "trail_atr_mult": 2.5,
+    "trail_floor_pct": 0.025,
+    "trail_ceiling_pct": 0.06,
+    "max_bars": 60,
+    "funding_z_n": 168,
+    "funding_z_max": 2.5,
+    "funding_enabled": true,
+    "cutoff_date": "2025-12-31",
+    "min_bars_warmup": 250
+  },
+  "wf": {
+    "folds_ok": 7,
+    "folds_total": 12,
+    "folds": [
+      {
+        "period": "2020-01",
+        "n": 2,
+        "pf": 1.1363036640881856,
+        "wr": 0.5,
+        "total": 0.002685083856322601,
+        "monthly": 0.002685083856322601,
+        "max_dd": 0.024845376481585118,
+        "ok": false,
+        "status": "small_sample",
+        "no_data": false
+      },
+      {
+        "period": "2020-07",
+        "n": 15,
+        "pf": 3.096497622610267,
+        "wr": 0.5333333333333333,
+        "total": 0.40779835516636065,
+        "monthly": 0.06456463357912634,
+        "max_dd": 0.07070155294440529,
+        "ok": true,
+        "status": "evaluated",
+        "no_data": false
+      },
+      {
+        "period": "2021-01",
+        "n": 9,
+        "pf": 1.2948691378183104,
+        "wr": 0.3333333333333333,
+        "total": 0.03283424182057604,
+        "monthly": 0.007047919272499481,
+        "max_dd": 0.08486985594608407,
+        "ok": true,
+        "status": "evaluated",
+        "no_data": false
+      },
+      {
+        "period": "2021-07",
+        "n": 8,
+        "pf": 1.4000105061147157,
+        "wr": 0.375,
+        "total": 0.03875864190930067,
+        "monthly": 0.009023075746187548,
+        "max_dd": 0.07178756143816807,
+        "ok": true,
+        "status": "evaluated",
+        "no_data": false
+      },
+      {
+        "period": "2022-01",
+        "n": 0,
+        "pf": 0.0,
+        "wr": 0.0,
+        "total": 0.0,
+        "monthly": 0.0,
+        "max_dd": 0.0,
+        "ok": false,
+        "status": "no_signal",
+        "no_data": false
+      },
+      {
+        "period": "2022-07",
+        "n": 0,
+        "pf": 0.0,
+        "wr": 0.0,
+        "total": 0.0,
+        "monthly": 0.0,
+        "max_dd": 0.0,
+        "ok": false,
+        "status": "no_signal",
+        "no_data": false
+      },
+      {
+        "period": "2023-01",
+        "n": 7,
+        "pf": 2.262993643989259,
+        "wr": 0.7142857142857143,
+        "total": 0.06960489273453963,
+        "monthly": 0.019599987338986713,
+        "max_dd": 0.03607719861680196,
+        "ok": true,
+        "status": "evaluated",
+        "no_data": false
+      },
+      {
+        "period": "2023-07",
+        "n": 8,
+        "pf": 2.76794267027274,
+        "wr": 0.375,
+        "total": 0.1400642740975866,
+        "monthly": 0.03418269341307667,
+        "max_dd": 0.0399011855118648,
+        "ok": true,
+        "status": "evaluated",
+        "no_data": false
+      },
+      {
+        "period": "2024-01",
+        "n": 11,
+        "pf": 0.663079268072358,
+        "wr": 0.45454545454545453,
+        "total": -0.051435942017580616,
+        "monthly": -0.012020140907810672,
+        "max_dd": 0.10732609116463557,
+        "ok": false,
+        "status": "evaluated",
+        "no_data": false
+      },
+      {
+        "period": "2024-07",
+        "n": 11,
+        "pf": 1.7490583418133736,
+        "wr": 0.45454545454545453,
+        "total": 0.12023355410438352,
+        "monthly": 0.0223640433939285,
+        "max_dd": 0.11452909605917172,
+        "ok": true,
+        "status": "evaluated",
+        "no_data": false
+      },
+      {
+        "period": "2025-01",
+        "n": 9,
+        "pf": 0.9234299030003197,
+        "wr": 0.3333333333333333,
+        "total": -0.012201263368904258,
+        "monthly": -0.0025193505171672292,
+        "max_dd": 0.053651915422057814,
+        "ok": false,
+        "status": "evaluated",
+        "no_data": false
+      },
+      {
+        "period": "2025-07",
+        "n": 5,
+        "pf": 1.4117214431560463,
+        "wr": 0.4,
+        "total": 0.014450398245680729,
+        "monthly": 0.005463091193007585,
+        "max_dd": 0.027732389018501447,
+        "ok": true,
+        "status": "evaluated",
+        "no_data": false
+      }
+    ]
+  },
+  "overall": {
+    "n": 93,
+    "wr": 0.44086021505376344,
+    "pf": 1.6311058068800792,
+    "avg_pnl": 0.008152521334888143,
+    "total_return": 0.9281845678652578,
+    "max_dd": 0.1795224492087021,
+    "sharpe_like": 0.17166916728369122,
+    "months": 65.86666666666666,
+    "monthly_return": 0.010018152505148592
+  },
+  "bootstrap": {
+    "p_value": 0.07033333333333333,
+    "pctl_5": -0.06692886099548857,
+    "pctl_50": 0.8896253382466852,
+    "pctl_95": 3.0113277203698607,
+    "n_iter": 3000,
+    "n_trades": 93
+  },
+  "cutoff": "2025-12-31",
+  "n_trades_2020_2025": 93
+}

@@ -1,0 +1,12 @@
+{
+  "tp_label": 0.03,
+  "sl_label": 0.015,
+  "max_bars_label": 12,
+  "sl_init": 0.015,
+  "trail_dist": 0.015,
+  "trail_activate": 0.01,
+  "max_bars_sim": 24,
+  "commission": 0.0005,
+  "threshold": 0.51,
+  "use_regime_filter": true
+}
