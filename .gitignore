@@ -43,3 +43,6 @@ Thumbs.db
 
 # ML Models (binary, re-generated with ml_export_models.py)
 models/*.pkl
+
+# CatBoost training artifacts
+catboost_info/
