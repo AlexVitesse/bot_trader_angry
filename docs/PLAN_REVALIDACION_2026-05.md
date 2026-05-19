@@ -47,6 +47,24 @@ Resultado por par → una de tres etiquetas:
 
 ---
 
+## 2-bis. Salvaguardas: que el propio test no nos engañe
+
+El forward-OOS es a prueba de overfitting **para lo que mide** (no se puede
+sobreajustar a datos que no existían al congelar los parámetros). Pero quedan 4
+trampas; cada una tiene su mitigación obligatoria:
+
+| Trampa | Por qué engaña | Mitigación obligatoria |
+|--------|----------------|------------------------|
+| **Muestra pequeña** | 8 sem ≈ 330 velas, 5–20 trades; pasar/fallar por suerte | Mínimo **≥ 10 trades** en la ventana OOS; con menos → PAPER-ONLY automático. El bootstrap (Capa C) mide la suerte. |
+| **Sesgo de selección de cartera** | Con 22 pares, ~1 pasa por azar a p<0.05; "quedarse con los ganadores" reintroduce el sesgo | Exigir las **3 capas a la vez**. Criterios fijados **antes** de ver resultados — no mover la portería. |
+| **Dependencia de régimen** | La ventana OOS fue bajista; un par con sesgo SHORT pasa "gratis" | Anotar el régimen de la ventana. "Validado" no es permanente: **re-test mensual** en ventanas de distinto régimen. |
+| **Look-ahead en el código** | Si un feature usa datos del futuro, hasta el forward-OOS sale inflado | **Paso 0** (abajo): auditar el pipeline de features antes de confiar en ningún número. Correr la re-validación por el **mismo código del bot en vivo**. |
+
+Regla de oro: **si el resultado vuelve a salir brillante (PF > 4), desconfiar más,
+no menos.** El éxito creíble se parece a BTC (PF 1.35), no a PF 18.
+
+---
+
 ## 3. Metodología — 3 capas
 
 ### Capa A — Forward-OOS con parámetros congelados (la prueba clave)
@@ -76,17 +94,40 @@ Resultado por par → una de tres etiquetas:
 ## 4. Herramienta a construir
 
 Un único script `revalidate_v15.py` que, dado un par:
-- Reutiliza las funciones de simulación de `v15_framework.py` y la lógica de
-  `src/ml_strategy_v15.py` (no reimplementar señales).
+- Reutiliza la lógica de detección de `src/ml_strategy_v15.py` (no reimplementar
+  señales).
+- **Corrige el motor de backtest** — ver Paso 0: el motor actual abre trades
+  solapados (`evaluate_new_pairs_v15.py` y `v15_framework.py` no modelan "una
+  posición a la vez"). El nuevo simulador DEBE: detectar señal → abrir 1 trade →
+  simular hasta su cierre → reanudar la búsqueda **después** de la vela de cierre.
+  Sin solapar nunca. Es la causa mecánica de los PF 8–20 de `meta_v15.json`.
+- Endurece umbrales de fold: mínimo ≥5 trades por fold; manejar `pf=inf`.
 - Ejecuta las 3 capas (A, B, C).
 - Imprime una ficha por par y la guarda en `docs/revalidation/{PAR}.md`.
 - Se ejecuta con el Python de producción (sklearn 1.8.0) — ver `CLAUDE.md`.
 
 Modo de uso previsto: `python revalidate_v15.py --pair BTC` y `--all`.
 
+> El resultado del Paso 0 está en `docs/revalidation/PASO0_lookahead.md`: los
+> **features están limpios** (sin look-ahead), pero el **motor de backtest está
+> roto**. Corregirlo es el primer trabajo de código, antes de re-validar pares.
+
 ---
 
 ## 5. Orden de ejecución (par por par)
+
+**Paso 0 — Auditar el pipeline de features por look-ahead (ANTES de todo)**
+Si un feature usa datos del futuro, todos los números de abajo son humo. Revisar
+`v15_features.py`, `v15_data_pipeline.py`, `v15_framework.py` y la generación de
+señales en `src/ml_strategy_v15.py`:
+- Indicadores (EMA, RSI, ATR, BB, ADX) calculados solo con velas pasadas/cerradas.
+- Features multi-timeframe (1D sobre 4h): `.shift(1)` **antes** del `reindex/ffill`
+  (bug histórico del proyecto — ver `MEMORY`).
+- Labels/targets que no filtren al conjunto de features.
+- El split de WF: el test nunca toca velas usadas en train (de ahí la purga).
+- La señal en backtest se decide con la vela **cerrada**, no la actual en curso.
+Resultado del Paso 0 → `docs/revalidation/PASO0_lookahead.md`. Si aparece un bug,
+se corrige antes de re-validar nada.
 
 **Fase 1 — Calibrar la metodología con los pares de confianza**
 BTC → ETH → ADA → SOL. Sabemos que tienen métricas modestas y creíbles. Si el
