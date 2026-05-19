@@ -109,6 +109,44 @@ hará**. Las columnas `long_pf`, `short_pf`, `oos_2026_combined` no son alcanzab
 | 3.4 | `annual_pct` con proxy de leverage x100 | `v15_framework.py:289` | "% anual" declarado no tiene sentido |
 | 3.5 | TP+SL en la misma vela: desempate optimista | `v15_framework.py:236` | Sesgo leve a favor (debería asumir SL) |
 
+### 3.6 BUG ADICIONAL descubierto al ejecutar el motor corregido — **look-ahead intrabar en el trailing**
+
+`sim_long_trailing` / `sim_short_trailing` (`evaluate_new_pairs_v15.py:71-113`):
+
+```python
+for i in range(1, max_bars+1):
+    b = entry_bar + i
+    hi = high[b]; lo = low[b]
+    if hi > peak: peak = hi                       # <-- usa el HIGH de la vela
+    sl_price = max(sl_price, peak*(1-trail_dist)) # <-- sube el stop con ese high
+    if lo <= sl_price: exit at sl_price           # <-- y SALE en la misma vela
+```
+
+Dentro de **una sola vela** el sim: (1) sube el peak con el HIGH, (2) traila el
+stop al nuevo peak menos 0.8%, (3) comprueba si el LOW de la **misma** vela
+toca ese stop trailed. Resultado: cada vela volátil con `high-low > trail_dist`
+se cierra en `high - 0.8%` — un "vendí en el techo de cada vela menos 0.8%"
+que ningún broker puede ejecutar (no conoces el high antes de que ocurra, y la
+secuencia interna H↔L dentro de la vela es desconocida).
+
+**Es la causa principal de los PF altos.** Más que el solape de trades.
+
+**Fix (aplicado en `revalidate_v15.py`):** invertir el orden — comprobar la
+salida contra el stop que ya estaba antes de la vela; recién después actualizar
+peak/stop para la **siguiente** vela.
+
+**Impacto medido (ADA, 12 semestres):**
+
+| | Declarado | Motor solo sin solape | Motor sin solape + sin look-ahead intrabar |
+|--|-----------|------------------------|--------------------------------------------|
+| WF | 10/12 | 12/12 | **5/12** |
+| PF medio | 2.86 LONG, 13.51 SHORT | 4-25 | **0.7-1.9** |
+| WR medio | — | 60-83% | **11-38%** |
+| Bootstrap | — | p≈0 (falsamente) | **p=0.326 (NO significativo)** |
+
+Con los dos bugs corregidos, ADA — supuesto par "validado" — no sobrevive el
+test honesto. Era el bug, no el edge.
+
 ---
 
 ## 4. Implicación para el plan de re-validación
