@@ -1,0 +1,565 @@
+{
+  "agent": "D",
+  "cutoff_date": "2025-12-31",
+  "strategy": "TrendFollow_Donchian+EMA_Chandelier_VolTarget",
+  "configs": {
+    "1d_voltarget": {
+      "label": "CFG-1: 1D vol-targeted (target 2.1% daily, cap 2.5x, perp futures + funding)",
+      "n_trades": 30,
+      "years": 5.215605749486653,
+      "leverage_min": 0.5,
+      "leverage_median": 0.961926441106619,
+      "leverage_max": 1.7252438889124282,
+      "leverage_mean": 0.9648448412097117,
+      "funding_total_cost": 0.2054953350269044,
+      "unleveraged": {
+        "wr": 0.4,
+        "pf": 1.799499190703811,
+        "total_return": 0.8456493024524425,
+        "annual_return": 0.12468108340238349,
+        "monthly_return": 0.009697604068109822,
+        "max_dd": 0.2691302307342587,
+        "sharpe_annual": 1.0974924277337432
+      },
+      "leveraged": {
+        "wr": 0.36666666666666664,
+        "pf": 1.6439069430509816,
+        "total_return": 0.5909976626176077,
+        "annual_return": 0.09311678172002158,
+        "monthly_return": 0.007339579709974675,
+        "max_dd": 0.25199316272532624,
+        "sharpe_annual": 0.8594955101476143
+      },
+      "walk_forward": {
+        "n_folds": 12,
+        "n_evaluable": 4,
+        "n_ok": 3,
+        "pf_median": 2.213997808611223,
+        "folds": [
+          {
+            "fold": "2020-01",
+            "n": 0,
+            "wr": 0.0,
+            "pf_lev": 0.0,
+            "pf_unl": 0.0,
+            "total_lev": 0.0,
+            "total_unl": 0.0,
+            "dd_lev": 0.0,
+            "monthly_lev": 0.0
+          },
+          {
+            "fold": "2020-07",
+            "n": 6,
+            "wr": 0.6666666666666666,
+            "pf_lev": 5.398092161261073,
+            "pf_unl": 5.705397647757632,
+            "total_lev": 0.9167735388545906,
+            "total_unl": 1.0958047614997488,
+            "dd_lev": 0.1700108503106056,
+            "monthly_lev": 0.12558036898881375
+          },
+          {
+            "fold": "2021-01",
+            "n": 2,
+            "wr": 0.0,
+            "pf_lev": 0.0,
+            "pf_unl": 0.38119423681237524,
+            "total_lev": -0.10979913390225282,
+            "total_unl": -0.08227541209724987,
+            "dd_lev": 0.10979913390225282,
+            "monthly_lev": -0.04931144353038297
+          },
+          {
+            "fold": "2021-07",
+            "n": 2,
+            "wr": 0.5,
+            "pf_lev": 0.27296904959878243,
+            "pf_unl": 0.5660483493497296,
+            "total_lev": -0.06413400543425152,
+            "total_unl": -0.05449916037359115,
+            "dd_lev": 0.08547077316787925,
+            "monthly_lev": -0.04734241506171544
+          },
+          {
+            "fold": "2022-01",
+            "n": 0,
+            "wr": 0.0,
+            "pf_lev": 0.0,
+            "pf_unl": 0.0,
+            "total_lev": 0.0,
+            "total_unl": 0.0,
+            "dd_lev": 0.0,
+            "monthly_lev": 0.0
+          },
+          {
+            "fold": "2022-07",
+            "n": 0,
+            "wr": 0.0,
+            "pf_lev": 0.0,
+            "pf_unl": 0.0,
+            "total_lev": 0.0,
+            "total_unl": 0.0,
+            "dd_lev": 0.0,
+            "monthly_lev": 0.0
+          },
+          {
+            "fold": "2023-01",
+            "n": 3,
+            "wr": 0.3333333333333333,
+            "pf_lev": 0.8446533383758599,
+            "pf_unl": 1.748486961018721,
+            "total_lev": -0.017555290239497756,
+            "total_unl": 0.04572627579597177,
+            "dd_lev": 0.08271123779347123,
+            "monthly_lev": -0.00582184803684116
+          },
+          {
+            "fold": "2023-07",
+            "n": 2,
+            "wr": 1.0,
+            "pf_lev": Infinity,
+            "pf_unl": Infinity,
+            "total_lev": 0.12644841275929042,
+            "total_unl": 0.1303916664161764,
+            "dd_lev": 0.0,
+            "monthly_lev": 0.07562276217693764
+          },
+          {
+            "fold": "2024-01",
+            "n": 3,
+            "wr": 0.3333333333333333,
+            "pf_lev": 3.1376701954506094,
+            "pf_unl": 2.0003724625987216,
+            "total_lev": 0.24744815075635684,
+            "total_unl": 0.13665069923045747,
+            "dd_lev": 0.1371035784255834,
+            "monthly_lev": 0.0507455887473256
+          },
+          {
+            "fold": "2024-07",
+            "n": 4,
+            "wr": 0.25,
+            "pf_lev": 1.2903254217718365,
+            "pf_unl": 1.2262078713591094,
+            "total_lev": 0.02058692220323155,
+            "total_unl": 0.011044915108343378,
+            "dd_lev": 0.09991182653981445,
+            "monthly_lev": 0.007304360405219645
+          },
+          {
+            "fold": "2025-01",
+            "n": 2,
+            "wr": 0.0,
+            "pf_lev": 0.0,
+            "pf_unl": 0.0,
+            "total_lev": -0.06671958064304817,
+            "total_unl": -0.060707169016537055,
+            "dd_lev": 0.06671958064304817,
+            "monthly_lev": -0.014792287263826975
+          },
+          {
+            "fold": "2025-07",
+            "n": 2,
+            "wr": 0.0,
+            "pf_lev": 0.0,
+            "pf_unl": 0.0,
+            "total_lev": -0.11120386157283446,
+            "total_unl": -0.06201034370566094,
+            "dd_lev": 0.11120386157283446,
+            "monthly_lev": -0.05915440017638962
+          }
+        ]
+      },
+      "bootstrap": {
+        "unleveraged": {
+          "p_value": 0.21533333333333332,
+          "n_iter": 3000,
+          "median": 0.810175027541189,
+          "p5": -0.45010833383454973,
+          "p95": 6.221370974533624
+        },
+        "leveraged": {
+          "p_value": 0.25766666666666665,
+          "n_iter": 3000,
+          "median": 0.5895802292732538,
+          "p5": -0.471743220503555,
+          "p95": 4.701713140617455
+        }
+      },
+      "stress_tests": [
+        {
+          "label": "March 2020 COVID",
+          "trades_active": 0,
+          "window_dd": 0.0,
+          "pnl_in_window": 0.0,
+          "note": "no trades in March 2020 COVID window (regime filter active)"
+        },
+        {
+          "label": "May 2021 crash",
+          "trades_active": 0,
+          "window_dd": 0.0,
+          "pnl_in_window": 0.0,
+          "note": "no trades in May 2021 crash window (regime filter active)"
+        },
+        {
+          "label": "2022 bear (full)",
+          "trades_active": 0,
+          "window_dd": 0.0,
+          "pnl_in_window": 0.0,
+          "note": "no trades in 2022 bear (full) window (regime filter active)"
+        },
+        {
+          "label": "LUNA collapse",
+          "trades_active": 0,
+          "window_dd": 0.0,
+          "pnl_in_window": 0.0,
+          "note": "no trades in LUNA collapse window (regime filter active)"
+        },
+        {
+          "label": "FTX collapse",
+          "trades_active": 0,
+          "window_dd": 0.0,
+          "pnl_in_window": 0.0,
+          "note": "no trades in FTX collapse window (regime filter active)"
+        }
+      ]
+    },
+    "1d_fixed1x_perp": {
+      "label": "CFG-2: 1D fixed 1.0x (baseline unleveraged perp + funding)",
+      "n_trades": 30,
+      "years": 5.215605749486653,
+      "leverage_min": 1.0,
+      "leverage_median": 1.0,
+      "leverage_max": 1.0,
+      "leverage_mean": 1.0,
+      "funding_total_cost": 0.26282158,
+      "unleveraged": {
+        "wr": 0.4,
+        "pf": 1.799499190703811,
+        "total_return": 0.8456493024524425,
+        "annual_return": 0.12468108340238349,
+        "monthly_return": 0.009697604068109822,
+        "max_dd": 0.2691302307342587,
+        "sharpe_annual": 1.0974924277337432
+      },
+      "leveraged": {
+        "wr": 0.36666666666666664,
+        "pf": 1.5373316221968298,
+        "total_return": 0.44015223326821507,
+        "annual_return": 0.07243753233351136,
+        "monthly_return": 0.005760604829858407,
+        "max_dd": 0.2951688664863803,
+        "sharpe_annual": 0.6667945504299141
+      }
+    },
+    "1d_fixed2x_perp": {
+      "label": "CFG-3: 1D fixed 2.0x perp (shows funding penalty)",
+      "n_trades": 30,
+      "years": 5.215605749486653,
+      "leverage_min": 2.0,
+      "leverage_median": 2.0,
+      "leverage_max": 2.0,
+      "leverage_mean": 2.0,
+      "funding_total_cost": 0.52564316,
+      "unleveraged": {
+        "wr": 0.4,
+        "pf": 1.799499190703811,
+        "total_return": 0.8456493024524425,
+        "annual_return": 0.12468108340238349,
+        "monthly_return": 0.009697604068109822,
+        "max_dd": 0.2691302307342587,
+        "sharpe_annual": 1.0974924277337432
+      },
+      "leveraged": {
+        "wr": 0.36666666666666664,
+        "pf": 1.5373316221968298,
+        "total_return": 0.23579536913211996,
+        "annual_return": 0.041427699200790036,
+        "monthly_return": 0.003339655388022056,
+        "max_dd": 0.5973055590818651,
+        "sharpe_annual": 0.2813260138581143
+      }
+    },
+    "1d_fixed2x_spot": {
+      "label": "CFG-4: 1D fixed 2.0x SPOT (no funding - margin loan alternative)",
+      "n_trades": 30,
+      "years": 5.215605749486653,
+      "leverage_min": 2.0,
+      "leverage_median": 2.0,
+      "leverage_max": 2.0,
+      "leverage_mean": 2.0,
+      "funding_total_cost": 0.0,
+      "unleveraged": {
+        "wr": 0.4,
+        "pf": 1.799499190703811,
+        "total_return": 0.8456493024524425,
+        "annual_return": 0.12468108340238349,
+        "monthly_return": 0.009697604068109822,
+        "max_dd": 0.2691302307342587,
+        "sharpe_annual": 1.0974924277337432
+      },
+      "leveraged": {
+        "wr": 0.4,
+        "pf": 1.799499190703811,
+        "total_return": 1.0176778216718638,
+        "annual_return": 0.1440629874888113,
+        "monthly_return": 0.011115611903807165,
+        "max_dd": 0.49667226257130476,
+        "sharpe_annual": 0.7138420251042091
+      }
+    },
+    "12h_voltarget": {
+      "label": "CFG-5: 12h vol-targeted (perp + funding)",
+      "n_trades": 46,
+      "years": 5.730321697467488,
+      "leverage_min": 0.5,
+      "leverage_median": 0.8623237990911969,
+      "leverage_max": 1.7799634537764586,
+      "leverage_mean": 0.9183096361986959,
+      "funding_total_cost": 0.20053510725631019,
+      "unleveraged": {
+        "wr": 0.43478260869565216,
+        "pf": 1.9441768086588251,
+        "total_return": 1.3579314231466442,
+        "annual_return": 0.1614767373628816,
+        "monthly_return": 0.01237094578148823,
+        "max_dd": 0.24547720889354552,
+        "sharpe_annual": 1.5635183467474276
+      },
+      "leveraged": {
+        "wr": 0.43478260869565216,
+        "pf": 2.0158731047236973,
+        "total_return": 1.2531915633465798,
+        "annual_return": 0.15230353812207809,
+        "monthly_return": 0.011711832183080917,
+        "max_dd": 0.19526641031803388,
+        "sharpe_annual": 1.4378267061914816
+      },
+      "walk_forward": {
+        "n_folds": 12,
+        "n_evaluable": 6,
+        "n_ok": 4,
+        "pf_median": 2.07548347676183,
+        "folds": [
+          {
+            "fold": "2020-01",
+            "n": 4,
+            "wr": 0.5,
+            "pf_lev": 0.33972259495780854,
+            "pf_unl": 0.5363943931566393,
+            "total_lev": -0.10077803612814307,
+            "total_unl": -0.09717396830208358,
+            "dd_lev": 0.14461481890154626,
+            "monthly_lev": -0.023329205009050447
+          },
+          {
+            "fold": "2020-07",
+            "n": 9,
+            "wr": 0.5555555555555556,
+            "pf_lev": 3.155132691496877,
+            "pf_unl": 2.221801708809152,
+            "total_lev": 0.4139514149719945,
+            "total_unl": 0.26852310164021764,
+            "dd_lev": 0.10860246232469567,
+            "monthly_lev": 0.06798096003992593
+          },
+          {
+            "fold": "2021-01",
+            "n": 2,
+            "wr": 0.5,
+            "pf_lev": 3.111232065799333,
+            "pf_unl": 7.238318143310041,
+            "total_lev": 0.0750265362551854,
+            "total_unl": 0.23949448029404952,
+            "dd_lev": 0.037622771204254814,
+            "monthly_lev": 0.03104046866862431
+          },
+          {
+            "fold": "2021-07",
+            "n": 2,
+            "wr": 1.0,
+            "pf_lev": Infinity,
+            "pf_unl": Infinity,
+            "total_lev": 0.14699081685154147,
+            "total_unl": 0.3339170614943028,
+            "dd_lev": 0.0,
+            "monthly_lev": 0.05488513323675659
+          },
+          {
+            "fold": "2022-01",
+            "n": 1,
+            "wr": 0.0,
+            "pf_lev": 0.0,
+            "pf_unl": 0.0,
+            "total_lev": -0.040734624756231685,
+            "total_unl": -0.06401791153249503,
+            "dd_lev": 0.040734624756231685,
+            "monthly_lev": -0.07980993985843232
+          },
+          {
+            "fold": "2022-07",
+            "n": 0,
+            "wr": 0.0,
+            "pf_lev": 0.0,
+            "pf_unl": 0.0,
+            "total_lev": 0.0,
+            "total_unl": 0.0,
+            "dd_lev": 0.0,
+            "monthly_lev": 0.0
+          },
+          {
+            "fold": "2023-01",
+            "n": 5,
+            "wr": 0.0,
+            "pf_lev": 0.0,
+            "pf_unl": 0.0,
+            "total_lev": -0.08521511532166914,
+            "total_unl": -0.08114264580403341,
+            "dd_lev": 0.08521511532166914,
+            "monthly_lev": -0.029576167134861886
+          },
+          {
+            "fold": "2023-07",
+            "n": 3,
+            "wr": 1.0,
+            "pf_lev": Infinity,
+            "pf_unl": Infinity,
+            "total_lev": 0.23688024221681436,
+            "total_unl": 0.20126350135905957,
+            "dd_lev": 0.0,
+            "monthly_lev": 0.13900894305503098
+          },
+          {
+            "fold": "2024-01",
+            "n": 5,
+            "wr": 0.2,
+            "pf_lev": 2.5889502670468176,
+            "pf_unl": 1.7064001269253342,
+            "total_lev": 0.19587362930968055,
+            "total_unl": 0.09463579840445657,
+            "dd_lev": 0.14704780485470384,
+            "monthly_lev": 0.051928938287324256
+          },
+          {
+            "fold": "2024-07",
+            "n": 5,
+            "wr": 0.4,
+            "pf_lev": 1.5620166864768432,
+            "pf_unl": 1.2547605167083844,
+            "total_lev": 0.05930932684245249,
+            "total_unl": 0.021521069119573077,
+            "dd_lev": 0.08321147584865504,
+            "monthly_lev": 0.025000448624923566
+          },
+          {
+            "fold": "2025-01",
+            "n": 2,
+            "wr": 0.5,
+            "pf_lev": 4.498449512200997,
+            "pf_unl": 3.653289488418798,
+            "total_lev": 0.07637388947714463,
+            "total_unl": 0.06448809249260745,
+            "dd_lev": 0.02248061819836078,
+            "monthly_lev": 0.016867467468019592
+          },
+          {
+            "fold": "2025-07",
+            "n": 2,
+            "wr": 0.5,
+            "pf_lev": 0.842494991134018,
+            "pf_unl": 1.1352941295989523,
+            "total_lev": -0.0052847850805791685,
+            "total_unl": 0.0018526411421873057,
+            "dd_lev": 0.029041673133402668,
+            "monthly_lev": -0.002784956347970269
+          }
+        ]
+      },
+      "bootstrap": {
+        "unleveraged": {
+          "p_value": 0.07533333333333334,
+          "n_iter": 3000,
+          "median": 1.3380492325180227,
+          "p5": -0.11223175862563445,
+          "p95": 5.814422060727416
+        },
+        "leveraged": {
+          "p_value": 0.06966666666666667,
+          "n_iter": 3000,
+          "median": 1.2024613727173266,
+          "p5": -0.07662993779430315,
+          "p95": 5.007053134185667
+        }
+      },
+      "stress_tests": [
+        {
+          "label": "March 2020 COVID",
+          "trades_active": 1,
+          "pnl_in_window": 0.0048464511257801934,
+          "window_dd": 0.0,
+          "leverages": [
+            0.84
+          ]
+        },
+        {
+          "label": "May 2021 crash",
+          "trades_active": 0,
+          "window_dd": 0.0,
+          "pnl_in_window": 0.0,
+          "note": "no trades in May 2021 crash window (regime filter active)"
+        },
+        {
+          "label": "2022 bear (full)",
+          "trades_active": 1,
+          "pnl_in_window": -0.04073462475623169,
+          "window_dd": 0.040734624756231685,
+          "leverages": [
+            0.61
+          ]
+        },
+        {
+          "label": "LUNA collapse",
+          "trades_active": 0,
+          "window_dd": 0.0,
+          "pnl_in_window": 0.0,
+          "note": "no trades in LUNA collapse window (regime filter active)"
+        },
+        {
+          "label": "FTX collapse",
+          "trades_active": 0,
+          "window_dd": 0.0,
+          "pnl_in_window": 0.0,
+          "note": "no trades in FTX collapse window (regime filter active)"
+        }
+      ]
+    },
+    "12h_fixed2x_spot": {
+      "label": "CFG-6: 12h fixed 2.0x SPOT (no funding - max defensible scenario)",
+      "n_trades": 47,
+      "years": 5.730321697467488,
+      "leverage_min": 2.0,
+      "leverage_median": 2.0,
+      "leverage_max": 2.0,
+      "leverage_mean": 2.0,
+      "funding_total_cost": 0.0,
+      "unleveraged": {
+        "wr": 0.44680851063829785,
+        "pf": 1.888330719098318,
+        "total_return": 1.3089538179940128,
+        "annual_return": 0.1572300263487849,
+        "monthly_return": 0.012066406910081762,
+        "max_dd": 0.24547720889354585,
+        "sharpe_annual": 1.5002460023012525
+      },
+      "leveraged": {
+        "wr": 0.44680851063829785,
+        "pf": 1.888330719098318,
+        "total_return": 2.7445593323329547,
+        "annual_return": 0.25911186130760355,
+        "monthly_return": 0.019104771355081818,
+        "max_dd": 0.4424763313776516,
+        "sharpe_annual": 1.2883101724209614
+      }
+    }
+  }
+}

@@ -204,6 +204,130 @@ def verify_C():
 
 
 # ---------------------------------------------------------------------------
+# AGENTE D (timeframe 12h o 1D, vol-targeting + funding)
+# ---------------------------------------------------------------------------
+def verify_D():
+    D = load_module('agent_D_strategy', EXP / 'agent_D' / 'strategy.py')
+    params = dict(D.PARAMS)
+    params['cutoff_date'] = '2027-01-01'   # permitir 2026 para verificación
+    df_1d = load_btc_1d()
+    df_fund = load_funding()
+    df = D.prepare_data(df_1d, df_fund, params)
+    oos_i = df.index.searchsorted(OOS_START)
+    if oos_i >= len(df):
+        return [], OOS_START, df.index[-1]
+
+    # Motor honesto manual (D usa size_position + leverage en simulate)
+    trades = []
+    i = oos_i
+    end_i = len(df)
+    while i < end_i:
+        side = D.signal(df, i, params)
+        if side is None:
+            i += 1
+            continue
+        lev = D.size_position(df, i, params)
+        out = D.simulate(df, i, params, leverage=lev)
+        bars = int(out.get('bars', 1))
+        # pnl_pct preferente: 'leveraged_pnl_pct' si existe, sino 'pnl_pct'
+        pnl = out.get('leveraged_pnl_pct', out.get('pnl_pct', 0.0))
+        trades.append({
+            'ts': str(df.index[i]), 'side': side, 'regime': f'lev={lev:.2f}x',
+            'outcome': out.get('outcome'),
+            'pnl_pct': float(pnl), 'bars': bars,
+        })
+        i += bars + 1
+    return trades, df.index[oos_i], df.index[-1]
+
+
+# ---------------------------------------------------------------------------
+# AGENTE E (funding-extremes mean-reversion, bidirectional)
+# ---------------------------------------------------------------------------
+def verify_E():
+    E = load_module('agent_E_strategy', EXP / 'agent_E' / 'strategy.py')
+    params = dict(E.PARAMS)
+    params['cutoff_date'] = '2027-01-01'
+    df_4h = load_btc_4h()
+    df_fund = load_funding()
+    df = E.prepare_data(df_4h, df_fund, params)
+    oos_i = df.index.searchsorted(OOS_START)
+    if oos_i >= len(df):
+        return [], OOS_START, df.index[-1]
+
+    # E.simulate necesita side
+    trades = []
+    i = oos_i
+    end_i = len(df)
+    while i < end_i:
+        side = E.signal(df, i, params)
+        if side is None:
+            i += 1
+            continue
+        out = E.simulate(df, i, params, side=side)
+        bars = int(out.get('bars', 1))
+        trades.append({
+            'ts': str(df.index[i]), 'side': side, 'regime': None,
+            'outcome': out.get('outcome'),
+            'pnl_pct': float(out.get('pnl_pct', 0.0)), 'bars': bars,
+        })
+        i += bars + 1
+    return trades, df.index[oos_i], df.index[-1]
+
+
+# ---------------------------------------------------------------------------
+# AGENTE F (vol-compression breakout BTC+ETH, multi-asset)
+# ---------------------------------------------------------------------------
+def load_eth_4h():
+    df = pd.read_parquet(DATA / 'ETH_USDT_4h_full.parquet').sort_index()
+    if df.index.tz is None:
+        df.index = df.index.tz_localize('UTC')
+    return df
+
+
+def verify_F():
+    F = load_module('agent_F_strategy', EXP / 'agent_F' / 'strategy.py')
+    params = dict(F.PARAMS)
+    params['cutoff_date'] = '2027-01-01'
+    df_btc_4h = load_btc_4h()
+    df_eth_4h = load_eth_4h()
+    df_1d = load_btc_1d()
+    df_fund = load_funding()
+    # F.prepare_data se llama POR ACTIVO
+    df_btc = F.prepare_data(df_btc_4h, df_1d, df_fund, params)
+    df_eth = F.prepare_data(df_eth_4h, df_1d, df_fund, params)
+
+    def run_asset(df, asset_name):
+        oos_i = df.index.searchsorted(OOS_START)
+        if oos_i >= len(df):
+            return []
+        trades = []
+        i = oos_i
+        end_i = len(df)
+        while i < end_i:
+            side = F.signal(df, i, params)
+            if side is None:
+                i += 1
+                continue
+            out = F.simulate(df, i, params, side=side)
+            bars = int(out.get('bars', 1))
+            pnl = out.get('leveraged_pnl_pct', out.get('pnl_pct', 0.0))
+            trades.append({
+                'ts': str(df.index[i]), 'side': f'{asset_name}/{side}',
+                'regime': asset_name,
+                'outcome': out.get('outcome'),
+                'pnl_pct': float(pnl), 'bars': bars,
+            })
+            i += bars + 1
+        return trades
+
+    trades = run_asset(df_btc, 'BTC') + run_asset(df_eth, 'ETH')
+    trades.sort(key=lambda t: pd.to_datetime(t['ts']))
+    t0 = pd.Timestamp(OOS_START)
+    t1 = max(df_btc.index[-1], df_eth.index[-1])
+    return trades, t0, t1
+
+
+# ---------------------------------------------------------------------------
 # MAIN
 # ---------------------------------------------------------------------------
 def report(name, trades, t0, t1):
@@ -226,7 +350,10 @@ def main():
     results = []
     for name, fn in [('A — Trend (Donchian)', verify_A),
                      ('B — ML GBM classifier', verify_B),
-                     ('C — Regime adaptive', verify_C)]:
+                     ('C — Regime adaptive', verify_C),
+                     ('D — 12h trend + vol-target', verify_D),
+                     ('E — Funding extremes', verify_E),
+                     ('F — Vol breakout BTC+ETH', verify_F)]:
         try:
             trades, t0, t1 = fn()
             results.append(report(name, trades, t0, t1))
