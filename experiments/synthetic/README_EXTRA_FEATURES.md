@@ -68,10 +68,41 @@ pero no superan baseline. Reducen muestra y annual a la vez — net negativo.
 
 ## Resultado sintético (20 series)
 
-[Test corriendo al momento de redactar — actualizaré aquí]
+| Filtro | Real Δ | Synth mediana Δ | Ayudó | Empeoró | Veredicto |
+|--------|-------:|----------------:|------:|--------:|-----------|
+| vol_zscore ≥ 1.5 | -11.6% | -0.48% | 10/20 | 10/20 | Sin señal — = azar |
+| body_strong ≥ 0.6 | -4.9% | +0.07% | 10/20 | 10/20 | Sin señal — neutro |
+| close_strong (tercio) | -3.5% | +1.51% | 12/20 | 8/20 | Sin señal — borderline |
+| engulfing | -24.7% | -3.60% | 6/20 | 14/20 | **DESCARTAR** |
+| **CONTROL random 50%** | -12.4% | -2.50% | 7/20 | 13/20 | (esperado negativo) |
 
-[Esperado basado en real + lecciones previas: ninguno alcanza 14/20 con
-mediana > 0. CONTROL random debe salir claramente negativo, validando protocolo.]
+### Trades retenidos por filtro (real BTC)
+| Filtro | N real | N synth (mediana) | % baseline |
+|--------|-------:|------------------:|-----------:|
+| BASELINE | 166 | 157 | 100% |
+| vol_zscore | 93 | 67 | 56% |
+| body_strong | 134 | 127 | 81% |
+| close_strong | 150 | 139 | 90% |
+| engulfing | 40 | 41 | 24% |
+| CONTROL random | 117 | 103 | 70% |
+
+### Lectura crucial — el real vs sintético es informativo
+- En **REAL**, vol_zscore dio -11.6% (cercano al control). En **sintético**, dio -0.48%.
+- En universos paralelos, vol_zscore a veces ayuda, a veces estorba → promedio ≈ 0.
+- En el universo REAL (BTC 2020-2025), justo no funcionó.
+- **El sintético es más informativo que el real** para evaluar si un filtro tiene
+  edge sistemático — el real es solo UNA observación, el sintético son 20.
+
+### El protocolo funciona (validación con control)
+CONTROL random 50% salió en 13/20 worse, mediana -2.5%. Eso confirma que el
+test **discrimina correctamente filtros sin información** de filtros con
+información. Si alguno de los filtros reales hubiera salido como random,
+sabemos que es indistinguible de ruido.
+
+### Conclusión del sintético
+**Ningún filtro pasa el criterio "AÑADIR" (≥14/20 + mediana>0).** El menos malo
+(close_strong) llega solo a 12/20. El peor (engulfing) cae a 6/20 con mediana
+-3.6% — peor que el control aleatorio.
 
 ---
 
