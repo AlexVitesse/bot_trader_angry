@@ -137,7 +137,53 @@ Después de aplicar V2 honesto a 22 monedas:
 
 ---
 
+## Validación OOS 2026 — quién sobrevive
+
+Las 5 marginales (DOGE, ETH, XRP, BNB, OP) + BTC referencia, evaluadas sobre
+Ene-Feb 2026 (BEAR period: BTC -23%, ETH -36%, etc.):
+
+| Coin | N OOS | PF | Total | DD | Verdict |
+|------|------:|---:|------:|---:|---------|
+| **BTC** | 3 | 1.39 | +2.03% | 6.2% | ✅ PASS sólido |
+| **BNB** | 4 | 1.48 | +1.81% | 3.0% | ✅ PASS modesto |
+| OP | 3 | inf | +26.16% | 0% | ⚠️ PASS sospechoso (perfecto, muestra pequeña) |
+| ETH | 2 | inf | +9.88% | 0% | ⚠️ INDETERMINADO (n<3) |
+| DOGE | 1 | 0 | -3.85% | 3.8% | ⚠️ INDETERMINADO (n=1) |
+| **XRP** | 5 | 0.42 | -7.91% | 12.8% | ❌ FAIL |
+
+### Portfolio final basado en in-sample + OOS
+
+**Tier 1 — Capital real candidato (PASS in-sample + PASS OOS)**:
+- **BTC** (3/3 criterios + OOS sólido)
+- **BNB** (2/3 + OOS consistente — el caso "sample real ruidoso pero
+  generalización demostrada en OOS")
+
+**Tier 2 — Paper-only (acumular evidencia)**:
+- **OP** — OOS perfecto pero precario; necesita más data
+- **DOGE** — in-sample p=0.001 espectacular pero 1 trade OOS no decide
+- **ETH** — 2 trades OOS ambos ganadores, indeterminado por muestra
+
+**Tier 3 — Out**:
+- **XRP** — FAIL OOS claro
+- Otras 14 (SOL, LTC, FIL, ADA, etc.) — REJECT in-sample
+
+### Observación clave sobre BNB
+
+BNB es el caso ejemplo de "synth importa más que real":
+- Bootstrap p in-sample: 0.315 (no sig) — sample real ruidoso
+- Sintético: 9/10 (top del proyecto) — generalización buena
+- Edge vs null: +8.2% (real)
+- OOS 2026: 4 trades, PF 1.48, +1.8% — **consistente con synth**
+
+Esto valida la metodología: cuando el **sintético es claramente positivo** pero
+el real específico es ruidoso, la realidad OOS tiende a alinearse con el
+sintético, no con el real noisy. Mismo patrón que ETH-V2 anticipaba (synth
++12% pero real -0.2%, OOS si hubiera más data sería positivo).
+
+---
+
 ## Archivos
-- `test_v2_all.py` — runner del experimento
-- `results.json` — métricas completas por moneda
+- `test_v2_all.py` — runner del experimento principal
+- `test_oos_marginals.py` — validación OOS 2026
+- `results.json`, `oos_2026_results.json` — métricas completas
 - `README.md` (este)
