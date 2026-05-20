@@ -1,0 +1,111 @@
+{
+  "agent": "O",
+  "n_features": 16,
+  "n_samples": 11113,
+  "label_balance": 0.3653378925582651,
+  "purged_cv_folds_ok": "2/11",
+  "median_pf_test": 0.8035714285714287,
+  "median_wr_test": 0.3488372093023256,
+  "mean_auc_train": 0.790768474042185,
+  "mean_auc_test": 0.49923663093701004,
+  "total_pnl_across_folds_pct": -170.30000000000027,
+  "final_threshold": 0.5,
+  "feature_stability_ordered": [
+    {
+      "feature": "sol_atr_pct_4h",
+      "top5_in": 11,
+      "imp_mean": 217.1818181818182,
+      "imp_std": 13.182758587144882
+    },
+    {
+      "feature": "btc_ema20_50_ratio_1d",
+      "top5_in": 11,
+      "imp_mean": 193.54545454545453,
+      "imp_std": 25.328258154816428
+    },
+    {
+      "feature": "ethbtc_zscore_90d",
+      "top5_in": 11,
+      "imp_mean": 203.9090909090909,
+      "imp_std": 20.214551668873433
+    },
+    {
+      "feature": "sol_btc_corr_168",
+      "top5_in": 10,
+      "imp_mean": 201.72727272727272,
+      "imp_std": 55.04888886516472
+    },
+    {
+      "feature": "btc_rsi14_4h",
+      "top5_in": 4,
+      "imp_mean": 140.0909090909091,
+      "imp_std": 24.52254823424406
+    },
+    {
+      "feature": "funding_zscore",
+      "top5_in": 4,
+      "imp_mean": 143.63636363636363,
+      "imp_std": 28.307637026950633
+    },
+    {
+      "feature": "sol_rsi14_4h",
+      "top5_in": 3,
+      "imp_mean": 139.1818181818182,
+      "imp_std": 18.83332723859576
+    },
+    {
+      "feature": "btc_ret_5_4h",
+      "top5_in": 1,
+      "imp_mean": 119.81818181818181,
+      "imp_std": 14.43366129962861
+    },
+    {
+      "feature": "sol_ret_5_4h",
+      "top5_in": 0,
+      "imp_mean": 72.54545454545455,
+      "imp_std": 10.430406915827977
+    },
+    {
+      "feature": "sol_vol_ratio_4h",
+      "top5_in": 0,
+      "imp_mean": 101.18181818181819,
+      "imp_std": 13.992323751505399
+    },
+    {
+      "feature": "sol_bb_pct_4h",
+      "top5_in": 0,
+      "imp_mean": 112.63636363636364,
+      "imp_std": 17.782896416463707
+    },
+    {
+      "feature": "btc_vol_ratio_4h",
+      "top5_in": 0,
+      "imp_mean": 107.72727272727273,
+      "imp_std": 14.654139403352643
+    },
+    {
+      "feature": "eth_regime_1d",
+      "top5_in": 0,
+      "imp_mean": 20.545454545454547,
+      "imp_std": 12.025455095252484
+    },
+    {
+      "feature": "btc_regime_1d",
+      "top5_in": 0,
+      "imp_mean": 2.6363636363636362,
+      "imp_std": 1.7200807207658637
+    },
+    {
+      "feature": "eth_ret_5_4h",
+      "top5_in": 0,
+      "imp_mean": 98.54545454545455,
+      "imp_std": 14.373989364401723
+    },
+    {
+      "feature": "sol_btc_ret_div_5",
+      "top5_in": 0,
+      "imp_mean": 78.27272727272727,
+      "imp_std": 10.905302372456747
+    }
+  ]
+}

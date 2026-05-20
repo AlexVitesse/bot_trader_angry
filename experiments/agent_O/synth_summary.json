@@ -1,0 +1,10 @@
+{
+  "real_annual_pct": 154.7544869337417,
+  "real_n_trades": 1191,
+  "synth_median_annual_pct": -65.16097739228215,
+  "synth_n_positive": 0,
+  "synth_total": 20,
+  "real_percentile_in_synth": 100.0,
+  "block_size": 30,
+  "seed": 42
+}
