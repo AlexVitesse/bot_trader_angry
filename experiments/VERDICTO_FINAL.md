@@ -25,7 +25,7 @@
 | **F** | Vol-compression breakout BTC+ETH | 0.355 (BTC alone) | (componente) |
 | **V2 = A + F_BTC** | **Combinación** | **0.031 ✅** | **KEEP** |
 
-### Agentes ETH (Round 3 + 4)
+### Agentes ETH (Round 3 + 4 + 5)
 | Agente | Enfoque | Bootstrap p | Veredicto |
 |--------|---------|------------:|-----------|
 | ETH-A | A's params en ETH 4h | 0.103 | REJECT (marginal) |
@@ -34,7 +34,8 @@
 | G | ML LightGBM + ETH/BTC ratio | 0.808 | REJECT (worst train→test gap del proyecto) |
 | H | ETH/BTC ratio rotation | 0.624 | REJECT (control random p=33%) |
 | I | Mean-reversion en RANGE | 0.760 | REJECT (3 trades/año) |
-| **J** | **ETH 1D timeframe** | **0.383** | **REJECT (edge vs null NEGATIVO -6%)** |
+| J | ETH 1D timeframe | 0.383 | REJECT (edge vs null NEGATIVO -6%) |
+| **Comité ETH original "aprobado"** | **BRK+FOLLOW+MULTI+BB con TP/SL adaptive** | **0.305** | **REJECT (1/20 sintéticas positivas, edge vs null -2.6%)** |
 
 ### Ronda 4 — Recursos nuevos (on-chain)
 | Agente | Enfoque | Resultado |
@@ -112,9 +113,37 @@ El edge que queda es:
 
 ---
 
-## Recomendación final del proyecto
+## Estrategia recomendada — Combinada BTC V2 + ETH spot/staking
 
-**Acción inmediata**: deploy V2 BTC en paper trade testnet, acumular ≥30 trades reales en 6-12 meses.
+Tras 8 enfoques ETH algorítmicos rechazados con motor honesto, la **única
+exposición ETH defendible** es no-direccional. La combinación honesta:
+
+### Portfolio recomendado
+
+| Componente | Asignación | Edge esperado | Riesgo |
+|------------|-----------:|--------------:|--------|
+| **BTC V2 (A+F_BTC) algo** | 40-60% | 8-15% annual | Direccional, DD ~20-25% |
+| **ETH spot DCA** | 20-30% | beta ETH (variable) | Direccional, sin algo |
+| **ETH staking** | 10-20% | ~3-4% APR | Bajo (slashing mínimo) |
+| **Restaking (EigenLayer)** | 0-10% | ~3-7% APR extra | Medio (riesgo smart contract) |
+| **Stables yield (Aave/Compound)** | 10-20% | ~2-5% APY | Bajo (riesgo protocolo) |
+
+**Premium honesto combinado vs CETES (10%)**:
+- Conservador (sin DCA spot): ~12-15% APR → premium ~2-5%
+- Moderado (con DCA ETH y restaking): ~15-25% APR → premium 5-15%
+- El **upside crypto** (DCA ETH si hay bull) puede llevarlo a 50%+ en años de
+  ciclo, pero también puede ser negativo en bear
+
+### Por qué esta combinación SÍ vale el riesgo
+
+1. **BTC V2 tiene edge real probado** (único con bootstrap p<0.05)
+2. **ETH spot DCA** captura el crypto upside sin pretender algo direccional fallido
+3. **Staking/DeFi yield** añade APR consistente sin riesgo direccional adicional
+4. **Diversificación**: cada componente independiente reduce varianza global
+
+---
+
+## Acción inmediata: deploy V2 BTC en paper trade testnet, acumular ≥30 trades reales en 6-12 meses.
 
 **Después de paper trade exitoso**:
 - Capital pequeño (10-20% del planeado), escalado gradual
