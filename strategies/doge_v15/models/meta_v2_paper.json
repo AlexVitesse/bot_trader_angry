@@ -1,0 +1,25 @@
+{
+  "version": "V15-V2-paper",
+  "asset": "DOGE",
+  "model_type": "v2_honest",
+  "has_ml": false,
+  "training_date": "2026-05-19",
+  "paper_trade_start": "2026-05-19",
+  "paper_trade_end": "2026-08-19",
+  "tier": 2,
+  "sizing_mult": 0.5,
+  "engine_module": "src/v2_engine.py",
+  "engine_params": "PARAMS_V2 (frozen)",
+  "validation": {
+    "tier": 2,
+    "sizing": 0.5,
+    "bootstrap_p": 0.001,
+    "oos_2026": "1 trade (indet)"
+  },
+  "paper_trade_criteria": {
+    "kill_dd_pct": 0.3,
+    "min_trades_3_months": 5,
+    "promotion_to_tier1_p": 0.1
+  },
+  "notes": "Paper trade 3 meses. Ver docs/PLAN_PAPER_3MESES.md"
+}

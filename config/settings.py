@@ -397,39 +397,27 @@ ML_V14_ENABLED = False   # Feature flag: V14 desactivado (reemplazado por V15)
 # Gates: funding veto + regime dead zone 2% per pair
 ML_V15_ENABLED = True
 
+# ============================================================================
+# V2 paper trading 3 meses (2026-05-19 start) — ver docs/PLAN_PAPER_3MESES.md
+# ============================================================================
+# Tier 1 (KEEP 3/3 in-sample + PASS OOS sólido): BTC, BNB
+# Tier 2 (MARGINAL in-sample, indeterminado OOS por muestra pequeña):
+#         DOGE, ETH, OP
+# 17 monedas rechazadas (REJECT 0/3 o WEAK 1/3) — fuera del bot.
+# Motor: V2 = A (Donchian trend LONG) + F (vol-compression breakout bidir)
 ML_V15_PAIRS = [
-    'BTC/USDT', 'ETH/USDT',
-    'ADA/USDT', 'SOL/USDT', 'DOGE/USDT',
-    'LINK/USDT', 'AVAX/USDT', 'DOT/USDT',
-    'NEAR/USDT', 'XRP/USDT', 'ATOM/USDT',
-    'INJ/USDT', 'ALGO/USDT', 'FIL/USDT',
-    '1000SHIB/USDT', 'BNB/USDT',
-    'LTC/USDT', 'ETC/USDT', 'BCH/USDT',
-    'UNI/USDT', 'AAVE/USDT', 'OP/USDT',
+    'BTC/USDT',     # Tier 1
+    'BNB/USDT',     # Tier 1
+    'DOGE/USDT',    # Tier 2 (p=0.001 in-sample, indeterminado OOS)
+    'ETH/USDT',     # Tier 2 (2 trades OOS ambos +, indeterminado)
+    'OP/USDT',      # Tier 2 (OOS perfecto pero in-sample limitado)
 ]
 ML_V15_SIZING = {
-    'BTC/USDT': 1.0,    # Full sizing
-    'ETH/USDT': 0.5,    # Conservative (50% of BTC)
-    'ADA/USDT': 0.3,    # Trailing pairs (0.3x conservative)
-    'SOL/USDT': 0.3,
-    'DOGE/USDT': 0.3,
-    'LINK/USDT': 0.3,
-    'AVAX/USDT': 0.3,
-    'DOT/USDT': 0.3,
-    'NEAR/USDT': 0.3,
-    'XRP/USDT': 0.3,
-    'ATOM/USDT': 0.3,
-    'INJ/USDT': 0.3,
-    'ALGO/USDT': 0.3,
-    'FIL/USDT': 0.3,
-    '1000SHIB/USDT': 0.3,
-    'BNB/USDT': 0.3,
-    'LTC/USDT': 0.3,
-    'ETC/USDT': 0.3,
-    'BCH/USDT': 0.3,
-    'UNI/USDT': 0.3,
-    'AAVE/USDT': 0.3,
-    'OP/USDT': 0.3,
+    'BTC/USDT':  1.0,   # Tier 1, full sizing
+    'BNB/USDT':  0.7,   # Tier 1, sizing conservador
+    'DOGE/USDT': 0.5,   # Tier 2, memecoin vol
+    'ETH/USDT':  0.5,   # Tier 2
+    'OP/USDT':   0.4,   # Tier 2, low conviction (data limitada)
 }
 
 ML_V14_EXPERTS = {

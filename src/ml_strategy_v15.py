@@ -29,6 +29,20 @@ from pathlib import Path
 from datetime import datetime, timezone
 from typing import Optional
 
+# V2 paper-trade engine (5 pares con model_type='v2_honest') — ver
+# docs/PLAN_PAPER_3MESES.md. Importacion opcional: si v2_engine no existe,
+# el bot sigue funcionando con la logica legacy V15.
+try:
+    from src import v2_engine as _v2_engine
+    V2_AVAILABLE = True
+except Exception:
+    try:
+        import v2_engine as _v2_engine
+        V2_AVAILABLE = True
+    except Exception:
+        _v2_engine = None
+        V2_AVAILABLE = False
+
 logger = logging.getLogger(__name__)
 
 PROJECT_ROOT = Path(__file__).parent.parent
@@ -278,6 +292,19 @@ class MLStrategyV15:
                 continue
 
             try:
+                # ============================================================
+                # V2 paper-trade routing — si el par tiene meta_v2_paper.json,
+                # usar v2_engine (motor honesto unificado A+F). Esto cubre los
+                # 5 pares de paper trading 3 meses (BTC, BNB, DOGE, ETH, OP).
+                # ============================================================
+                v2_meta_path = (PROJECT_ROOT / 'strategies' /
+                                f'{pair.split("/")[0].lower()}_v15' /
+                                'models' / 'meta_v2_paper.json')
+                if V2_AVAILABLE and v2_meta_path.exists():
+                    signals = self._generate_v2_signal(pair, exchange, df_btc)
+                    all_signals.extend(signals)
+                    continue
+
                 if pair == 'BTC/USDT':
                     signals = self._generate_btc_signals(df_btc)
                 elif pair == 'ETH/USDT':
@@ -306,6 +333,55 @@ class MLStrategyV15:
                 logger.error(f'[V15] Error generating signals for {pair}: {e}')
 
         return all_signals
+
+    def _generate_v2_signal(self, pair: str, exchange, df_btc) -> list:
+        """
+        V2 paper-trade signal generation usando v2_engine (motor honesto).
+        Aplica a los 5 pares con meta_v2_paper.json (BTC, BNB, DOGE, ETH, OP).
+        Una posicion a la vez por par. TP/SL trailing sin look-ahead intrabar.
+        """
+        if not V2_AVAILABLE:
+            return []
+        try:
+            # Fetch OHLCV 4h directo (sin features V15) — v2_engine las computa
+            ohlcv = exchange.fetch_ohlcv(pair, '4h', limit=LOOKBACK)
+            if not ohlcv or len(ohlcv) < 100:
+                logger.warning(f'[V2] {pair}: insufficient data')
+                return []
+            df_4h = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high',
+                                                 'low', 'close', 'volume'])
+            df_4h['timestamp'] = pd.to_datetime(df_4h['timestamp'], unit='ms', utc=True)
+            df_4h = df_4h.set_index('timestamp').sort_index()
+            # Llamar al engine V2: devuelve None o dict con side, trail_dist, etc.
+            sig = _v2_engine.get_live_signal(df_4h, df_1d=None, df_funding=None)
+            if sig is None:
+                logger.info(f'[V2] {pair}: no signal')
+                return []
+            sizing_mult = self._sizing.get(pair, 0.3)
+            # Convertir trail_dist a tp/sl pct para V14-compat:
+            # Como es trailing, usamos sl = trail_dist y tp = trail_dist*2 (heuristic)
+            # El portfolio_manager con trail_mode='tight' usa trail_dist directamente.
+            signal_payload = {
+                'pair': pair,
+                'direction': 'LONG' if sig['side'] == 'LONG' else 'SHORT',
+                'side': sig['side'],
+                'tp_pct': sig['trail_dist'] * 2.0,
+                'sl_pct': sig['trail_dist'],
+                'setup': f"v2_{sig['sig_type']}",
+                'confidence': 1.0,
+                'sizing_mult': sizing_mult,
+                'trail_mode': 'tight',
+                'trail_fixed_dist': sig['trail_dist'],
+                'max_bars': sig['max_bars'],
+                'regime': sig.get('regime', 'UNK'),
+                'engine': 'v2_honest',
+            }
+            logger.info(f"[V2] {pair} {sig['sig_type']} {sig['side']} "
+                        f"trail={sig['trail_dist']:.3f} max_bars={sig['max_bars']}")
+            return [signal_payload]
+        except Exception as e:
+            logger.error(f'[V2] {pair} error: {e}')
+            return []
 
     def _fetch_and_compute(self, exchange, pair: str) -> Optional[pd.DataFrame]:
         """Fetch 4H OHLCV and compute features for a pair."""
@@ -358,7 +434,7 @@ class MLStrategyV15:
             if funding_z > veto_long:
                 logger.info(f'[V15] BTC BULL: Funding veto (z={funding_z:.2f} > {veto_long})')
                 return []
-            trade = self._detect_breakout(df_btc, i, meta)
+            trade = self._detect_breakout(df_btc, i, meta, regime=regime)
             if trade is None:
                 trade = self._detect_pullback(df_btc, i, meta)
 
@@ -372,7 +448,7 @@ class MLStrategyV15:
             if funding_z > veto_long:
                 logger.info(f'[V15] BTC RANGE: Funding veto (z={funding_z:.2f} > {veto_long})')
                 return []
-            trade = self._detect_breakout(df_btc, i, meta)
+            trade = self._detect_breakout(df_btc, i, meta, regime=regime)
 
         if trade is None:
             rsi = float(row.get('rsi14', 0))
@@ -602,21 +678,165 @@ class MLStrategyV15:
         }
 
     # =================================================================
-    # BTC DETECTORS (unchanged)
+    # ADAPTIVE METHODS (behind adaptive_enabled flag in meta)
     # =================================================================
-    def _detect_breakout(self, df, i, meta=None):
-        """Breakout from consolidation. BTC params from meta."""
+    def _adaptive_vol_threshold(self, df, i, meta):
+        """Vol threshold relative to recent BB_width percentile (50 bars)."""
+        window = meta.get('adaptive_bb_window', 50)
+        start = max(0, i - window)
+        bb_series = df['bb_width'].iloc[start:i]
+        if len(bb_series) < 10:
+            return meta.get('breakout_vol_min', 1.8)
+
+        pctile = bb_series.rank(pct=True).iloc[-1] if len(bb_series) > 0 else 0.5
+
+        vol_low = meta.get('adaptive_vol_min_low', 1.3)
+        vol_high = meta.get('adaptive_vol_min_high', 2.2)
+
+        if pctile < 0.30:
+            return vol_low
+        elif pctile > 0.70:
+            return vol_high
+        else:
+            t = (pctile - 0.30) / 0.40
+            return vol_low + t * (vol_high - vol_low)
+
+    def _adaptive_bb_compression(self, df, i, meta):
+        """BB compression relative to median of last 50 bars."""
+        window = meta.get('adaptive_bb_window', 50)
+        start = max(0, i - window)
+        bb_series = df['bb_width'].iloc[start:i]
+        if len(bb_series) < 10:
+            return True
+
+        median_bb = bb_series.median()
+        recent_bb = df['bb_width'].iloc[max(0, i - 5):i]
+        bb_count_min = 3 if meta.get('asset', 'BTC') == 'BTC' else 2
+        return (recent_bb < median_bb).sum() >= bb_count_min
+
+    def _adaptive_lookback(self, df, i, meta):
+        """Lookback for high_N proportional to BB_width/median."""
+        window = meta.get('adaptive_bb_window', 50)
+        start = max(0, i - window)
+        bb_series = df['bb_width'].iloc[start:i]
+        if len(bb_series) < 10:
+            return 20
+
+        median_bb = bb_series.median()
+        current_bb = float(df['bb_width'].iloc[i]) if i < len(df) else median_bb
+        if median_bb <= 0:
+            return 20
+
+        ratio = current_bb / median_bb
+        lb_min = meta.get('adaptive_lookback_min', 12)
+        lb_max = meta.get('adaptive_lookback_max', 30)
+
+        if ratio < 0.6:
+            return lb_min
+        elif ratio > 1.4:
+            return lb_max
+        else:
+            t = (ratio - 0.6) / 0.8
+            return int(lb_min + t * (lb_max - lb_min))
+
+    def _compute_signal_quality(self, df, i, regime, meta):
+        """Score breakout quality 0-100 with confluences."""
+        row = df.iloc[i]
+        score = 0
+
+        # 1. BB compression (25 pts)
+        window = meta.get('adaptive_bb_window', 50)
+        start = max(0, i - window)
+        bb_series = df['bb_width'].iloc[start:i]
+        if len(bb_series) >= 10:
+            median_bb = bb_series.median()
+            current_bb = float(df['bb_width'].iloc[max(0, i - 1)])
+            if median_bb > 0:
+                ratio = current_bb / median_bb
+                if ratio < 0.5:
+                    score += 25
+                elif ratio < 0.7:
+                    score += 18
+                elif ratio < 1.0:
+                    score += 10
+
+        # 2. Vol spike strength (20 pts)
+        vol_ratio = float(row.get('vol_ratio', 1.0))
+        if vol_ratio >= 3.0:
+            score += 20
+        elif vol_ratio >= 2.5:
+            score += 16
+        elif vol_ratio >= 2.0:
+            score += 12
+        elif vol_ratio >= 1.5:
+            score += 6
+
+        # 3. DI+ crossover (15 pts)
+        di_diff = float(row.get('di_diff', 0))
+        if i >= 1:
+            prev_di_diff = float(df.iloc[i - 1].get('di_diff', 0))
+            if di_diff > 0 and prev_di_diff <= 0:
+                score += 15
+            elif di_diff > 5:
+                score += 8
+            elif di_diff > 0:
+                score += 4
+
+        # 4. Regime alignment (20 pts)
+        if regime == 'BULL':
+            score += 20
+        elif regime == 'RANGE':
+            score += 10
+
+        # 5. EMA stack (10 pts)
+        ema20 = float(row.get('ema20', 0))
+        ema50 = float(row.get('ema50', 0))
+        close = float(row['close'])
+        if ema20 > 0 and ema50 > 0:
+            if close > ema20 > ema50:
+                score += 10
+            elif close > ema50:
+                score += 5
+
+        # 6. RSI zone (10 pts)
+        rsi = float(row.get('rsi14', 50))
+        if 45 <= rsi <= 65:
+            score += 10
+        elif 35 <= rsi <= 75:
+            score += 5
+
+        return min(score, 100)
+
+    # =================================================================
+    # BTC DETECTORS
+    # =================================================================
+    def _detect_breakout(self, df, i, meta=None, regime=None):
+        """Breakout from consolidation. Supports adaptive mode via meta flag."""
         if meta is None:
             meta = self._meta.get('BTC/USDT', {})
         if i < 25:
             return None
         row = df.iloc[i]
 
-        high20 = float(df['high'].iloc[i-20:i].max())
-        if float(row['close']) <= high20:
+        adaptive = meta.get('adaptive_enabled', False)
+
+        # Lookback: dynamic or fixed 20
+        if adaptive:
+            lookback = self._adaptive_lookback(df, i, meta)
+            if i < lookback + 5:
+                return None
+        else:
+            lookback = 20
+
+        high_N = float(df['high'].iloc[i - lookback:i].max())
+        if float(row['close']) <= high_N:
             return None
 
-        vol_min = meta.get('breakout_vol_min', 1.8)
+        # Vol threshold: adaptive or static
+        if adaptive:
+            vol_min = self._adaptive_vol_threshold(df, i, meta)
+        else:
+            vol_min = meta.get('breakout_vol_min', 1.8)
         if float(row.get('vol_ratio', 1)) < vol_min:
             return None
 
@@ -624,24 +844,43 @@ class MLStrategyV15:
         if bar_move > meta.get('breakout_bar_move_max', 2.5):
             return None
 
+        # BB compression: fixed threshold (adaptive BB tested, no improvement)
         bb_max = meta.get('breakout_bb_max', 4.0)
-        recent_bb = df['bb_width'].iloc[i-5:i]
+        recent_bb = df['bb_width'].iloc[i - 5:i]
         bb_count_min = 3 if meta.get('asset', 'BTC') == 'BTC' else 2
         if (recent_bb < bb_max).sum() < bb_count_min:
             return None
 
         adx_max = meta.get('breakout_adx_max', 28)
-        if df['adx14'].iloc[i-3:i].mean() > adx_max:
+        if df['adx14'].iloc[i - 3:i].mean() > adx_max:
             return None
 
         entry = float(row['close'])
-        sl_raw = float(df['low'].iloc[i-5:i].min()) * 0.997
+        sl_raw = float(df['low'].iloc[max(0, i - 5):i].min()) * 0.997
         sl_pct = (entry - sl_raw) / entry
         sl_min = meta.get('breakout_sl_min', 0.005)
         sl_max = meta.get('breakout_sl_max', 0.04)
         if sl_pct < sl_min or sl_pct > sl_max:
             return None
-        rr = meta.get('breakout_rr', 1.5)
+
+        # RR: quality-based or fixed
+        if adaptive:
+            if regime is None:
+                regime = self.get_regime('BTC/USDT')
+            quality = self._compute_signal_quality(df, i, regime, meta)
+            quality_min = meta.get('adaptive_quality_min', 30)
+            if quality < quality_min:
+                return None
+
+            if quality >= 70:
+                rr = meta.get('adaptive_rr_high', 2.0)
+            elif quality >= 50:
+                rr = meta.get('adaptive_rr_mid', 1.5)
+            else:
+                rr = meta.get('adaptive_rr_low', 1.2)
+        else:
+            rr = meta.get('breakout_rr', 1.5)
+
         tp_pct = sl_pct * rr
 
         return {
@@ -730,6 +969,13 @@ class MLStrategyV15:
         threshold = meta.get('short_threshold', 0.60)
         if prob < threshold:
             return None
+
+        # EMA crossover filter: only short when EMA20 < EMA50 (bearish trend)
+        if meta.get('short_ema_filter_enabled', False):
+            ema20 = float(row.get('ema20', 0))
+            ema50 = float(row.get('ema50', 0))
+            if ema20 > 0 and ema50 > 0 and ema20 >= ema50:
+                return None
 
         entry = float(row['close'])
         sl_raw = float(df['high'].iloc[max(0, i-3):i+1].max()) * 1.003
