@@ -73,28 +73,39 @@ Múltiples documentos confirman:
 
 ---
 
-## Arquitectura V15 Activa (Expert Committee)
+## Arquitectura V15 Activa (Multi-Par — 22 pares)
 
-### BTC: Expert Committee (3 regimenes)
-```
-Datos 1D → Régimen (BULL/BEAR/RANGE) → Setup por régimen → Position sizing
-```
+> Estado real al 2026-05-19 (rama `v15/multi-pair`). Ver `docs/AUDITORIA_2026-05.md`
+> para el análisis crítico de validación.
 
-| Régimen | Estrategia | Tipo | TP/SL |
-|---------|-----------|------|-------|
-| BULL | Breakout B + Pullback EMA20 | Reglas | ATR-based (adaptivo) |
-| BEAR | SHORT ML (GBM) | ML threshold=0.60 | Dinámico (max 3 bars * 1.003) |
-| RANGE | Breakout B solo | Reglas | Mismo que BULL |
+V15 opera **22 pares** en paper trading testnet (`ML_V15_PAIRS` en `settings.py`).
+Tres tipos de motor según el par:
 
-- **Régimen**: EMA20/EMA50 diario, 2% dead zone + recovery filter (close>EMA200)
+| Tipo | Pares | Lógica | model_type |
+|------|-------|--------|------------|
+| **ML** | BTC | GBM SHORT (threshold 0.60) + Breakout B / Pullback EMA20 LONG | `GradientBoostingClassifier` |
+| **Reglas ETH** | ETH | BTC-follower LONG + Breakout + SHORT multi-conf/BB | `rule_based` |
+| **Reglas trailing** | ADA, SOL, DOGE, LINK, AVAX, DOT, NEAR, XRP, ATOM, INJ, ALGO, FIL, 1000SHIB, BNB, LTC, ETC, BCH, UNI, AAVE, OP (20) | BTC-follower LONG + BTC-breakdown SHORT, ambos con trailing stop tight | `rule_based_trailing` |
+
+- **Régimen**: EMA20/EMA50 diario por par, 2% dead zone + recovery filter (close>EMA200)
 - **Funding veto**: z-score > 2.0 bloquea LONG, < -1.5 bloquea SHORT
-- **Validado**: WF 8/12, OOS PF=1.35, WR=48%, $1K->$7.1K, CAGR ~37%, DD 35%
-- **2026**: +7% con 3 trades (BTC -23%) — conservador pero positivo
+- **Sizing**: BTC 1.0x, ETH 0.5x, resto 0.3x (`ML_V15_SIZING`)
+- **Trailing**: `_generate_alt_trailing_signals()` en `ml_strategy_v15.py`; el
+  `portfolio_manager` soporta trailing inmediato (`trail_mode='tight'`)
 
-### Solo BTC — Expansión por par
-- V15 opera **solo BTC/USDT** (validado)
-- ETH rechazado en cross-asset (5/12 WF, PF=0.94)
-- Cada par nuevo necesita: WF>=7/12 + backtest propio + documentar antes de activar
+### Estado de validación por par — IMPORTANTE
+
+| Nivel | Pares | Evidencia |
+|-------|-------|-----------|
+| **Validado (creíble)** | BTC, ETH, ADA, SOL | Doc dedicado + WF + métricas modestas (PF 1.3–2.9, DD 7–43%) |
+| **Sin documento — backtest sospechoso** | Los otros 18 | Solo `meta_v15.json`. WF ~100%, PF 7–20, DD 1–4% = firma de overfitting |
+
+> ⚠️ Los 18 pares sin documento **NO cumplen** los requisitos de validación del
+> proyecto. Su backtest declara PF de 13–20 (BTC validado: PF 1.35) — métricas
+> imposibles que indican overfitting / sesgo de selección. Operarlos en paper
+> trading testnet es aceptable (acumula datos), pero **no se debe mover capital
+> real** a ellos sin re-validación con WF purgado + bootstrap. Detalle completo
+> en `docs/AUDITORIA_2026-05.md` sección B.
 
 ### V14 (desactivada, preservada)
 V14 sigue en el código pero ML_V14_ENABLED=False. Se puede reactivar si necesario.
@@ -106,22 +117,73 @@ V14 sigue en el código pero ML_V14_ENABLED=False. Se puede reactivar si necesar
 | Rama | Usar | Descripción |
 |------|------|-------------|
 | `main` | ✓ Producción | V14 validado (preservado, ML_V14_ENABLED=False) |
-| `v15/momentum-breakout` | ✓ Deploy | V15 Expert Committee BTC only |
+| `v15/multi-pair` | ✓ Deploy actual | V15 multi-par (22 pares) en paper trading |
 | `feature/v14.1-bidirectional` | ✗ Experimental | ETH ML (AUC~0.5) + SHORT ensemble (fallido) — NO mergear |
 
 ### Flujo de deploy V15
-1. `v15/momentum-breakout` contiene todo el código V15 listo para producción
-2. Mergear a `main` cuando paper trading confirme que genera señales correctas
+1. `v15/multi-pair` contiene el código V15 multi-par en paper trading testnet
+2. Mergear a `main` **solo** cuando: (a) paper trading confirme señales correctas
+   y (b) los pares se hayan re-validado con metodología purgada (ver auditoría)
 3. V14 preservado y reactivable cambiando flags en settings.py
 
 ---
 
 ## V15 Deployment Status
 
-- **V15 desplegado para BTC/USDT only** (paper trading testnet)
+- **V15 desplegado para 22 pares** en paper trading testnet (`ML_V15_PAIRS`)
+- **Re-validación completada (2026-05)**: 17/20 pares ALT rechazados con motor
+  honesto; 3 marginales (ETC, BCH, UNI). Detalle: `docs/revalidation/RESUMEN.md`.
+- Solo BTC y ETH tienen evaluación creíble; ADA/SOL tampoco superan motor honesto.
 - V14 desactivado (ML_V14_ENABLED=False)
 - Modelos entrenados con sklearn 1.8.0 (producción)
 - **Diagnóstico**: `/log` en Telegram y buscar líneas `[V15]` — debe haber logs cada vela 4h
+- **Auditoría completa**: `docs/AUDITORIA_2026-05.md`,
+  `docs/revalidation/PASO0_lookahead.md` (2 bugs de simulador identificados)
+
+---
+
+## Candidato real para paper trade (post-revalidación, 2026-05)
+
+Tras 6 agentes diseñados con disciplina anti-overfitting (cutoff inviolable
+2025-12-31, 2 bugs prohibidos, validación independiente sobre 2026), el único
+candidato con **bootstrap p < 0.05** es:
+
+### V2 = A + F_BTC (sin ETH)
+
+| Métrica | Valor in-sample 2020-2025 |
+|---------|---------------------------|
+| Annual return | +22.6% |
+| PF | 1.59 |
+| WR | 43% |
+| DD | 23.9% |
+| Trades | 163 (~27/año) |
+| **Bootstrap p** | **0.031 ✅** |
+
+**Mecanismo (single engine, una posición por par):**
+- **A** (Donchian-55 4h + EMA daily filter + ATR×2.5 trailing, LONG-only):
+  trend-following clásico estilo Turtle. Captura bull markets.
+- **F_BTC** (vol-compression breakout, bidireccional): cuando BB-width está
+  en cuantil bajo histórico, entrar en dirección de la ruptura. Captura
+  expansiones de volatilidad — útil tanto en bull breakouts como bear breakdowns.
+- En cada vela: probar A primero (más conservador). Si A no fira, probar F.
+
+**OOS 2026 (Ene-Feb, 57 días, BTC -23% YTD)**: solo F_BTC SHORT firmó (3 trades:
++8.78%, -3.40%, -2.91%, neto +2%, DD 6%). A no firmó (correcto: filtro daily
+bloqueó en bear). El LONG no se probó en OOS — necesita ventana alcista.
+
+**Lo que falta probar antes de capital real:**
+1. Paper trade 6-12 meses cubriendo al menos un tramo alcista
+2. ≥30 trades reales acumulados
+3. Bootstrap p actualizado mensual mantiene < 0.05
+4. DD real ≤ 30%
+5. Real diverge < 25% del simulado a 50 trades
+
+**Costes a considerar**: si se opera perp, funding ~13% anual diluye el retorno
+(ver `experiments/agent_D/README.md`). En spot no hay funding pero no se puede
+SHORT — incompatible con F. Realista: V2 perp neto ≈ +9-10% anual después de
+funding. **Aún premium ~0-3% sobre CETES — modesto pero real.**
+
+Detalle completo: `experiments/combined_AF/README.md` y `experiments/VERDICTO_RONDA2.md`.
 
 ---
 
@@ -158,17 +220,18 @@ config/
   settings.py            # BOT_VERSION="V15", ML_V15_ENABLED=True
 
 strategies/
-  btc_v15/models/        # V15: short_gbm.pkl, short_scaler.pkl, meta_v15.json
+  {coin}_v15/models/     # 22 pares: meta_v15.json por par (BTC además: short_gbm.pkl)
   btc_v14/models/        # V14 (preservado)
 
 V15 Scripts:
-  train_v15_prod.py        # Entrenar SHORT model para producción
-  backtest_v15_committee.py # Backtest completo del comité
+  train_v15_prod.py        # Entrenar SHORT model BTC para producción
   v15_framework.py          # Framework compartido (sim, features, WF)
+  evaluate_new_pairs_v15.py # Evaluación masiva de pares (ver auditoría)
 
 docs/
-  V15_COMPARACION.md       # Comparación de 4 estrategias V15
-  V15_COMMITTEE_results.md # Resultados del comité validado
+  AUDITORIA_2026-05.md     # Auditoría — estado real, overfitting, inspiración GitHub
+  V15_COMMITTEE_results.md # Resultados del comité BTC validado
+  archive/                 # Documentación de versiones previas (V12-V14)
 ```
 
 ---
@@ -238,21 +301,35 @@ El objetivo no es el mejor modelo técnico posible, sino un sistema que genere *
 
 ## Próximos Pasos Prioritarios
 
-1. **Paper trade V15 BTC** (prioridad máxima)
-   - Verificar que el bot genera señales V15 en testnet
-   - `/log` debe mostrar `[V15]` con régimen y evaluación de setups cada 4h
-   - Acumular trades reales antes de cualquier expansión
+> Estado al 2026-05-19, tras re-validación completa de 22 pares + 6 agentes
+> de diseño con motor honesto. Ver `experiments/VERDICTO.md`, `experiments/VERDICTO_RONDA2.md`
+> y `experiments/combined_AF/README.md`.
 
-2. **Mergear v15/momentum-breakout a main**
-   - Solo después de confirmar señales correctas en paper trading
-   - Verificar que portfolio_manager ejecuta trades V15 correctamente
+1. **Reducir `ML_V15_PAIRS` a solo `['BTC/USDT']`** (urgente)
+   - Los otros 21 pares no superan el motor honesto. Mantenerlos consume
+     capital de testnet en señales sin edge.
+   - Sustituir el motor de señales por el combinado V2 (A + F_BTC).
 
-3. **Expansión par a par** (después de validar BTC en producción)
-   - Cada par necesita: backtest propio con WF>=7/12 + documentar
-   - Candidatos: ETH (fallido cross-asset 5/12), SOL, ADA
-   - Adaptar features/thresholds por par, no reutilizar modelos BTC directamente
+2. **Implementar V2 (A + F_BTC) como engine de producción**
+   - Adaptar `src/ml_strategy_v15.py` para usar la lógica de
+     `experiments/agent_A/strategy.py` y `experiments/agent_F/strategy.py`
+   - One position at a time en BTC; A tiene prioridad sobre F
+   - Asegurar que la simulación honesta (sin look-ahead intrabar) está
+     replicada en el path de live signal
 
-4. **Reentrenamiento mensual SHORT model**
-   - Usar `train_v15_prod.py` con production Python
-   - Actualizar cutoff date y verificar in-sample metrics
-   - Recalibrar threshold si distribución de probabilidades cambia
+3. **Paper trade V2 en testnet 6-12 meses**
+   - Acumular ≥30 trades reales
+   - Trackear: trades reales vs simulados, bootstrap p rolling, DD
+   - KPI de parada: real diverge >25% del simulado en 50 trades → STOP
+
+4. **Refrescar datos** (`download_new_pairs.py` en venv prod)
+   - Los `.parquet` terminan en feb-mar 2026; ya estamos a mayo
+   - Re-correr `experiments/verify_2026.py` con Mar-May 2026 OOS adicional
+   - Más muestra OOS = más confianza estadística
+
+5. **Cuando haya una ventana alcista en BTC (Q3 2026 post-halving probable)**
+   - Verificar que A_LONG se activa y entrega como predice in-sample
+   - Es el componente del sistema que la OOS 2026 NO probó
+
+6. **NO activar capital real hasta** punto 3 completo con bootstrap p<0.05
+   sostenido + componente A_LONG validado en ventana real alcista

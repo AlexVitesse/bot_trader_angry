@@ -1,0 +1,12 @@
+{
+  "tp_label": 0.04,
+  "sl_label": 0.025,
+  "max_bars_label": 12,
+  "tp_sim": 0.04,
+  "sl_sim": 0.025,
+  "max_bars_sim": 12,
+  "commission": 0.0005,
+  "threshold": 0.5,
+  "use_regime_filter": true,
+  "use_funding_veto": true
+}

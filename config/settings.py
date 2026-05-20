@@ -392,11 +392,33 @@ ML_V14_ENABLED = False   # Feature flag: V14 desactivado (reemplazado por V15)
 # =============================================================================
 # V15 EXPERT COMMITTEE (BTC only — validado WF 8/12, OOS PF=1.35)
 # =============================================================================
-# BULL: Breakout B LONG + Pullback EMA20 LONG (reglas, ATR TP/SL)
-# BEAR: SHORT ML (GBM threshold=0.60)
-# RANGE: Breakout B LONG only
-# Gates: funding veto + regime dead zone 2%
-ML_V15_ENABLED = True    # Feature flag: V15 activo
+# BTC: Breakout B LONG + Pullback EMA20 LONG + SHORT ML (GBM)
+# ETH: BTC-follower LONG + Breakout ETH + SHORT multi-conf/BB (rule-based)
+# Gates: funding veto + regime dead zone 2% per pair
+ML_V15_ENABLED = True
+
+# ============================================================================
+# V2 paper trading 3 meses (2026-05-19 start) — ver docs/PLAN_PAPER_3MESES.md
+# ============================================================================
+# Tier 1 (KEEP 3/3 in-sample + PASS OOS sólido): BTC, BNB
+# Tier 2 (MARGINAL in-sample, indeterminado OOS por muestra pequeña):
+#         DOGE, ETH, OP
+# 17 monedas rechazadas (REJECT 0/3 o WEAK 1/3) — fuera del bot.
+# Motor: V2 = A (Donchian trend LONG) + F (vol-compression breakout bidir)
+ML_V15_PAIRS = [
+    'BTC/USDT',     # Tier 1
+    'BNB/USDT',     # Tier 1
+    'DOGE/USDT',    # Tier 2 (p=0.001 in-sample, indeterminado OOS)
+    'ETH/USDT',     # Tier 2 (2 trades OOS ambos +, indeterminado)
+    'OP/USDT',      # Tier 2 (OOS perfecto pero in-sample limitado)
+]
+ML_V15_SIZING = {
+    'BTC/USDT':  1.0,   # Tier 1, full sizing
+    'BNB/USDT':  0.7,   # Tier 1, sizing conservador
+    'DOGE/USDT': 0.5,   # Tier 2, memecoin vol
+    'ETH/USDT':  0.5,   # Tier 2
+    'OP/USDT':   0.4,   # Tier 2, low conviction (data limitada)
+}
 
 ML_V14_EXPERTS = {
     # === ORIGINALES (6) ===

@@ -1,0 +1,42 @@
+{
+  "version": "V15",
+  "asset": "INJ",
+  "model_type": "rule_based_trailing",
+  "has_ml": false,
+  "training_date": "2026-03-25",
+
+  "regime_dead_zone": 0.02,
+  "funding_veto_long": 2.0,
+  "funding_veto_short": -1.5,
+
+  "follower_corr_min": 0.4,
+  "breakout_vol_min": 1.2,
+  "breakout_bb_max": 7.0,
+  "breakout_adx_max": 32,
+  "breakout_bar_move_max": 3.5,
+  "breakout_sl_min": 0.005,
+  "breakout_sl_max": 0.06,
+
+  "trail_atr_factor": 0.20,
+  "trail_floor": 0.006,
+  "trail_max_bars": 30,
+
+  "breakdown_lookback": 20,
+  "breakdown_vol_min": 1.0,
+
+  "sizing_mult": 0.3,
+
+  "backtest": {
+    "long_wf_ok": 10,
+    "long_wf_total": 10,
+    "long_pf": 8.89,
+    "long_dd": 0.025,
+    "short_wf_ok": 8,
+    "short_wf_total": 9,
+    "short_pf": 18.96,
+    "short_dd": 0.015,
+    "oos_2026_long_return": 0.0206,
+    "oos_2026_short_return": 0.4500,
+    "oos_2026_combined": 0.4706
+  }
+}

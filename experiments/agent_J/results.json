@@ -1,0 +1,280 @@
+{
+  "agent": "J",
+  "strategy_name": "ETH 1D Donchian + EMA daily + ATR trailing (rescaled from 4h)",
+  "timeframe": "1D",
+  "params": {
+    "commission": 0.0005,
+    "ema_fast_1d": 50,
+    "ema_slow_1d": 200,
+    "donchian_n": 10,
+    "vol_ma_n": 20,
+    "vol_ratio_min": 1.2,
+    "adx_n": 14,
+    "adx_min": 18,
+    "atr_n": 14,
+    "trail_atr_mult": 2.5,
+    "trail_floor_pct": 0.025,
+    "trail_ceiling_pct": 0.06,
+    "max_bars": 10,
+    "funding_enabled": false,
+    "funding_z_n": 28,
+    "funding_z_max": 2.5,
+    "cutoff_date": "2025-12-31",
+    "min_bars_warmup": 250
+  },
+  "rescaling_decisions": {
+    "donchian_n": "4h:55 (~9d) -> 1D:10 (~10d) [proporcional al horizonte]",
+    "max_bars": "4h:60 (10d) -> 1D:10 (10d) [mismo techo temporal]",
+    "atr_n": "14 igual (Wilder, conceptual)",
+    "vol_ma_n": "20 igual (concepto MA mensual)",
+    "ema_1d": "50/200 igual (ya son daily)",
+    "trail_atr_mult": "2.5 igual (constante universal)",
+    "trail_floor/ceiling": "2.5%/6% igual (sin tunear)",
+    "funding": "DESACTIVADO (no hay ETH funding parquet)"
+  },
+  "wf": {
+    "folds_ok": 3,
+    "folds_evaluated": 6,
+    "folds_total": 12,
+    "folds": [
+      {
+        "period": "2020-01",
+        "n": 0,
+        "pf": 0.0,
+        "wr": 0.0,
+        "total": 0.0,
+        "monthly": 0.0,
+        "max_dd": 0.0,
+        "ok": false,
+        "status": "no_signal",
+        "no_data": false
+      },
+      {
+        "period": "2020-07",
+        "n": 6,
+        "pf": 0.3485466957849207,
+        "wr": 0.3333333333333333,
+        "total": -0.0818602617601627,
+        "monthly": -0.03697795583820995,
+        "max_dd": 0.10461314594205073,
+        "ok": false,
+        "status": "evaluated",
+        "no_data": false
+      },
+      {
+        "period": "2021-01",
+        "n": 2,
+        "pf": 0.637235180258419,
+        "wr": 0.5,
+        "total": -0.02449980610997804,
+        "monthly": -0.02449980610997804,
+        "max_dd": 0.06099999999999994,
+        "ok": false,
+        "status": "small_sample",
+        "no_data": false
+      },
+      {
+        "period": "2021-07",
+        "n": 5,
+        "pf": 1.5714076749740682,
+        "wr": 0.4,
+        "total": 0.07184648715907649,
+        "monthly": 0.01626642746748197,
+        "max_dd": 0.11827899999999995,
+        "ok": true,
+        "status": "evaluated",
+        "no_data": false
+      },
+      {
+        "period": "2022-01",
+        "n": 0,
+        "pf": 0.0,
+        "wr": 0.0,
+        "total": 0.0,
+        "monthly": 0.0,
+        "max_dd": 0.0,
+        "ok": false,
+        "status": "no_signal",
+        "no_data": false
+      },
+      {
+        "period": "2022-07",
+        "n": 0,
+        "pf": 0.0,
+        "wr": 0.0,
+        "total": 0.0,
+        "monthly": 0.0,
+        "max_dd": 0.0,
+        "ok": false,
+        "status": "no_signal",
+        "no_data": false
+      },
+      {
+        "period": "2023-01",
+        "n": 3,
+        "pf": 0.4618262279608555,
+        "wr": 0.3333333333333333,
+        "total": -0.021066558330131824,
+        "monthly": -0.006007812035491389,
+        "max_dd": 0.03792522880871538,
+        "ok": false,
+        "status": "evaluated",
+        "no_data": false
+      },
+      {
+        "period": "2023-07",
+        "n": 4,
+        "pf": 0.039622239868188434,
+        "wr": 0.25,
+        "total": -0.13645890386942638,
+        "monthly": -0.03543413671829421,
+        "max_dd": 0.13645890386942638,
+        "ok": false,
+        "status": "evaluated",
+        "no_data": false
+      },
+      {
+        "period": "2024-01",
+        "n": 4,
+        "pf": 2.787892276537561,
+        "wr": 0.5,
+        "total": 0.11950863858470862,
+        "monthly": 0.034100167920718016,
+        "max_dd": 0.06831436931259256,
+        "ok": true,
+        "status": "evaluated",
+        "no_data": false
+      },
+      {
+        "period": "2024-07",
+        "n": 1,
+        "pf": Infinity,
+        "wr": 1.0,
+        "total": 0.00021585283235170394,
+        "monthly": 0.00021585283235170394,
+        "max_dd": 0.0,
+        "ok": false,
+        "status": "small_sample",
+        "no_data": false
+      },
+      {
+        "period": "2025-01",
+        "n": 0,
+        "pf": 0.0,
+        "wr": 0.0,
+        "total": 0.0,
+        "monthly": 0.0,
+        "max_dd": 0.0,
+        "ok": false,
+        "status": "no_signal",
+        "no_data": false
+      },
+      {
+        "period": "2025-07",
+        "n": 4,
+        "pf": 2.3385730480611717,
+        "wr": 0.25,
+        "total": 0.08004347814771218,
+        "monthly": 0.02788209155618615,
+        "max_dd": 0.06515514552824292,
+        "ok": true,
+        "status": "evaluated",
+        "no_data": false
+      }
+    ]
+  },
+  "overall": {
+    "n": 31,
+    "wr": 0.3870967741935484,
+    "pf": 1.2731761988211472,
+    "avg_pnl": 0.006372901599904495,
+    "total_return": 0.12988137716275117,
+    "max_dd": 0.20315418578314096,
+    "sharpe_like": 0.08850868596441576,
+    "months": 60.36666666666667,
+    "years": 4.961643835616439,
+    "monthly_return": 0.002024896338490345,
+    "annual_return": 0.02491668820836157
+  },
+  "bootstrap": {
+    "p_value": 0.38333333333333336,
+    "pctl_5": -0.38763824729977503,
+    "pctl_50": 0.11693964636211884,
+    "pctl_95": 1.1736732993956094,
+    "n_iter": 3000,
+    "n_trades": 31
+  },
+  "synth": {
+    "n": 20,
+    "annuals": [
+      0.0427537755628018,
+      0.08544227928325054,
+      0.09036641218044483,
+      0.019938387436037708,
+      -0.05812633230752473,
+      -0.06504690648612166,
+      0.008147681653281502,
+      0.009488758111584783,
+      -0.011009119949679014,
+      0.09625358741412082,
+      -0.10445929742370053,
+      -0.03980017628458188,
+      -0.0028528239514710174,
+      0.11737745588003579,
+      0.18068375031966033,
+      -0.12124383693597784,
+      -0.012080916230573613,
+      0.2502080417917658,
+      -0.050757797984958275,
+      0.21790649678975238
+    ],
+    "median_annual": 0.008818219882433143,
+    "mean_annual": 0.03265947094340739,
+    "n_positive": 11,
+    "n_above_10pct": 4
+  },
+  "null": {
+    "n": 10,
+    "annuals": [
+      -0.0036909738762738176,
+      0.23715293896162826,
+      0.10021430783992735,
+      -0.17360723881127227,
+      -0.15750021694942606,
+      0.16828955953204816,
+      0.10419056014269978,
+      -0.002049211366397241,
+      0.04456029352667179,
+      0.16317006927362465
+    ],
+    "median_annual": 0.07238730068329957,
+    "mean_annual": 0.04807300882732306
+  },
+  "edge_vs_null": -0.06356908080086643,
+  "comparison_eth_4h": {
+    "eth_a_4h": {
+      "annual": 0.113,
+      "pf": 1.53,
+      "wr": 0.46,
+      "max_dd": 0.182,
+      "bootstrap_p": 0.103,
+      "n_trades": 87
+    },
+    "eth_j_1d": {
+      "n_trades": 31,
+      "wr": 0.3870967741935484,
+      "pf": 1.2731761988211472,
+      "annual": 0.02491668820836157,
+      "max_dd": 0.20315418578314096,
+      "bootstrap_p": 0.38333333333333336
+    }
+  },
+  "criteria": {
+    "bootstrap_p_lt_005": false,
+    "synth_median_positive": true,
+    "synth_14_of_20_positive": false,
+    "edge_vs_null_gt_5pct": false
+  },
+  "veredict": "REJECT",
+  "cutoff": "2025-12-31"
+}

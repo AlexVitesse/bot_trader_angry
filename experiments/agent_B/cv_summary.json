@@ -1,0 +1,18 @@
+{
+  "n_features": 11,
+  "n_samples": 11140,
+  "label_balance": 0.3241472172351885,
+  "purged_cv_folds_ok": "3/11",
+  "median_pf_test": 1.1030620165057476,
+  "median_wr_test": 0.36363636363636365,
+  "mean_auc_test": 0.5196514051920587,
+  "total_pnl_across_folds_pct": -16.018229575047318,
+  "final_threshold": 0.51,
+  "top_features_by_count_top5": [
+    "ema20_50_ratio_1d",
+    "atr_pct_4h",
+    "funding_zscore",
+    "dist_high20_4h",
+    "dist_low20_4h"
+  ]
+}

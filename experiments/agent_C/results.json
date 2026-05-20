@@ -1,0 +1,73 @@
+{
+  "agent": "C",
+  "strategy_name": "Regime-Adaptive BULL-pullback + RANGE-meanrev (BEAR flat)",
+  "cutoff": "2025-12-31",
+  "regimes_active": [
+    "BULL",
+    "RANGE"
+  ],
+  "params": {
+    "regime_dead_zone": 0.02,
+    "regime_use_ema200_filter": true,
+    "bull_pullback_ema20_max_dist": 0.015,
+    "bull_pullback_require_above_ema50": true,
+    "bull_pullback_require_daily_alignment": true,
+    "bull_pullback_rsi_min": 40,
+    "bull_pullback_rsi_max": 60,
+    "bull_pullback_min_atr_pct": 0.5,
+    "bull_pullback_require_bullish_entry": true,
+    "bull_trail_atr_mult": 1.8,
+    "bull_trail_floor": 0.012,
+    "bull_max_bars": 24,
+    "range_rsi_max": 30,
+    "range_bb_pct_max": 0.15,
+    "range_require_bullish_candle": true,
+    "range_min_atr_pct": 0.5,
+    "range_tp_atr_mult": 1.5,
+    "range_sl_atr_mult": 1.5,
+    "range_max_bars": 12,
+    "bear_active": false,
+    "commission_one_way": 0.0005,
+    "min_history_bars": 220
+  },
+  "in_sample_wf": "6/12",
+  "in_sample_pf_median": 1.490835947763628,
+  "in_sample_wr": 0.4304635761589404,
+  "in_sample_n_trades": 151,
+  "in_sample_total_return": 0.522982286893324,
+  "in_sample_max_dd": 0.3136779122534611,
+  "continuous_pf": 1.2795179788923443,
+  "continuous_total": 0.5433772674795032,
+  "continuous_max_dd": 0.3175851725364233,
+  "monthly_return_arith_mean": 0.010779863666404658,
+  "annualized_return_geom": 0.10124180278242223,
+  "months_observed": 54,
+  "months_positive_pct": 0.5555555555555556,
+  "bootstrap_pvalue": 0.15566666666666668,
+  "bootstrap_median": 0.5341949555108534,
+  "per_regime": {
+    "BULL": {
+      "wf": "5/12",
+      "n": 126,
+      "wr": 0.3968253968253968,
+      "pf": 1.3433264787697445,
+      "total": 0.45436625439723444,
+      "max_dd": 0.3487933657115626,
+      "bootstrap_p": 0.139
+    },
+    "RANGE": {
+      "wf": "0/12",
+      "n": 25,
+      "wr": 0.6,
+      "pf": 1.193406212155671,
+      "total": 0.04717933483992032,
+      "max_dd": 0.11656246332387644,
+      "bootstrap_p": 0.37733333333333335
+    }
+  },
+  "regime_distribution": {
+    "BULL": 0.44,
+    "RANGE": 0.301,
+    "BEAR": 0.26
+  }
+}

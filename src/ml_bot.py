@@ -36,6 +36,11 @@ try:
 except ImportError:
     ML_V15_ENABLED = False
 
+try:
+    from config.settings import ML_V15_PAIRS
+except ImportError:
+    ML_V15_PAIRS = ['BTC/USDT']
+
 from src.ml_strategy import MLStrategy
 from src.ml_strategy_v14 import MLStrategyV14
 if ML_V15_ENABLED:
@@ -170,7 +175,7 @@ class MLBot:
                         f"▶️ <b>BOT REANUDADO</b>\n"
                         f"━━━━━━━━━━━━━━━\n"
                         f"💰 Balance: ${self.portfolio.balance:,.2f}\n"
-                        f"📊 Regime: {self.strategy.regime}\n"
+                        f"📊 Regimes: {self.strategy.get_regimes_str() if hasattr(self.strategy, 'get_regimes_str') else self.strategy.regime}\n"
                         f"🔄 Operando normalmente"
                     )
 
@@ -206,13 +211,16 @@ class MLBot:
                             "Ejecutar primero: poetry run python ml_export_models.py")
             send_alert("ERROR: No hay modelos ML. Bot no puede iniciar.")
             sys.exit(1)
-        logger.info(f"[BOT] {count} modelos cargados para {len(self.strategy.pairs)} pares")
+        logger.info(f"[BOT] {count} par(es) configurados: {', '.join(self.strategy.pairs)}")
 
         # 2. Detectar regime
         logger.info("[BOT] Detectando regime de mercado...")
         self.strategy.update_regime(self.exchange_public)
         self.last_regime_date = datetime.now(timezone.utc).strftime('%Y-%m-%d')
-        logger.info(f"[BOT] Regime: {self.strategy.regime}")
+        if hasattr(self.strategy, 'get_regimes_str'):
+            logger.info(f"[BOT] Regimes: {self.strategy.get_regimes_str()}")
+        else:
+            logger.info(f"[BOT] Regime: {self.strategy.regime}")
 
         # 2b. Update macro intelligence (V8.4) - solo para estrategia legacy
         if not self.v14_mode and hasattr(self.strategy, 'v84_enabled') and self.strategy.v84_enabled:
@@ -244,8 +252,10 @@ class MLBot:
 
         # Model info for Telegram
         if ML_V15_ENABLED:
-            model_str = f"🧠 Expert Committee\n📊 BTC/USDT only"
-            count = 1
+            v15_coins = [p.split('/')[0] for p in self.strategy.pairs]
+            regimes_str = self.strategy.get_regimes_str() if hasattr(self.strategy, 'get_regimes_str') else regime
+            model_str = f"🧠 Expert Committee\n📊 Pairs: {', '.join(v15_coins)}\n📈 Regimes: {regimes_str}"
+            count = len(self.strategy.pairs)
         elif self.v14_mode:
             n_experts = len(ML_V14_EXPERTS)
             model_str = f"🤖 Ensemble Voting\n📊 {n_experts} expertos activos"
@@ -331,7 +341,8 @@ class MLBot:
 
         # Model info
         if ML_V15_ENABLED:
-            model_str = f"\n🧠 Expert Committee | BTC/USDT"
+            regimes_str = self.strategy.get_regimes_str() if hasattr(self.strategy, 'get_regimes_str') else self.strategy.regime
+            model_str = f"\n🧠 Expert Committee | {regimes_str}"
         elif self.v14_mode:
             model_str = f"\n🤖 Ensemble Voting ({len(ML_V14_EXPERTS)} expertos)"
         elif ML_V1304_ENABLED:
@@ -345,7 +356,6 @@ class MLBot:
             f"💰 Balance: ${status['balance']:,.2f}\n"
             f"📈 Pos: {status['positions']}/{ML_MAX_CONCURRENT}\n"
             f"{pnl_emoji} PnL hoy: ${total_pnl:+,.2f} ({len(trades_today)}t)\n"
-            f"📊 Regime: {self.strategy.regime}"
             f"{model_str}\n"
             f"⚠️ DD: {status['dd']:.1%}\n"
             f"⏱️ Uptime: {uptime_h:.1f}h"
@@ -800,17 +810,25 @@ class MLBot:
         if not self.portfolio.can_open(signal['pair'], signal['direction']):
             return
 
+        # Use pair-specific regime if V15 multi-pair
+        if hasattr(self.strategy, 'get_regime'):
+            regime = self.strategy.get_regime(signal['pair'])
+        else:
+            regime = self.strategy.regime
+
         # V14 usa TP/SL del signal (especifico por par)
         success = self.portfolio.open_position(
             pair=signal['pair'],
             direction=signal['direction'],
             confidence=signal['confidence'],
-            regime=self.strategy.regime,
+            regime=regime,
             price=signal['price'],
             atr_pct=0.02,  # Default, V14 usa TP/SL fijos
             sizing_mult=1.0,
             tp_pct_override=signal.get('tp_pct'),
             sl_pct_override=signal.get('sl_pct'),
+            trail_mode=signal.get('trail_mode', 'default'),
+            trail_fixed_dist=signal.get('trail_fixed_dist', 0.0),
         )
 
         if success:
@@ -819,16 +837,23 @@ class MLBot:
                 side = 'LONG' if signal['direction'] == 1 else 'SHORT'
                 side_emoji = '🟢' if signal['direction'] == 1 else '🔴'
                 setup = signal.get('setup', 'ENSEMBLE')
+                if pos.trail_mode == 'tight':
+                    trail_pct = pos.trail_fixed_dist * 100
+                    exit_info = f"🔄 Trailing: {trail_pct:.1f}% (immediate)"
+                else:
+                    exit_info = (
+                        f"🎯 TP: ${pos.tp_price:,.2f} ({pos.tp_pct:.1%})\n"
+                        f"🛡️ SL: ${pos.sl_price:,.2f} ({pos.sl_pct:.1%})"
+                    )
                 send_alert(
                     f"{side_emoji} <b>{BOT_VERSION} TRADE ABIERTO</b>\n"
                     f"━━━━━━━━━━━━━━━\n"
                     f"💎 {signal['pair']} <b>{side}</b>\n"
                     f"📥 Entry: ${pos.entry_price:,.2f}\n"
                     f"📦 Notional: ${pos.notional:,.2f} ({pos.leverage}x)\n"
-                    f"🎯 TP: ${pos.tp_price:,.2f} ({pos.tp_pct:.1%})\n"
-                    f"🛡️ SL: ${pos.sl_price:,.2f} ({pos.sl_pct:.1%})\n"
+                    f"{exit_info}\n"
                     f"📊 Setup: {setup}\n"
-                    f"🔮 Regime: {self.strategy.regime}"
+                    f"🔮 Regime: {regime}"
                 )
 
     def _execute_v9_signal(self, signal):
@@ -1007,7 +1032,7 @@ class MLBot:
             logger.info(
                 f"[STATUS] Balance=${status['balance']:.2f} | "
                 f"DD={status['dd']:.1%} | "
-                f"Pos={status['positions']}/3 | "
+                f"Pos={status['positions']}/{len(ML_V15_PAIRS)} | "
                 f"DailyPnL=${status['daily_pnl']:+.2f} | "
                 f"Regime={self.strategy.regime}{shadow_info}"
             )
@@ -1030,15 +1055,11 @@ class MLBot:
         trades_today = self.portfolio.get_today_trades_from_db()  # Solo V9
         total_pnl = sum(t['pnl'] for t in trades_today)
 
-        # Contador de demo V13.04: 14 dias desde 2026-02-28 -> fin 2026-03-14
-        demo_end = datetime(2026, 3, 14, tzinfo=timezone.utc)
-        days_left = (demo_end - datetime.now(timezone.utc)).days
-        if days_left > 0:
-            demo_str = f"📅 Demo: {days_left}d restantes"
-        elif days_left == 0:
-            demo_str = "📅 Demo: ULTIMO DIA!"
+        # Regime string for all pairs
+        if ML_V15_ENABLED and hasattr(self.strategy, 'get_regimes_str'):
+            regimes_str = self.strategy.get_regimes_str()
         else:
-            demo_str = "📅 Demo: FINALIZADA"
+            regimes_str = self.strategy.regime
 
         if self.recent_errors:
             errors_str = "\n".join(f"  ⚠️ {e[:80]}" for e in self.recent_errors[-5:])
@@ -1050,9 +1071,8 @@ class MLBot:
                 f"\n"
                 f"💰 Balance: ${status['balance']:,.2f}\n"
                 f"📈 Pos: {status['positions']}/{ML_MAX_CONCURRENT}\n"
-                f"📊 Regime: {self.strategy.regime}\n"
-                f"⏱️ Uptime: {uptime_h:.1f}h\n"
-                f"{demo_str}"
+                f"📊 Regimes: {regimes_str}\n"
+                f"⏱️ Uptime: {uptime_h:.1f}h"
             )
             self.recent_errors.clear()
         else:
@@ -1060,7 +1080,8 @@ class MLBot:
 
             # Model info for heartbeat
             if ML_V15_ENABLED:
-                model_str = f"🧠 Expert Committee | BTC/USDT\n"
+                v15_coins = [p.split('/')[0] for p in self.strategy.pairs]
+                model_str = f"🧠 Expert Committee | {', '.join(v15_coins)}\n"
             elif self.v14_mode:
                 model_str = f"🤖 Ensemble ({len(ML_V14_EXPERTS)} expertos)\n"
             elif ML_V1304_ENABLED:
@@ -1074,11 +1095,10 @@ class MLBot:
                 f"💰 Balance: ${status['balance']:,.2f}\n"
                 f"📈 Pos: {status['positions']}/{ML_MAX_CONCURRENT}\n"
                 f"{pnl_emoji} PnL hoy: ${total_pnl:+,.2f} ({len(trades_today)}t)\n"
-                f"📊 Regime: {self.strategy.regime}\n"
+                f"📊 Regimes: {regimes_str}\n"
                 f"{model_str}"
                 f"⚠️ DD: {status['dd']:.1%}\n"
-                f"⏱️ Uptime: {uptime_h:.1f}h\n"
-                f"{demo_str}"
+                f"⏱️ Uptime: {uptime_h:.1f}h"
             )
 
     def _send_daily_summary(self):
@@ -1110,7 +1130,7 @@ class MLBot:
             f"━━━━━━━━━━━━━━━\n"
             f"💰 Balance: <b>${status['balance']:,.2f}</b>\n"
             f"⚠️ DD: {status['dd']:.1%}\n"
-            f"📊 Regime: {self.strategy.regime}\n"
+            f"📊 Regimes: {self.strategy.get_regimes_str() if hasattr(self.strategy, 'get_regimes_str') else self.strategy.regime}\n"
             f"📈 Posiciones: {status['positions']}/{ML_MAX_CONCURRENT}"
         )
 
