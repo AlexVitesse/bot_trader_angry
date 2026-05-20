@@ -1,0 +1,110 @@
+{
+  "n_features": 16,
+  "n_samples": 12197,
+  "label_balance": 0.32614577355087315,
+  "purged_cv_folds_ok": "2/11",
+  "median_pf_test": 0.8662740650311249,
+  "median_wr_test": 0.31896551724137934,
+  "mean_auc_train": 0.804685477832101,
+  "mean_auc_test": 0.5132654902309279,
+  "total_pnl_across_folds_pct": -72.09642038228377,
+  "final_threshold": 0.51,
+  "feature_stability_ordered": [
+    {
+      "feature": "ethbtc_zscore_90d",
+      "top5_in": 11,
+      "imp_mean": 228.9090909090909,
+      "imp_std": 28.394796403741253
+    },
+    {
+      "feature": "ethbtc_slope_30d",
+      "top5_in": 10,
+      "imp_mean": 171.0,
+      "imp_std": 26.54327512846624
+    },
+    {
+      "feature": "ema20_50_ratio_1d_btc",
+      "top5_in": 9,
+      "imp_mean": 168.8181818181818,
+      "imp_std": 36.5633154002458
+    },
+    {
+      "feature": "atr_pct_4h",
+      "top5_in": 7,
+      "imp_mean": 157.72727272727272,
+      "imp_std": 35.08973149225208
+    },
+    {
+      "feature": "ema20_50_ratio_1d_eth",
+      "top5_in": 6,
+      "imp_mean": 153.27272727272728,
+      "imp_std": 18.771791744243707
+    },
+    {
+      "feature": "funding_zscore",
+      "top5_in": 6,
+      "imp_mean": 151.8181818181818,
+      "imp_std": 36.38885489171896
+    },
+    {
+      "feature": "dist_low20_4h",
+      "top5_in": 5,
+      "imp_mean": 156.27272727272728,
+      "imp_std": 21.784443611693973
+    },
+    {
+      "feature": "btc_vol_ratio_4h",
+      "top5_in": 1,
+      "imp_mean": 112.18181818181819,
+      "imp_std": 17.933301586298157
+    },
+    {
+      "feature": "dist_high20_4h",
+      "top5_in": 0,
+      "imp_mean": 124.18181818181819,
+      "imp_std": 11.94546838244667
+    },
+    {
+      "feature": "ret_5_4h",
+      "top5_in": 0,
+      "imp_mean": 89.63636363636364,
+      "imp_std": 14.79110744684563
+    },
+    {
+      "feature": "vol_ratio_4h",
+      "top5_in": 0,
+      "imp_mean": 79.45454545454545,
+      "imp_std": 14.430798102818066
+    },
+    {
+      "feature": "bb_pct_4h",
+      "top5_in": 0,
+      "imp_mean": 99.27272727272727,
+      "imp_std": 16.034570091415887
+    },
+    {
+      "feature": "rsi14_4h",
+      "top5_in": 0,
+      "imp_mean": 107.36363636363636,
+      "imp_std": 17.483876870225984
+    },
+    {
+      "feature": "rsi_slope_4h",
+      "top5_in": 0,
+      "imp_mean": 101.27272727272727,
+      "imp_std": 18.537877239910276
+    },
+    {
+      "feature": "btc_ret_5_4h",
+      "top5_in": 0,
+      "imp_mean": 89.36363636363636,
+      "imp_std": 17.572047675331756
+    },
+    {
+      "feature": "close_above_ema200_1d_eth",
+      "top5_in": 0,
+      "imp_mean": 3.5454545454545454,
+      "imp_std": 3.340213285613425
+    }
+  ]
+}
