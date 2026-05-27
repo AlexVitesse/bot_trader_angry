@@ -343,17 +343,40 @@ class MLStrategyV15:
         if not V2_AVAILABLE:
             return []
         try:
-            # Fetch OHLCV 4h directo (sin features V15) — v2_engine las computa
-            ohlcv = exchange.fetch_ohlcv(pair, '4h', limit=LOOKBACK)
-            if not ohlcv or len(ohlcv) < 100:
-                logger.warning(f'[V2] {pair}: insufficient data')
+            # Fetch OHLCV 4h (250 velas = ~42 dias) y 1d (300 velas = ~10 meses).
+            # El daily es CRITICO porque v2_engine necesita EMA200 daily para el
+            # filtro de regime — derivar daily de 250 velas 4h da solo 42 dias,
+            # insuficiente para EMA200 confiable. Binance provee daily historico
+            # directamente sin esperar.
+            ohlcv_4h = exchange.fetch_ohlcv(pair, '4h', limit=LOOKBACK)
+            if not ohlcv_4h or len(ohlcv_4h) < 100:
+                logger.warning(f'[V2] {pair}: insufficient 4h data')
                 return []
-            df_4h = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high',
-                                                 'low', 'close', 'volume'])
+            df_4h = pd.DataFrame(ohlcv_4h, columns=['timestamp', 'open', 'high',
+                                                    'low', 'close', 'volume'])
             df_4h['timestamp'] = pd.to_datetime(df_4h['timestamp'], unit='ms', utc=True)
             df_4h = df_4h.set_index('timestamp').sort_index()
+
+            # Fetch daily 300 velas (~10 meses) — suficiente para EMA200 daily
+            df_1d = None
+            try:
+                ohlcv_1d = exchange.fetch_ohlcv(pair, '1d', limit=300)
+                if ohlcv_1d and len(ohlcv_1d) >= 200:
+                    df_1d = pd.DataFrame(ohlcv_1d, columns=['timestamp', 'open',
+                                                            'high', 'low',
+                                                            'close', 'volume'])
+                    df_1d['timestamp'] = pd.to_datetime(df_1d['timestamp'],
+                                                        unit='ms', utc=True)
+                    df_1d = df_1d.set_index('timestamp').sort_index()
+                else:
+                    logger.warning(f'[V2] {pair}: daily data insufficient '
+                                   f'({len(ohlcv_1d) if ohlcv_1d else 0} bars), '
+                                   f'fallback a derivacion desde 4h')
+            except Exception as e:
+                logger.warning(f'[V2] {pair}: fetch daily fallo ({e}), '
+                               f'fallback a derivacion desde 4h')
             # Llamar al engine V2: devuelve None o dict con side, trail_dist, etc.
-            sig = _v2_engine.get_live_signal(df_4h, df_1d=None, df_funding=None)
+            sig = _v2_engine.get_live_signal(df_4h, df_1d=df_1d, df_funding=None)
             if sig is None:
                 logger.info(f'[V2] {pair}: no signal')
                 return []
