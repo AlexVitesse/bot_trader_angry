@@ -46,3 +46,4 @@ models/*.pkl
 
 # CatBoost training artifacts
 catboost_info/
+data/yield_state.json

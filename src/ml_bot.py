@@ -71,6 +71,20 @@ class MLBot:
         self.portfolio = PortfolioManager(self.exchange, ML_DB_FILE)
         self.shadow_enabled = ML_SHADOW_ENABLED and ML_V9_ENABLED
         self.shadow_portfolio = ShadowPortfolioManager(strategy='v9_shadow') if self.shadow_enabled else None
+        # Yield manager (Mercado-Pago style yield para capital ocioso)
+        self.yield_mgr = None
+        try:
+            from config.settings import YIELD_MANAGER_ENABLED, YIELD_CONFIG
+            if YIELD_MANAGER_ENABLED:
+                from src.yield_manager import YieldManager
+                self.yield_mgr = YieldManager(
+                    exchange_futures=self.exchange,
+                    config=YIELD_CONFIG,
+                    testnet=(TRADING_MODE == 'testnet'),
+                )
+                logger.info("[BOT] Yield manager activado")
+        except Exception as e:
+            logger.warning(f"[BOT] Yield manager no inicializado: {e}")
         self.running = False
         self.last_4h_candle = None     # Timestamp de ultima vela procesada
         self.last_regime_date = None   # Fecha de ultimo regime update
@@ -288,6 +302,7 @@ class MLBot:
         self.tg_poller = TelegramPoller(callbacks={
             '/help': self._cmd_help,
             '/status': self._cmd_status,
+            '/yield': self._cmd_yield,
             '/resume': self._cmd_resume,
             '/log': self._cmd_log,
             '/backup': self._cmd_backup,
@@ -329,6 +344,21 @@ class MLBot:
             f"  /install - poetry install\n"
             f"  /retrain - Reentrenar modelos {BOT_VERSION}"
         )
+
+    def _cmd_yield(self):
+        """Responde al comando /yield - estado del yield manager."""
+        if self.yield_mgr is None:
+            send_alert("Yield manager no esta activo.")
+            return
+        try:
+            msg = self.yield_mgr.telegram_summary()
+            # Convertir markdown a HTML para Telegram parse_mode HTML default
+            msg = (msg.replace('*', '<b>', 1).replace('*', '</b>', 1)
+                       .replace('`', '<code>').replace('`', '</code>'))
+            # Backticks: simple replace nested fix
+            send_alert(self.yield_mgr.telegram_summary())
+        except Exception as e:
+            send_alert(f"Error /yield: {e}")
 
     def _cmd_status(self):
         """Responde al comando /status de Telegram."""
@@ -1016,6 +1046,13 @@ class MLBot:
         """Logging periodico, heartbeat y resumen diario."""
         now = time.time()
 
+        # Yield manager rebalance (interno ya hace check de intervalo)
+        if self.yield_mgr is not None:
+            try:
+                self.yield_mgr.check_and_rebalance()
+            except Exception as e:
+                logger.error(f"[YIELD] rebalance error: {e}")
+
         # Heartbeat cada 2 horas por Telegram
         if now - self.last_heartbeat >= 7200:
             self.last_heartbeat = now
@@ -1029,12 +1066,21 @@ class MLBot:
             if self.shadow_enabled:
                 ss = self.shadow_portfolio.get_summary()
                 shadow_info = f" | Shadow V9: {ss['n_open']}pos ${ss['total_pnl']:+.2f}"
+            # Yield info
+            yield_info = ""
+            if self.yield_mgr is not None:
+                try:
+                    ys = self.yield_mgr.get_status()
+                    yield_info = (f" | Yield: ${ys['earn_balance']:.2f}@"
+                                  f"{ys['mode'][0]} int=${ys['accumulated_interest']:.4f}")
+                except Exception:
+                    pass
             logger.info(
                 f"[STATUS] Balance=${status['balance']:.2f} | "
                 f"DD={status['dd']:.1%} | "
                 f"Pos={status['positions']}/{len(ML_V15_PAIRS)} | "
                 f"DailyPnL=${status['daily_pnl']:+.2f} | "
-                f"Regime={self.strategy.regime}{shadow_info}"
+                f"Regime={self.strategy.regime}{shadow_info}{yield_info}"
             )
             for p in status['position_details']:
                 logger.info(f"  {p['pair']} {p['side'].upper()} "

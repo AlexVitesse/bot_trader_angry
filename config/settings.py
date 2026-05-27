@@ -420,6 +420,30 @@ ML_V15_SIZING = {
     'OP/USDT':   0.4,   # Tier 2, low conviction (data limitada)
 }
 
+# ============================================================================
+# YIELD MANAGER — estilo Mercado Pago (capital ocioso genera yield)
+# ============================================================================
+# V2 es selectivo (~95% del capital ocioso). Mientras espera, el capital se
+# va a Binance Simple Earn Flexible USDT (~2-5% APY). Cuando V2 fira, el
+# rebalanceo automatico devuelve capital al futures wallet.
+#
+# Testnet: simula yield virtualmente (testnet no tiene Earn). Mainnet: opera
+# con la API real de Binance.
+YIELD_MANAGER_ENABLED = True
+YIELD_CONFIG = {
+    'enabled': YIELD_MANAGER_ENABLED,
+    'simulate_mode': None,            # None = auto-detect (True si testnet)
+    'buffer_target_pct': 0.20,        # 20% en futures wallet (suficiente para ~3 trades simultaneos)
+    'buffer_max_pct': 0.30,           # >30% en futures -> sweep excess a Earn
+    'buffer_min_pct': 0.15,           # <15% en futures -> redeem de Earn
+    'rebalance_interval_s': 600,      # rebalance cada 10 min
+    'simulate_apy': 0.03,             # 3% APY USDT (Binance Earn flexible tipico)
+    'min_sweep_amount': 50.0,         # no sweep si <$50 (overhead)
+    'state_file': 'data/yield_state.json',
+    'earn_asset': 'USDT',
+    'earn_product_id': 'USDT001',     # Binance Earn flexible USDT product id
+}
+
 ML_V14_EXPERTS = {
     # === ORIGINALES (6) ===
     'BTC': {'symbol': 'BTC/USDT', 'type': 'btc_v14', 'tp': 0.03, 'sl': 0.015},
