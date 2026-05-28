@@ -736,17 +736,19 @@ class MLBot:
                                    ('changed significantly' in err_text or
                                     'lock file' in err_text.lower()))
                     if lock_desync:
+                        # Poetry 2.x: `poetry lock` (no --no-update, ya es default)
+                        # Poetry 1.x: `poetry lock --no-update`
                         send_alert("⚠️ Lock desincronizado. Ejecutando "
-                                   "<code>poetry lock --no-update</code> y reintentando...")
+                                   "<code>poetry lock</code> y reintentando...")
                         lock_result = subprocess.run(
-                            ['poetry', 'lock', '--no-update'],
+                            ['poetry', 'lock'],
                             capture_output=True, text=True,
                             timeout=180, cwd=project_root,
                         )
                         if lock_result.returncode != 0:
-                            # Algunas versiones de poetry no aceptan --no-update
+                            # Fallback Poetry 1.x con --no-update
                             lock_result = subprocess.run(
-                                ['poetry', 'lock'],
+                                ['poetry', 'lock', '--no-update'],
                                 capture_output=True, text=True,
                                 timeout=180, cwd=project_root,
                             )
