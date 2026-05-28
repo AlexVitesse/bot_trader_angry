@@ -303,6 +303,9 @@ class MLBot:
             '/help': self._cmd_help,
             '/status': self._cmd_status,
             '/yield': self._cmd_yield,
+            '/yield_reset': self._cmd_yield_reset,
+            '/yield_off': self._cmd_yield_off,
+            '/yield_on': self._cmd_yield_on,
             '/resume': self._cmd_resume,
             '/log': self._cmd_log,
             '/backup': self._cmd_backup,
@@ -310,6 +313,7 @@ class MLBot:
             '/pull': self._cmd_pull,
             '/install': self._cmd_install,
             '/restart': self._cmd_restart,
+            '/restart_clean': self._cmd_restart_clean,
             '/retrain': self._cmd_retrain,
             '/export_v14': self._cmd_retrain,  # Alias legacy
             '/clearlog': self._cmd_clearlog,
@@ -327,12 +331,19 @@ class MLBot:
             f"━━━━━━━━━━━━━━━\n"
             f"<b>Monitoreo:</b>\n"
             f"  /status - Estado del bot\n"
+            f"  /yield - Estado del yield manager\n"
             f"  /log - Descargar archivo de log\n"
             f"  /backup - Descargar backup de BD\n"
             f"\n"
             f"<b>Control:</b>\n"
             f"  /resume - Reanudar si esta pausado\n"
             f"  /restart - Reiniciar el bot\n"
+            f"  /restart_clean - Reset yield + restart\n"
+            f"\n"
+            f"<b>Yield Manager:</b>\n"
+            f"  /yield_reset - Reset state (backup .bak)\n"
+            f"  /yield_off - Pausar yield manager\n"
+            f"  /yield_on - Reactivar yield manager\n"
             f"\n"
             f"<b>Limpieza:</b>\n"
             f"  /clearlog - Borrar archivo de log\n"
@@ -351,14 +362,75 @@ class MLBot:
             send_alert("Yield manager no esta activo.")
             return
         try:
-            msg = self.yield_mgr.telegram_summary()
-            # Convertir markdown a HTML para Telegram parse_mode HTML default
-            msg = (msg.replace('*', '<b>', 1).replace('*', '</b>', 1)
-                       .replace('`', '<code>').replace('`', '</code>'))
-            # Backticks: simple replace nested fix
             send_alert(self.yield_mgr.telegram_summary())
         except Exception as e:
             send_alert(f"Error /yield: {e}")
+
+    def _cmd_yield_reset(self):
+        """Responde a /yield_reset - resetea state del yield manager.
+
+        Pone earn_balance y accumulated_interest a 0, preserva started_at.
+        Hace backup del state previo en yield_state.json.bak.
+        Util tras bugs o para empezar tracking limpio.
+        """
+        if self.yield_mgr is None:
+            send_alert("Yield manager no esta activo.")
+            return
+        try:
+            old_state = {
+                'earn_balance': self.yield_mgr.state.earn_balance,
+                'interest': self.yield_mgr.state.accumulated_interest,
+                'sweeps': self.yield_mgr.state.n_sweeps,
+                'redeems': self.yield_mgr.state.n_redeems,
+            }
+            # Backup
+            from pathlib import Path
+            import shutil
+            state_file = Path(self.yield_mgr.cfg['state_file'])
+            if state_file.exists():
+                backup = state_file.with_suffix('.json.bak')
+                shutil.copy(state_file, backup)
+            # Reset preservando started_at
+            from src.yield_manager import YieldState
+            from datetime import datetime, timezone
+            started_at = self.yield_mgr.state.started_at or datetime.now(timezone.utc).isoformat()
+            self.yield_mgr.state = YieldState(started_at=started_at)
+            self.yield_mgr.state.save(self.yield_mgr.cfg['state_file'])
+            send_alert(
+                f"🔄 <b>YIELD STATE RESET</b>\n"
+                f"━━━━━━━━━━━━━━━\n"
+                f"Previo:\n"
+                f"  Pool: ${old_state['earn_balance']:.2f}\n"
+                f"  Interes: ${old_state['interest']:.4f}\n"
+                f"  Sweeps/Redeems: {old_state['sweeps']}/{old_state['redeems']}\n"
+                f"\n"
+                f"Backup guardado en yield_state.json.bak\n"
+                f"Yield manager arrancara limpio en el proximo rebalance."
+            )
+            logger.info(f"[BOT] /yield_reset ejecutado | "
+                        f"previo: pool=${old_state['earn_balance']:.2f}")
+        except Exception as e:
+            send_alert(f"❌ Error /yield_reset: {e}")
+            logger.error(f"[BOT] /yield_reset error: {e}")
+
+    def _cmd_yield_off(self):
+        """Responde a /yield_off - pausa el yield manager (no toca state)."""
+        if self.yield_mgr is None:
+            send_alert("Yield manager no esta activo.")
+            return
+        self.yield_mgr.cfg['enabled'] = False
+        send_alert("⏸ Yield manager PAUSADO. State preservado. "
+                   "Usa /yield_on para reactivar.")
+        logger.info("[BOT] /yield_off")
+
+    def _cmd_yield_on(self):
+        """Responde a /yield_on - reactiva el yield manager."""
+        if self.yield_mgr is None:
+            send_alert("Yield manager no esta activo (no se inicializo al boot).")
+            return
+        self.yield_mgr.cfg['enabled'] = True
+        send_alert("▶️ Yield manager ACTIVADO. Reanudando rebalanceos.")
+        logger.info("[BOT] /yield_on")
 
     def _cmd_status(self):
         """Responde al comando /status de Telegram."""
@@ -570,6 +642,45 @@ class MLBot:
             f"🔄 Reiniciara en segundos..."
         )
         logger.info("[BOT] Restart solicitado via /restart - exit code 43")
+        self._exit_code = 43
+        self.running = False
+
+    def _cmd_restart_clean(self):
+        """Responde a /restart_clean - reset yield state + restart.
+
+        Combo util tras bugs del yield manager o para empezar tracking limpio
+        sin perder posiciones activas. Las posiciones siguen abiertas (SL en
+        exchange) hasta que el bot reinicie y las recupere.
+        """
+        n_pos = len(self.portfolio.positions)
+        yield_msg = "Yield manager no activo"
+        if self.yield_mgr is not None:
+            try:
+                old_pool = self.yield_mgr.state.earn_balance
+                old_int = self.yield_mgr.state.accumulated_interest
+                # Backup + reset
+                from pathlib import Path
+                import shutil
+                state_file = Path(self.yield_mgr.cfg['state_file'])
+                if state_file.exists():
+                    shutil.copy(state_file, state_file.with_suffix('.json.bak'))
+                from src.yield_manager import YieldState
+                from datetime import datetime, timezone
+                started_at = self.yield_mgr.state.started_at or datetime.now(timezone.utc).isoformat()
+                self.yield_mgr.state = YieldState(started_at=started_at)
+                self.yield_mgr.state.save(self.yield_mgr.cfg['state_file'])
+                yield_msg = (f"Yield reset: ${old_pool:.2f} pool / "
+                             f"${old_int:.4f} interes -> backup .bak")
+            except Exception as e:
+                yield_msg = f"Yield reset fallo: {e}"
+        send_alert(
+            f"🔄 <b>RESTART CLEAN</b>\n"
+            f"━━━━━━━━━━━━━━━\n"
+            f"📈 Posiciones: {n_pos} (SL en exchange activos)\n"
+            f"💰 {yield_msg}\n"
+            f"🔄 Reiniciando..."
+        )
+        logger.info(f"[BOT] /restart_clean | {yield_msg}")
         self._exit_code = 43
         self.running = False
 
