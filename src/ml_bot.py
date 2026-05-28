@@ -648,39 +648,53 @@ class MLBot:
     def _cmd_restart_clean(self):
         """Responde a /restart_clean - reset yield state + restart.
 
-        Combo util tras bugs del yield manager o para empezar tracking limpio
-        sin perder posiciones activas. Las posiciones siguen abiertas (SL en
-        exchange) hasta que el bot reinicie y las recupere.
+        IMPORTANTE: el restart se ejecuta SIEMPRE, incluso si el reset del
+        yield falla. Las posiciones de trading siguen abiertas con SL en
+        exchange durante el restart.
         """
-        n_pos = len(self.portfolio.positions)
+        logger.info("[BOT] /restart_clean iniciado")
+        n_pos = 0
         yield_msg = "Yield manager no activo"
+        # 1) Intentar reset del yield (si falla, seguimos al restart)
+        try:
+            n_pos = len(self.portfolio.positions)
+        except Exception as e:
+            logger.warning(f"[BOT] /restart_clean: error contando pos: {e}")
         if self.yield_mgr is not None:
             try:
                 old_pool = self.yield_mgr.state.earn_balance
                 old_int = self.yield_mgr.state.accumulated_interest
-                # Backup + reset
-                from pathlib import Path
-                import shutil
-                state_file = Path(self.yield_mgr.cfg['state_file'])
+                from pathlib import Path as _Path
+                import shutil as _shutil
+                state_file = _Path(self.yield_mgr.cfg['state_file'])
                 if state_file.exists():
-                    shutil.copy(state_file, state_file.with_suffix('.json.bak'))
+                    _shutil.copy(state_file, state_file.with_suffix('.json.bak'))
                 from src.yield_manager import YieldState
-                from datetime import datetime, timezone
-                started_at = self.yield_mgr.state.started_at or datetime.now(timezone.utc).isoformat()
+                from datetime import datetime as _dt, timezone as _tz
+                started_at = (self.yield_mgr.state.started_at or
+                              _dt.now(_tz.utc).isoformat())
                 self.yield_mgr.state = YieldState(started_at=started_at)
                 self.yield_mgr.state.save(self.yield_mgr.cfg['state_file'])
                 yield_msg = (f"Yield reset: ${old_pool:.2f} pool / "
                              f"${old_int:.4f} interes -> backup .bak")
+                logger.info(f"[BOT] /restart_clean yield reset OK: {yield_msg}")
             except Exception as e:
                 yield_msg = f"Yield reset fallo: {e}"
-        send_alert(
-            f"🔄 <b>RESTART CLEAN</b>\n"
-            f"━━━━━━━━━━━━━━━\n"
-            f"📈 Posiciones: {n_pos} (SL en exchange activos)\n"
-            f"💰 {yield_msg}\n"
-            f"🔄 Reiniciando..."
-        )
-        logger.info(f"[BOT] /restart_clean | {yield_msg}")
+                logger.error(f"[BOT] /restart_clean yield reset error: {e}",
+                             exc_info=True)
+        # 2) Intentar enviar alerta (si falla, seguimos al restart)
+        try:
+            send_alert(
+                f"🔄 <b>RESTART CLEAN</b>\n"
+                f"━━━━━━━━━━━━━━━\n"
+                f"📈 Posiciones: {n_pos} (SL en exchange activos)\n"
+                f"💰 {yield_msg}\n"
+                f"🔄 Reiniciando..."
+            )
+        except Exception as e:
+            logger.warning(f"[BOT] /restart_clean send_alert fallo: {e}")
+        # 3) RESTART SIEMPRE (incluso si pasos anteriores fallaron)
+        logger.info(f"[BOT] /restart_clean -> exit_code=43, running=False")
         self._exit_code = 43
         self.running = False
 

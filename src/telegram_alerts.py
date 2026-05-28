@@ -315,18 +315,38 @@ class TelegramPoller:
                         msg = update.get("message", {})
                         text = (msg.get("text", "") or "").strip()
                         parts = text.split(None, 1) if text else []
-                        cmd = parts[0] if parts else ""
+                        cmd_raw = parts[0] if parts else ""
                         arg = parts[1] if len(parts) > 1 else ""
-                        if cmd in self.callbacks:
+                        # Normalizar comando:
+                        #  - quitar @botname si Telegram lo agrega (en grupos)
+                        #  - lowercase para tolerancia
+                        cmd = cmd_raw.split('@', 1)[0].lower()
+                        if cmd_raw:
+                            logger.info(f"[TG] cmd recibido: {cmd_raw!r} -> normalizado: {cmd!r}")
+                        # Buscar callback por matching case-insensitive
+                        cb = None
+                        for k, v in self.callbacks.items():
+                            if k.lower() == cmd:
+                                cb = v
+                                break
+                        if cb is not None:
                             try:
                                 import inspect
-                                cb = self.callbacks[cmd]
                                 if arg and len(inspect.signature(cb).parameters) > 0:
                                     cb(arg)
                                 else:
                                     cb()
+                                logger.info(f"[TG] cmd {cmd} ejecutado OK")
                             except Exception as e:
-                                logger.warning(f"[TG] Error ejecutando {cmd}: {e}")
+                                logger.error(f"[TG] Error ejecutando {cmd}: {e}",
+                                             exc_info=True)
+                                # Intentar notificar al usuario del error
+                                try:
+                                    send_alert(f"❌ Error ejecutando {cmd}: {e}")
+                                except Exception:
+                                    pass
+                        elif cmd_raw.startswith('/'):
+                            logger.warning(f"[TG] comando desconocido: {cmd_raw}")
             except Exception as e:
                 logger.warning(f"[TG] Error en polling: {e}")
                 _time.sleep(5)
