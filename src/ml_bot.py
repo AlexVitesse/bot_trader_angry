@@ -718,12 +718,46 @@ class MLBot:
 
                 send_alert(f"✅ Pull OK\n<code>{pull_out}</code>\n\n📦 Instalando deps...")
 
-                # 2. Poetry install
-                install_result = subprocess.run(
-                    ['poetry', 'install', '--no-interaction'], capture_output=True, text=True,
-                    timeout=300, cwd=project_root,
-                )
+                # 2. Poetry install (con auto-recovery si lock esta desync)
+                def _run_install():
+                    return subprocess.run(
+                        ['poetry', 'install', '--no-interaction'],
+                        capture_output=True, text=True,
+                        timeout=300, cwd=project_root,
+                    )
+
+                install_result = _run_install()
                 install_ok = install_result.returncode == 0
+
+                # Auto-fix: si fallo por lock desincronizado, regenerar lock
+                if not install_ok:
+                    err_text = (install_result.stderr or '') + (install_result.stdout or '')
+                    lock_desync = ('poetry.lock' in err_text and
+                                   ('changed significantly' in err_text or
+                                    'lock file' in err_text.lower()))
+                    if lock_desync:
+                        send_alert("⚠️ Lock desincronizado. Ejecutando "
+                                   "<code>poetry lock --no-update</code> y reintentando...")
+                        lock_result = subprocess.run(
+                            ['poetry', 'lock', '--no-update'],
+                            capture_output=True, text=True,
+                            timeout=180, cwd=project_root,
+                        )
+                        if lock_result.returncode != 0:
+                            # Algunas versiones de poetry no aceptan --no-update
+                            lock_result = subprocess.run(
+                                ['poetry', 'lock'],
+                                capture_output=True, text=True,
+                                timeout=180, cwd=project_root,
+                            )
+                        if lock_result.returncode == 0:
+                            install_result = _run_install()
+                            install_ok = install_result.returncode == 0
+                        else:
+                            lock_err = (lock_result.stderr.strip() or
+                                        lock_result.stdout.strip())[:200]
+                            send_alert(f"❌ poetry lock fallo:\n<code>{lock_err}</code>")
+                            return
 
                 if not install_ok:
                     install_err = (install_result.stderr.strip() or install_result.stdout.strip())[:300]
