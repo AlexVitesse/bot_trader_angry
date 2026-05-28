@@ -117,8 +117,16 @@ class YieldManager:
 
         try:
             self._accrue_interest(now)
-            futures_balance = self._get_futures_balance()
-            total_capital = futures_balance + self.state.earn_balance
+            real_futures = self._get_futures_balance()
+            # En SIMULATE no movemos capital real -> el "futures virtual" es el
+            # balance real menos lo que VIRTUALMENTE ya esta en la pool.
+            # En LIVE el real_futures ya refleja los sweeps reales.
+            if self.simulate:
+                futures_balance = max(0, real_futures - self.state.earn_balance)
+                total_capital = real_futures  # el real es la unica fuente
+            else:
+                futures_balance = real_futures
+                total_capital = real_futures + self.state.earn_balance
 
             if total_capital < 10:
                 logger.warning(f"[YIELD] capital total ${total_capital:.2f} "
@@ -151,10 +159,16 @@ class YieldManager:
     def get_status(self) -> dict:
         """Estado actual para logs / Telegram /yield."""
         try:
-            futures = self._get_futures_balance()
+            real_futures = self._get_futures_balance()
         except Exception:
-            futures = 0.0
-        total = futures + self.state.earn_balance
+            real_futures = 0.0
+        # En SIMULATE, el "futures virtual" es real menos lo virtualmente movido.
+        if self.simulate:
+            futures = max(0, real_futures - self.state.earn_balance)
+            total = real_futures
+        else:
+            futures = real_futures
+            total = real_futures + self.state.earn_balance
         days_running = 0.0
         if self.state.started_at:
             try:
