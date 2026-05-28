@@ -202,20 +202,21 @@ class YieldManager:
         }
 
     def telegram_summary(self) -> str:
-        """Resumen formato Telegram /yield."""
+        """Resumen formato Telegram /yield (HTML)."""
         s = self.get_status()
         if not s.get('enabled'):
-            return "Yield manager: DISABLED"
+            return "Yield manager: <b>DISABLED</b>"
         apy = f"{s['apy_simulated']:.1%}" if s.get('apy_simulated') else 'live'
         return (
-            f"💰 *Yield Manager* ({s['mode']})\n"
-            f"Futures: `${s['futures_balance']:.2f}`\n"
-            f"Earn pool: `${s['earn_balance']:.2f}` (APY {apy})\n"
-            f"Interes acum: `${s['accumulated_interest']:.4f}`\n"
-            f"Total capital: `${s['total_capital']:.2f}`\n"
-            f"Sweeps/Redeems: {s['n_sweeps']}/{s['n_redeems']}\n"
-            f"Dias: {s['days_running']:.1f}\n"
-            f"APY efectiva anualizada: {s['effective_annualized_pct']:.2f}%"
+            f"💰 <b>Yield Manager</b> ({s['mode']})\n"
+            f"━━━━━━━━━━━━━━━\n"
+            f"💵 Futures: <code>${s['futures_balance']:.2f}</code>\n"
+            f"🌱 Earn pool: <code>${s['earn_balance']:.2f}</code> (APY {apy})\n"
+            f"💸 Interes acum: <code>${s['accumulated_interest']:.4f}</code>\n"
+            f"📊 Total capital: <code>${s['total_capital']:.2f}</code>\n"
+            f"🔄 Sweeps/Redeems: {s['n_sweeps']}/{s['n_redeems']}\n"
+            f"📅 Dias: {s['days_running']:.1f}\n"
+            f"📈 APY efectiva anualizada: {s['effective_annualized_pct']:.2f}%"
         )
 
     # ===================================================================
