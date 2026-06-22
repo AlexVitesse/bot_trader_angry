@@ -47,7 +47,11 @@ logger = logging.getLogger(__name__)
 
 PROJECT_ROOT = Path(__file__).parent.parent
 FAPI_BASE = 'https://fapi.binance.com'
-LOOKBACK = 250  # candles to fetch
+LOOKBACK = 250  # candles to fetch (V14-compat path)
+# V2 engine necesita >= min_warmup_bars(220) + 2 velas DESPUES del dropna de
+# build_features (que recorta ~55 filas por la Donchian-55). Con 250 quedaban
+# 195 < 222 y get_live_signal devolvia None SIEMPRE. 420 -> ~365 utiles.
+V2_LOOKBACK = 420
 
 
 @dataclass
@@ -348,7 +352,7 @@ class MLStrategyV15:
             # filtro de regime — derivar daily de 250 velas 4h da solo 42 dias,
             # insuficiente para EMA200 confiable. Binance provee daily historico
             # directamente sin esperar.
-            ohlcv_4h = exchange.fetch_ohlcv(pair, '4h', limit=LOOKBACK)
+            ohlcv_4h = exchange.fetch_ohlcv(pair, '4h', limit=V2_LOOKBACK)
             if not ohlcv_4h or len(ohlcv_4h) < 100:
                 logger.warning(f'[V2] {pair}: insufficient 4h data')
                 return []

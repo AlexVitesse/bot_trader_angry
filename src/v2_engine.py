@@ -193,9 +193,18 @@ def build_features(df_4h: pd.DataFrame, df_1d: pd.DataFrame | None = None,
 # =============================================================================
 # SIGNAL DETECTION
 # =============================================================================
-def _signal_a(df: pd.DataFrame, idx: int, params: dict) -> bool:
-    """A's LONG signal en vela cerrada idx."""
-    if idx < params['min_warmup_bars'] or idx >= len(df) - 2:
+def _signal_a(df: pd.DataFrame, idx: int, params: dict,
+              live: bool = False) -> bool:
+    """A's LONG signal en vela cerrada idx.
+
+    `live=True`: omite el guard `idx >= len-2`, que existe SOLO para que el
+    backtest tenga >=2 velas futuras para simulate_trade. En vivo evaluamos la
+    ultima vela cerrada (idx=len-2) y abrimos una posicion real, sin simular
+    hacia adelante, asi que ese guard no aplica.
+    """
+    if idx < params['min_warmup_bars']:
+        return False
+    if not live and idx >= len(df) - 2:
         return False
     row = df.iloc[idx]
     if row.get('bull_1d', 0) < 1:
@@ -213,9 +222,12 @@ def _signal_a(df: pd.DataFrame, idx: int, params: dict) -> bool:
     return True
 
 
-def _signal_f(df: pd.DataFrame, idx: int, params: dict) -> str | None:
-    """F's LONG/SHORT signal en vela cerrada idx."""
-    if idx < params['min_warmup_bars'] or idx >= len(df) - 2:
+def _signal_f(df: pd.DataFrame, idx: int, params: dict,
+              live: bool = False) -> str | None:
+    """F's LONG/SHORT signal en vela cerrada idx. Ver _signal_a sobre `live`."""
+    if idx < params['min_warmup_bars']:
+        return None
+    if not live and idx >= len(df) - 2:
         return None
     if df['compression_sustained'].iloc[idx - 1] != 1:
         return None
@@ -250,14 +262,15 @@ def _signal_f(df: pd.DataFrame, idx: int, params: dict) -> str | None:
 
 
 def detect_signal(df: pd.DataFrame, idx: int,
-                  params: dict = PARAMS_V2) -> str | None:
+                  params: dict = PARAMS_V2, live: bool = False) -> str | None:
     """
     Combina A y F con prioridad A > F.
     Devuelve: 'A_LONG' | 'F_LONG' | 'F_SHORT' | None
+    `live=True` evalua la ultima vela cerrada (ver _signal_a).
     """
-    if _signal_a(df, idx, params):
+    if _signal_a(df, idx, params, live=live):
         return 'A_LONG'
-    sigF = _signal_f(df, idx, params)
+    sigF = _signal_f(df, idx, params, live=live)
     if sigF == 'LONG':
         return 'F_LONG'
     if sigF == 'SHORT':
@@ -415,7 +428,7 @@ def get_live_signal(df_4h, df_1d=None, df_funding=None,
         return None
     # idx de la última vela cerrada
     idx = len(df) - 2  # -1 sería la vela en curso; -2 es la cerrada
-    sig = detect_signal(df, idx, params)
+    sig = detect_signal(df, idx, params, live=True)
     if sig is None:
         return None
     row = df.iloc[idx]
