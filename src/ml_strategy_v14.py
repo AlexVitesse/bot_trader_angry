@@ -10,6 +10,7 @@ V14 combina multiples expertos:
 Validado con datos sinteticos y walk-forward validation.
 """
 
+import json
 import logging
 import numpy as np
 import pandas as pd
@@ -48,13 +49,13 @@ class Strategy(Enum):
     BREAKOUT_SHORT = "BREAKOUT_SHORT"
 
 
-# BTC: TP/SL fijos (validado: 37% WR, +3490% PnL)
+# BTC: TP/SL por setup (validado WF 7/12 folds, WR 38%, PF 1.85)
 BTC_STRATEGY_PARAMS = {
-    Strategy.TREND_FOLLOW_LONG: {'tp': 0.03, 'sl': 0.015},
+    Strategy.TREND_FOLLOW_LONG: {'tp': 0.04, 'sl': 0.015},    # PULLBACK_UPTREND
     Strategy.TREND_FOLLOW_SHORT: {'tp': 0.03, 'sl': 0.015},
-    Strategy.MEAN_REVERSION_LONG: {'tp': 0.03, 'sl': 0.015},
+    Strategy.MEAN_REVERSION_LONG: {'tp': 0.025, 'sl': 0.012}, # SUPPORT_BOUNCE (dominante)
     Strategy.MEAN_REVERSION_SHORT: {'tp': 0.03, 'sl': 0.015},
-    Strategy.BREAKOUT_LONG: {'tp': 0.03, 'sl': 0.015},
+    Strategy.BREAKOUT_LONG: {'tp': 0.05, 'sl': 0.02},          # BREAKOUT_UP
     Strategy.BREAKOUT_SHORT: {'tp': 0.03, 'sl': 0.015},
 }
 
@@ -68,6 +69,7 @@ class MLStrategyV14:
         self.features = ML_V14_FEATURES
         self.ensemble_models = {}  # {asset: {rf, gb, lr, scaler}}
         self.btc_models = {}       # {direction: {context, momentum, volume}}
+        self.btc_skip_threshold = 0.35  # default, sobreescrito por meta.json
         self.pairs = []
         self.regime = 'RANGE'
         self.regime_updated = None
@@ -123,6 +125,16 @@ class MLStrategyV14:
             logger.info(f"[V14] BTC ensemble cargado: {list(self.btc_models.keys())}")
         else:
             logger.warning("[V14] BTC ensemble NO encontrado - usando solo reglas")
+
+        # Cargar skip_threshold desde meta.json (validado: 0.30)
+        meta_path = btc_model_dir / 'meta.json'
+        if meta_path.exists():
+            with open(meta_path) as f:
+                meta = json.load(f)
+            self.btc_skip_threshold = meta.get('skip_threshold', 0.35)
+            logger.info(f"[V14] BTC skip_threshold={self.btc_skip_threshold} (meta.json)")
+        else:
+            logger.warning("[V14] meta.json no encontrado, usando skip_threshold=0.35")
 
         self.pairs = list(self.experts.keys())
         logger.info(f"[V14] {count} ensemble models cargados, {len(self.pairs)} pares activos")
@@ -200,13 +212,11 @@ class MLStrategyV14:
         return feat
 
     def predict_btc_confidence(self, feat: dict, direction: str) -> float:
-        """Calcula confianza ensemble BTC para 'long' o 'short'. Retorna 0.5 si no hay modelos."""
+        """Calcula confianza ensemble BTC. Media simple (validado vs media ponderada)."""
         if direction not in self.btc_models:
             return 0.5
-        weights = {'context': 0.4, 'momentum': 0.35, 'volume': 0.25}
-        weighted_prob = 0.0
-        total_weight = 0.0
-        for mtype, weight in weights.items():
+        probs = []
+        for mtype in ['context', 'momentum', 'volume']:
             mdata = self.btc_models[direction].get(mtype)
             if mdata is None:
                 continue
@@ -216,9 +226,8 @@ class MLStrategyV14:
             if 'scaler' in mdata:
                 X = mdata['scaler'].transform(X)
             prob = model.predict_proba(X)[0, 1]
-            weighted_prob += prob * weight
-            total_weight += weight
-        return weighted_prob / total_weight if total_weight > 0 else 0.5
+            probs.append(prob)
+        return float(np.mean(probs)) if probs else 0.5
 
     def detect_btc_regime(self, row: dict) -> Regime:
         """Detecta regimen BTC."""
@@ -370,7 +379,7 @@ class MLStrategyV14:
         price_change = df['close'].iloc[-1] > df['close'].iloc[-2]
 
         if rsi < 30:
-            signals.append({'setup': 'RSI_OVERSOLD', 'direction': 'SHORT', 'prob': 0.65})
+            signals.append({'setup': 'RSI_OVERSOLD', 'direction': 'LONG', 'prob': 0.65})
         if vol_ratio > 2 and price_change:
             signals.append({'setup': 'VOL_SPIKE_UP', 'direction': 'LONG', 'prob': 0.60})
         if vol_ratio > 2 and not price_change:
@@ -433,10 +442,9 @@ class MLStrategyV14:
 
                         # Ensemble ML: calcular confianza (paso 3 arquitectura)
                         confidence = self.predict_btc_confidence(feat, direction_str)
-                        SKIP_THRESHOLD = 0.35
 
-                        if confidence < SKIP_THRESHOLD:
-                            logger.info(f"[V14] BTC: {setup_name} RECHAZADO por ensemble (conf={confidence:.2%})")
+                        if confidence < self.btc_skip_threshold:
+                            logger.info(f"[V14] BTC: {setup_name} RECHAZADO por ensemble (conf={confidence:.2%} < {self.btc_skip_threshold:.2f})")
                         else:
                             asset_signals.append({
                                 'pair': symbol,

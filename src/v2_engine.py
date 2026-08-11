@@ -61,7 +61,13 @@ PARAMS_V2 = {
     'f_funding_z_max_long': 2.0,
     'f_funding_z_min_short': -1.5,
     'f_enable_long': True,
-    'f_enable_short': True,
+    # F_SHORT desactivado 2026-08-10. Sobre la historia completa: 44 trades,
+    # PF 0.88, -1.0% anual, bootstrap p=0.644 — sin edge. Quitarlo mejora PF
+    # (1.53 -> 1.65), retorno (+16.4% -> +17.9%) y DD (22.1% -> 19.6%) a la vez.
+    # Se habia incluido por 3 trades ganadores del OOS Ene-Feb 2026, que es el
+    # sesgo de seleccion que VERDICTO_RONDA2.md seccion 3 prohibio.
+    # Evidencia: experiments/f_short_ablation/README.md
+    'f_enable_short': False,
 
     # === Universales ===
     'commission': COMMISSION,
@@ -193,12 +199,23 @@ def build_features(df_4h: pd.DataFrame, df_1d: pd.DataFrame | None = None,
 # =============================================================================
 # SIGNAL DETECTION
 # =============================================================================
-def _signal_a(df: pd.DataFrame, idx: int, params: dict) -> bool:
-    """A's LONG signal en vela cerrada idx."""
-    if idx < params['min_warmup_bars'] or idx >= len(df) - 2:
+def _signal_a(df: pd.DataFrame, idx: int, params: dict,
+              live: bool = False) -> bool:
+    """A's LONG signal en vela cerrada idx.
+
+    `live=True`: omite el guard `idx >= len-2`, que existe SOLO para que el
+    backtest tenga >=2 velas futuras para simulate_trade. En vivo evaluamos la
+    ultima vela cerrada (idx=len-2) y abrimos una posicion real, sin simular
+    hacia adelante, asi que ese guard no aplica.
+    """
+    if idx < params['min_warmup_bars']:
+        return False
+    if not live and idx >= len(df) - 2:
         return False
     row = df.iloc[idx]
-    if row.get('bull_1d', 0) < 1:
+    # a_require_bull=False solo lo usan los experimentos de frecuencia; el
+    # default True conserva el comportamiento frozen validado.
+    if params.get('a_require_bull', True) and row.get('bull_1d', 0) < 1:
         return False
     dh = row.get('donchian_high', np.nan)
     if pd.isna(dh) or row['close'] <= dh:
@@ -213,9 +230,12 @@ def _signal_a(df: pd.DataFrame, idx: int, params: dict) -> bool:
     return True
 
 
-def _signal_f(df: pd.DataFrame, idx: int, params: dict) -> str | None:
-    """F's LONG/SHORT signal en vela cerrada idx."""
-    if idx < params['min_warmup_bars'] or idx >= len(df) - 2:
+def _signal_f(df: pd.DataFrame, idx: int, params: dict,
+              live: bool = False) -> str | None:
+    """F's LONG/SHORT signal en vela cerrada idx. Ver _signal_a sobre `live`."""
+    if idx < params['min_warmup_bars']:
+        return None
+    if not live and idx >= len(df) - 2:
         return None
     if df['compression_sustained'].iloc[idx - 1] != 1:
         return None
@@ -235,11 +255,12 @@ def _signal_f(df: pd.DataFrame, idx: int, params: dict) -> str | None:
     vr = row.get('vol_ratio', np.nan)
     if pd.isna(vr) or vr < params['f_vol_ratio_min']:
         return None
-    bull = row.get('bull_1d', 0)
-    if side == 'LONG' and bull < 1:
-        return None
-    if side == 'SHORT' and bull >= 1:
-        return None
+    if params.get('f_require_regime', True):   # ver nota en _signal_a
+        bull = row.get('bull_1d', 0)
+        if side == 'LONG' and bull < 1:
+            return None
+        if side == 'SHORT' and bull >= 1:
+            return None
     fz = row.get('funding_z', 0)
     if pd.notna(fz):
         if side == 'LONG' and fz > params['f_funding_z_max_long']:
@@ -250,14 +271,15 @@ def _signal_f(df: pd.DataFrame, idx: int, params: dict) -> str | None:
 
 
 def detect_signal(df: pd.DataFrame, idx: int,
-                  params: dict = PARAMS_V2) -> str | None:
+                  params: dict = PARAMS_V2, live: bool = False) -> str | None:
     """
     Combina A y F con prioridad A > F.
     Devuelve: 'A_LONG' | 'F_LONG' | 'F_SHORT' | None
+    `live=True` evalua la ultima vela cerrada (ver _signal_a).
     """
-    if _signal_a(df, idx, params):
+    if _signal_a(df, idx, params, live=live):
         return 'A_LONG'
-    sigF = _signal_f(df, idx, params)
+    sigF = _signal_f(df, idx, params, live=live)
     if sigF == 'LONG':
         return 'F_LONG'
     if sigF == 'SHORT':
@@ -279,9 +301,12 @@ def _sim_long_trailing(df, entry_bar, entry_price, trail_dist, max_bars,
     for i in range(1, max_bars + 1):
         b = entry_bar + i
         if b >= len(df):
+            # Se acabaron los datos: NO es un TP/SL, es un trade sin resolver.
+            # Etiquetarlo como TP/SL inflaba los conteos de WR con un resultado
+            # que el mercado nunca produjo.
             ep = float(df['close'].iloc[-1])
             pnl = (ep - entry_price) / entry_price - 2 * commission
-            return ('TP' if ep > entry_price else 'SL'), ep, pnl, i
+            return 'NO_RESUELTO', ep, pnl, i
         hi = float(df['high'].iloc[b])
         lo = float(df['low'].iloc[b])
         # 1) exit check con stop PREVIO
@@ -307,9 +332,9 @@ def _sim_short_trailing(df, entry_bar, entry_price, trail_dist, max_bars,
     for i in range(1, max_bars + 1):
         b = entry_bar + i
         if b >= len(df):
-            ep = float(df['close'].iloc[-1])
+            ep = float(df['close'].iloc[-1])   # ver nota en _sim_long_trailing
             pnl = (entry_price - ep) / entry_price - 2 * commission
-            return ('TP' if ep < entry_price else 'SL'), ep, pnl, i
+            return 'NO_RESUELTO', ep, pnl, i
         hi = float(df['high'].iloc[b])
         lo = float(df['low'].iloc[b])
         # 1) exit check
@@ -415,7 +440,7 @@ def get_live_signal(df_4h, df_1d=None, df_funding=None,
         return None
     # idx de la última vela cerrada
     idx = len(df) - 2  # -1 sería la vela en curso; -2 es la cerrada
-    sig = detect_signal(df, idx, params)
+    sig = detect_signal(df, idx, params, live=True)
     if sig is None:
         return None
     row = df.iloc[idx]

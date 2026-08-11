@@ -47,7 +47,11 @@ logger = logging.getLogger(__name__)
 
 PROJECT_ROOT = Path(__file__).parent.parent
 FAPI_BASE = 'https://fapi.binance.com'
-LOOKBACK = 250  # candles to fetch
+LOOKBACK = 250  # candles to fetch (V14-compat path)
+# V2 engine necesita >= min_warmup_bars(220) + 2 velas DESPUES del dropna de
+# build_features (que recorta ~55 filas por la Donchian-55). Con 250 quedaban
+# 195 < 222 y get_live_signal devolvia None SIEMPRE. 420 -> ~365 utiles.
+V2_LOOKBACK = 420
 
 
 @dataclass
@@ -167,8 +171,15 @@ class MLStrategyV15:
     # =================================================================
     # REGIME DETECTION (called daily by bot)
     # =================================================================
-    def update_regime(self, exchange):
-        """Update macro regime for all pairs + funding rates."""
+    def update_regime(self, exchange) -> bool:
+        """Update macro regime for all pairs + funding rates.
+
+        Devuelve False si el regimen de BTC no se pudo refrescar. El caller NO
+        debe marcar el dia como actualizado en ese caso: si lo hace, un fallo
+        de red deja el regimen congelado 24h y el motor decide con datos
+        viejos (paso justo eso durante el apagon de julio).
+        """
+        antes = self._pair_state.get('BTC/USDT', PairState()).regime_updated
         # Always fetch BTC daily (needed for BTC regime + ETH follower)
         btc_state = self._update_pair_regime(exchange, 'BTC/USDT')
 
@@ -180,6 +191,11 @@ class MLStrategyV15:
 
         # Log all regimes
         logger.info(f'[V15] Regimes: {self.get_regimes_str()}')
+        ok = btc_state.regime_updated is not None and btc_state.regime_updated != antes
+        if not ok:
+            logger.error('[V15] Regimen de BTC NO actualizado — se reintentara '
+                         'en la siguiente vela, no se marca el dia como hecho')
+        return ok
 
     def _update_pair_regime(self, exchange, pair: str) -> PairState:
         """Update regime for a single pair."""
@@ -348,7 +364,7 @@ class MLStrategyV15:
             # filtro de regime — derivar daily de 250 velas 4h da solo 42 dias,
             # insuficiente para EMA200 confiable. Binance provee daily historico
             # directamente sin esperar.
-            ohlcv_4h = exchange.fetch_ohlcv(pair, '4h', limit=LOOKBACK)
+            ohlcv_4h = exchange.fetch_ohlcv(pair, '4h', limit=V2_LOOKBACK)
             if not ohlcv_4h or len(ohlcv_4h) < 100:
                 logger.warning(f'[V2] {pair}: insufficient 4h data')
                 return []
@@ -384,10 +400,15 @@ class MLStrategyV15:
             # Convertir trail_dist a tp/sl pct para V14-compat:
             # Como es trailing, usamos sl = trail_dist y tp = trail_dist*2 (heuristic)
             # El portfolio_manager con trail_mode='tight' usa trail_dist directamente.
+            # OJO: el contrato que consume ml_bot._execute_v14_signal es
+            # direction INT (1/-1) + 'price' — igual que _build_signal(). Con
+            # direction='LONG' (str) `direction == 1` era False y un LONG se
+            # habria abierto como SHORT; sin 'price' reventaba con KeyError.
             signal_payload = {
                 'pair': pair,
-                'direction': 'LONG' if sig['side'] == 'LONG' else 'SHORT',
+                'direction': 1 if sig['side'] == 'LONG' else -1,
                 'side': sig['side'],
+                'price': sig['entry_price'],
                 'tp_pct': sig['trail_dist'] * 2.0,
                 'sl_pct': sig['trail_dist'],
                 'setup': f"v2_{sig['sig_type']}",

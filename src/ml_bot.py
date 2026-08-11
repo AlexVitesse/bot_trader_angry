@@ -94,6 +94,7 @@ class MLBot:
         self.recent_errors = []        # Errores desde ultimo heartbeat
         self._pause_notified = False   # Evitar spam de notificacion de pausa
         self._exit_code = 0            # Exit code for wrapper script
+        self.blind_candles = 0         # Velas seguidas sin red (watchdog)
 
     def _init_exchange_public(self) -> ccxt.Exchange:
         """Cliente ccxt sin auth para datos de mercado."""
@@ -886,8 +887,12 @@ class MLBot:
         # Actualizar regime diariamente
         today = datetime.now(timezone.utc).strftime('%Y-%m-%d')
         if today != self.last_regime_date:
-            self.strategy.update_regime(self.exchange_public)
-            self.last_regime_date = today
+            # Solo marcar el dia como hecho si el regimen se refresco de verdad;
+            # si no, se reintenta en la siguiente vela 4h en vez de operar 24h
+            # con un regimen congelado.
+            ok = self.strategy.update_regime(self.exchange_public)
+            if ok is not False:
+                self.last_regime_date = today
 
             # V8.4: Refresh macro data daily (solo para estrategia legacy)
             if not self.v14_mode and hasattr(self.strategy, 'v84_enabled') and self.strategy.v84_enabled:
@@ -897,8 +902,21 @@ class MLBot:
                             f"sizing={self.strategy.get_sizing_multiplier():.2f}x, "
                             f"thresh={self.strategy.get_adaptive_threshold():.2f}")
 
-        # Actualizar balance
-        self.portfolio.refresh_balance()
+        # Actualizar balance. Ademas hace de sonda de red: si falla, el proceso
+        # esta ciego (no puede pedir velas ni operar) y seguir en el loop solo
+        # produce "Sin senales" indistinguible de un mercado quieto — asi se
+        # perdieron ~2 meses de paper trade. Salimos y systemd (Restart=always)
+        # reinicia limpio: sockets y resolucion DNS nuevos.
+        if self.portfolio.refresh_balance():
+            self.blind_candles = 0
+        else:
+            self.blind_candles += 1
+            logger.error(f"[BOT] Sin red: {self.blind_candles} vela(s) 4h seguidas "
+                         f"sin poder consultar el exchange")
+            if self.blind_candles >= 3:   # ~12h ciego
+                logger.critical("[BOT] 3 velas sin red -> saliendo para que "
+                                "systemd reinicie el proceso")
+                sys.exit(1)   # SystemExit no lo captura el `except Exception`
 
         # V14: Flujo simplificado
         if self.v14_mode:
@@ -1015,7 +1033,7 @@ class MLBot:
             regime=regime,
             price=signal['price'],
             atr_pct=0.02,  # Default, V14 usa TP/SL fijos
-            sizing_mult=1.0,
+            sizing_mult=signal.get('sizing_mult', 1.0),  # V2: ML_V15_SIZING por par
             tp_pct_override=signal.get('tp_pct'),
             sl_pct_override=signal.get('sl_pct'),
             trail_mode=signal.get('trail_mode', 'default'),
