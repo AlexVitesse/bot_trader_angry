@@ -171,8 +171,15 @@ class MLStrategyV15:
     # =================================================================
     # REGIME DETECTION (called daily by bot)
     # =================================================================
-    def update_regime(self, exchange):
-        """Update macro regime for all pairs + funding rates."""
+    def update_regime(self, exchange) -> bool:
+        """Update macro regime for all pairs + funding rates.
+
+        Devuelve False si el regimen de BTC no se pudo refrescar. El caller NO
+        debe marcar el dia como actualizado en ese caso: si lo hace, un fallo
+        de red deja el regimen congelado 24h y el motor decide con datos
+        viejos (paso justo eso durante el apagon de julio).
+        """
+        antes = self._pair_state.get('BTC/USDT', PairState()).regime_updated
         # Always fetch BTC daily (needed for BTC regime + ETH follower)
         btc_state = self._update_pair_regime(exchange, 'BTC/USDT')
 
@@ -184,6 +191,11 @@ class MLStrategyV15:
 
         # Log all regimes
         logger.info(f'[V15] Regimes: {self.get_regimes_str()}')
+        ok = btc_state.regime_updated is not None and btc_state.regime_updated != antes
+        if not ok:
+            logger.error('[V15] Regimen de BTC NO actualizado — se reintentara '
+                         'en la siguiente vela, no se marca el dia como hecho')
+        return ok
 
     def _update_pair_regime(self, exchange, pair: str) -> PairState:
         """Update regime for a single pair."""
@@ -388,10 +400,15 @@ class MLStrategyV15:
             # Convertir trail_dist a tp/sl pct para V14-compat:
             # Como es trailing, usamos sl = trail_dist y tp = trail_dist*2 (heuristic)
             # El portfolio_manager con trail_mode='tight' usa trail_dist directamente.
+            # OJO: el contrato que consume ml_bot._execute_v14_signal es
+            # direction INT (1/-1) + 'price' — igual que _build_signal(). Con
+            # direction='LONG' (str) `direction == 1` era False y un LONG se
+            # habria abierto como SHORT; sin 'price' reventaba con KeyError.
             signal_payload = {
                 'pair': pair,
-                'direction': 'LONG' if sig['side'] == 'LONG' else 'SHORT',
+                'direction': 1 if sig['side'] == 'LONG' else -1,
                 'side': sig['side'],
+                'price': sig['entry_price'],
                 'tp_pct': sig['trail_dist'] * 2.0,
                 'sl_pct': sig['trail_dist'],
                 'setup': f"v2_{sig['sig_type']}",

@@ -152,14 +152,36 @@ ML_HORIZON = 5              # Predecir retorno 5 velas adelante (20h)
 ML_SIGNAL_THRESHOLD = 0.5   # V13: mas permisivo (antes 0.7)
 
 # Risk Management
-ML_MAX_CONCURRENT = 3       # Igual que backtest validado
-ML_MAX_DD_PCT = 0.20        # 20% DD -> kill switch
-ML_MAX_DAILY_LOSS_PCT = 0.20  # 20% daily loss -> pausar (backtest max DD ~$20/$100)
-ML_RISK_PER_TRADE = 0.02    # 2% capital at risk
-ML_MAX_NOTIONAL = 300.0     # Cap notional por trade
+ML_MAX_CONCURRENT = 1       # BTC solo: una posicion. El multi-par se rechazo
+                            # (experiments/portfolio_sim/README.md resultado 3)
+# =============================================================================
+# RIESGO — PERFIL AGRESIVO, decision del usuario 2026-08-10
+# =============================================================================
+# Calibrado con el simulador de CARTERA (experiments/portfolio_sim/), que ya
+# modela fills al open siguiente, max_bars del motor, equity compartido y
+# margen finito. Config asumida por la calibracion, y por tanto OBLIGATORIA
+# mas abajo: BTC solo + f_enable_short=False.
+#
+# Expectativa realista (walk-forward, 6 folds de test 2021-2026):
+#   +12.6%/año | 2/6 folds positivos | peor fold -12.5% | DD max por fold 29.3%
+#   Historia completa 2019-2026: +29.0%/año, DD 40.4% (optimista: incluye train)
+#
+# El DD cede por decision explicita: se prioriza retorno sobre drawdown.
+ML_MAX_DD_PCT = 0.45        # por encima del DD historico (40.4%): corta solo si
+                            # es peor que cualquier cosa vista, no en mala racha
+ML_MAX_DAILY_LOSS_PCT = 0.10  # peor trade ~1.05x riesgo = ~4.7%; 10% da margen
+ML_RISK_PER_TRADE = 0.045   # 4.5% -> notional 0.75x-1.8x del equity
+ML_MAX_NOTIONAL = 300.0     # (obsoleto: tope absoluto, se quedo viejo al crecer la cuenta)
+# Backstop contra stops patologicamente estrechos, NO un limite operativo: con
+# risk 4.5% y trail_dist 2.5-6% el notional pide 0.75x-1.8x del equity.
+ML_MAX_NOTIONAL_PCT = 2.0   # Cap notional por trade, en multiplos del balance
 
-# Leverage por regimen
-ML_LEVERAGE = {'BULL': 5, 'BEAR': 4, 'RANGE': 3}
+# Leverage por regimen. OJO a un punto que se confunde facil: con sizing basado
+# en riesgo el notional lo fija ML_RISK_PER_TRADE/SL, NO el leverage. El leverage
+# solo decide cuanto MARGEN hay que bloquear. Subirlo no aumenta la exposicion,
+# libera margen. Con notional hasta 1.8x del equity hace falta >=5x para que el
+# margen (36%) quepa en el buffer del yield manager (40%).
+ML_LEVERAGE = {'BULL': 5, 'BEAR': 5, 'RANGE': 5}
 
 # TP/SL fijos (ganador en backtest - ATR causaba kill switch)
 ML_TP_PCT = 0.03            # 3% TP (default para todos los pares)
@@ -405,19 +427,19 @@ ML_V15_ENABLED = True
 #         DOGE, ETH, OP
 # 17 monedas rechazadas (REJECT 0/3 o WEAK 1/3) — fuera del bot.
 # Motor: V2 = A (Donchian trend LONG) + F (vol-compression breakout bidir)
+# 2026-08-10: reducido a BTC. El walk-forward REAL por par
+# (experiments/portfolio_sim/run_walkforward.py) mostro que la ventaja multi-par
+# venia ENTERA del fold de 2021: excluyendolo, BTC solo (+40.7%) supera a la
+# seleccion multi-par (+34.2%). Con correlacion media 0.69 entre los 5 pares las
+# posiciones concurrentes son una sola apuesta apalancada, no diversificacion.
+# Ademas 4 de los 5 fallaron significancia individual en experiments/v2_all_coins
+# (BNB p=0.315, ETH p=0.472, OP p=0.539, DOGE falla edge-vs-null).
+# Detalle: experiments/portfolio_sim/README.md resultado 3.
 ML_V15_PAIRS = [
-    'BTC/USDT',     # Tier 1
-    'BNB/USDT',     # Tier 1
-    'DOGE/USDT',    # Tier 2 (p=0.001 in-sample, indeterminado OOS)
-    'ETH/USDT',     # Tier 2 (2 trades OOS ambos +, indeterminado)
-    'OP/USDT',      # Tier 2 (OOS perfecto pero in-sample limitado)
+    'BTC/USDT',     # el unico par que paso 3/3 en v2_all_coins
 ]
 ML_V15_SIZING = {
-    'BTC/USDT':  1.0,   # Tier 1, full sizing
-    'BNB/USDT':  0.7,   # Tier 1, sizing conservador
-    'DOGE/USDT': 0.5,   # Tier 2, memecoin vol
-    'ETH/USDT':  0.5,   # Tier 2
-    'OP/USDT':   0.4,   # Tier 2, low conviction (data limitada)
+    'BTC/USDT':  1.0,
 }
 
 # ============================================================================
@@ -433,9 +455,14 @@ YIELD_MANAGER_ENABLED = True
 YIELD_CONFIG = {
     'enabled': YIELD_MANAGER_ENABLED,
     'simulate_mode': None,            # None = auto-detect (True si testnet)
-    'buffer_target_pct': 0.20,        # 20% en futures wallet (suficiente para ~3 trades simultaneos)
-    'buffer_max_pct': 0.30,           # >30% en futures -> sweep excess a Earn
-    'buffer_min_pct': 0.15,           # <15% en futures -> redeem de Earn
+    # Subido 2026-08-10: con risk 4.5% el notional llega a 1.8x del equity, o
+    # sea 36% de margen a 5x. Con el buffer al 20% el trade fallaba por falta de
+    # margen (y open_position NO rescata de Earn: Fase 4.1 sin hacer).
+    # El coste en yield es minimo: mover 20% extra del Earn al wallet cuesta
+    # ~0.6% del capital al ano, y evita perder senales validas.
+    'buffer_target_pct': 0.40,        # 40% en futures wallet (cubre 36% de margen)
+    'buffer_max_pct': 0.50,           # >50% en futures -> sweep excess a Earn
+    'buffer_min_pct': 0.30,           # <30% en futures -> redeem de Earn
     'rebalance_interval_s': 600,      # rebalance cada 10 min
     'simulate_apy': 0.03,             # 3% APY USDT (Binance Earn flexible tipico)
     'min_sweep_amount': 50.0,         # no sweep si <$50 (overhead)

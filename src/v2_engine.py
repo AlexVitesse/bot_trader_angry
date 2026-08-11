@@ -61,7 +61,13 @@ PARAMS_V2 = {
     'f_funding_z_max_long': 2.0,
     'f_funding_z_min_short': -1.5,
     'f_enable_long': True,
-    'f_enable_short': True,
+    # F_SHORT desactivado 2026-08-10. Sobre la historia completa: 44 trades,
+    # PF 0.88, -1.0% anual, bootstrap p=0.644 — sin edge. Quitarlo mejora PF
+    # (1.53 -> 1.65), retorno (+16.4% -> +17.9%) y DD (22.1% -> 19.6%) a la vez.
+    # Se habia incluido por 3 trades ganadores del OOS Ene-Feb 2026, que es el
+    # sesgo de seleccion que VERDICTO_RONDA2.md seccion 3 prohibio.
+    # Evidencia: experiments/f_short_ablation/README.md
+    'f_enable_short': False,
 
     # === Universales ===
     'commission': COMMISSION,
@@ -207,7 +213,9 @@ def _signal_a(df: pd.DataFrame, idx: int, params: dict,
     if not live and idx >= len(df) - 2:
         return False
     row = df.iloc[idx]
-    if row.get('bull_1d', 0) < 1:
+    # a_require_bull=False solo lo usan los experimentos de frecuencia; el
+    # default True conserva el comportamiento frozen validado.
+    if params.get('a_require_bull', True) and row.get('bull_1d', 0) < 1:
         return False
     dh = row.get('donchian_high', np.nan)
     if pd.isna(dh) or row['close'] <= dh:
@@ -247,11 +255,12 @@ def _signal_f(df: pd.DataFrame, idx: int, params: dict,
     vr = row.get('vol_ratio', np.nan)
     if pd.isna(vr) or vr < params['f_vol_ratio_min']:
         return None
-    bull = row.get('bull_1d', 0)
-    if side == 'LONG' and bull < 1:
-        return None
-    if side == 'SHORT' and bull >= 1:
-        return None
+    if params.get('f_require_regime', True):   # ver nota en _signal_a
+        bull = row.get('bull_1d', 0)
+        if side == 'LONG' and bull < 1:
+            return None
+        if side == 'SHORT' and bull >= 1:
+            return None
     fz = row.get('funding_z', 0)
     if pd.notna(fz):
         if side == 'LONG' and fz > params['f_funding_z_max_long']:
@@ -292,9 +301,12 @@ def _sim_long_trailing(df, entry_bar, entry_price, trail_dist, max_bars,
     for i in range(1, max_bars + 1):
         b = entry_bar + i
         if b >= len(df):
+            # Se acabaron los datos: NO es un TP/SL, es un trade sin resolver.
+            # Etiquetarlo como TP/SL inflaba los conteos de WR con un resultado
+            # que el mercado nunca produjo.
             ep = float(df['close'].iloc[-1])
             pnl = (ep - entry_price) / entry_price - 2 * commission
-            return ('TP' if ep > entry_price else 'SL'), ep, pnl, i
+            return 'NO_RESUELTO', ep, pnl, i
         hi = float(df['high'].iloc[b])
         lo = float(df['low'].iloc[b])
         # 1) exit check con stop PREVIO
@@ -320,9 +332,9 @@ def _sim_short_trailing(df, entry_bar, entry_price, trail_dist, max_bars,
     for i in range(1, max_bars + 1):
         b = entry_bar + i
         if b >= len(df):
-            ep = float(df['close'].iloc[-1])
+            ep = float(df['close'].iloc[-1])   # ver nota en _sim_long_trailing
             pnl = (entry_price - ep) / entry_price - 2 * commission
-            return ('TP' if ep < entry_price else 'SL'), ep, pnl, i
+            return 'NO_RESUELTO', ep, pnl, i
         hi = float(df['high'].iloc[b])
         lo = float(df['low'].iloc[b])
         # 1) exit check

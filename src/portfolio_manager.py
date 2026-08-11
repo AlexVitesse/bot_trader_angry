@@ -16,7 +16,7 @@ from pathlib import Path
 
 from config.settings import (
     ML_DB_FILE, ML_MAX_CONCURRENT, ML_MAX_DD_PCT, ML_MAX_DAILY_LOSS_PCT,
-    ML_RISK_PER_TRADE, ML_MAX_NOTIONAL, ML_LEVERAGE, ML_TP_PCT, ML_SL_PCT,
+    ML_RISK_PER_TRADE, ML_MAX_NOTIONAL_PCT, ML_LEVERAGE, ML_TP_PCT, ML_SL_PCT,
     ML_TRAILING_ACTIVATION, ML_TRAILING_LOCK, ML_MAX_HOLD,
     COMMISSION_RATE, SLIPPAGE_PCT, INITIAL_CAPITAL, ML_BTC_CONFIG,
 )
@@ -542,19 +542,29 @@ class PortfolioManager:
                     f"${pos.entry_price:,.2f} -> ${fill_price:,.2f} | "
                     f"PnL: ${pnl:{emoji}.2f} | Razon: {reason}")
 
-    def refresh_balance(self):
-        """Actualiza balance desde exchange."""
+    def refresh_balance(self) -> bool:
+        """Actualiza balance desde exchange. Devuelve False si no hubo red
+        (lo usa el watchdog de ml_bot para detectar un proceso ciego)."""
         try:
             bal = self.exchange.fetch_balance()
-            usdt = bal.get('USDT', {}).get('free', 0)
+            # 'total' = free + margen en uso. Con 'free' el balance BAJA al abrir
+            # una posicion (el margen pasa a 'used') sin que haya perdida: eso
+            # encogia el sizing del siguiente trade y simulaba drawdown falso
+            # en el kill switch. Con 'total' el equity es estable.
+            # OJO: el capital en Simple Earn vive en otro wallet y NO entra aqui,
+            # asi que con el yield activo esto sigue subestimando el equity real.
+            u = bal.get('USDT', {})
+            usdt = u.get('total') or u.get('free', 0)
             if usdt > 0:
                 self.balance = float(usdt)
                 if self.balance > self.peak_balance:
                     self.peak_balance = self.balance
                 self._save_state('balance', str(self.balance))
                 self._save_state('peak_balance', str(self.peak_balance))
+            return True
         except Exception as e:
             logger.warning(f"[PM] Error obteniendo balance: {e}")
+            return False
 
     # =========================================================================
     # OPEN POSITION
@@ -598,14 +608,19 @@ class PortfolioManager:
             risk_pct = 0.025
         risk_pct *= sizing_mult
 
-        risk_amt = INITIAL_CAPITAL * risk_pct  # FLAT sizing
+        # Sizing sobre el balance REAL, no sobre INITIAL_CAPITAL. Estaba fijo en
+        # $100 con la cuenta en $4.437: cada trade arriesgaba $2 (0,045% del
+        # capital) y el motor no podia mover la cuenta hiciera lo que hiciera.
+        risk_amt = self.balance * risk_pct
         # V14: override TP/SL si se especifican, sino usar por-par
         if tp_pct_override is not None and sl_pct_override is not None:
             pair_tp, pair_sl = tp_pct_override, sl_pct_override
         else:
             pair_tp, pair_sl = get_pair_tp_sl(pair)
         notional = risk_amt / pair_sl if pair_sl > 0 else risk_amt
-        notional = min(notional, ML_MAX_NOTIONAL)
+        # Tope relativo al balance, no absoluto: un tope en dolares se queda
+        # obsoleto en cuanto cambia el capital (que es lo que paso con los $300).
+        notional = min(notional, self.balance * ML_MAX_NOTIONAL_PCT)
 
         # TP/SL precios (V13.01: per-pair)
         if direction == 1:
@@ -984,24 +999,25 @@ class PortfolioManager:
                                 f"Peak=${self.peak_balance:.2f} Balance=${self.balance:.2f}")
                 return False
 
-        # Daily loss
+        # Daily loss. El reset de la pausa va AQUI, junto al cambio de dia: el
+        # bloque que habia al final comparaba today != self.daily_date despues
+        # de haber asignado daily_date = today, asi que era codigo muerto y una
+        # pausa diaria no se levantaba nunca sin /resume manual.
         today = datetime.now(timezone.utc).strftime('%Y-%m-%d')
         if today != self.daily_date:
             self.daily_pnl = 0.0
             self.daily_date = today
+            if self.paused:
+                self.paused = False
+                logger.info("[PM] Nuevo dia: pausa por daily loss levantada")
 
-        daily_limit = INITIAL_CAPITAL * ML_MAX_DAILY_LOSS_PCT
+        daily_limit = self.balance * ML_MAX_DAILY_LOSS_PCT  # antes: INITIAL_CAPITAL
         if self.daily_pnl < -daily_limit:
             if not self.paused:
                 logger.warning(f"[PM] PAUSA: daily loss ${self.daily_pnl:.2f} >= "
                                f"{ML_MAX_DAILY_LOSS_PCT:.0%} de capital (${daily_limit:.2f})")
             self.paused = True
             return False
-
-        # Reset pause al dia siguiente
-        if self.paused and today != self.daily_date:
-            self.paused = False
-            self.daily_pnl = 0.0
 
         return True
 
