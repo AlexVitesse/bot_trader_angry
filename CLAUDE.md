@@ -73,12 +73,17 @@ Múltiples documentos confirman:
 
 ---
 
-## Arquitectura V15 Activa (Multi-Par — 22 pares)
+## Arquitectura V15 (histórico — ya NO es lo desplegado)
 
-> Estado real al 2026-05-19 (rama `v15/multi-pair`). Ver `docs/AUDITORIA_2026-05.md`
+> ⚠️ **Desde 2026-08-11 el bot opera SOLO `BTC/USDT` con el motor V2
+> (`src/v2_engine.py`), `f_enable_short=False` y riesgo 4,5% por trade.**
+> Lo de abajo es el estado de mayo, conservado como contexto histórico.
+> Config real y expectativas: `docs/SESION_2026-08-09.md`.
+
+> Estado al 2026-05-19 (rama `v15/multi-pair`). Ver `docs/AUDITORIA_2026-05.md`
 > para el análisis crítico de validación.
 
-V15 opera **22 pares** en paper trading testnet (`ML_V15_PAIRS` en `settings.py`).
+V15 llegó a operar **22 pares** en paper trading testnet.
 Tres tipos de motor según el par:
 
 | Tipo | Pares | Lógica | model_type |
@@ -142,11 +147,18 @@ V14 sigue en el código pero ML_V14_ENABLED=False. Se puede reactivar si necesar
 
 ---
 
-## Candidato real para paper trade (post-revalidación, 2026-05)
+## Candidato real para paper trade
 
-Tras 6 agentes diseñados con disciplina anti-overfitting (cutoff inviolable
-2025-12-31, 2 bugs prohibidos, validación independiente sobre 2026), el único
-candidato con **bootstrap p < 0.05** es:
+> ⚠️ **Actualizado 2026-08-11.** Las cifras de abajo (in-sample, sleeve, fill al
+> close que genera la señal) resultaron optimistas. Con el simulador de cartera
+> y fills honestos (`experiments/portfolio_sim/`), el walk-forward REAL da
+> **+6,2%/año a 2% de riesgo** y solo **2/6 folds positivos** — por debajo del
+> ≥7/12 que este mismo documento exige. Ver `docs/SESION_2026-08-09.md`.
+>
+> Cambios ya aplicados y desplegados: **`f_enable_short=False`** (44 trades,
+> PF 0,88, p=0,644 — sin edge) y **`ML_V15_PAIRS = ['BTC/USDT']`** (el
+> walk-forward rechazó la vía multi-par: toda su ventaja venía del fold de 2021,
+> con correlación 0,69 entre pares).
 
 ### V2 = A + F_BTC (sin ETH)
 
@@ -178,10 +190,11 @@ bloqueó en bear). El LONG no se probó en OOS — necesita ventana alcista.
 4. DD real ≤ 30%
 5. Real diverge < 25% del simulado a 50 trades
 
-**Costes a considerar**: si se opera perp, funding ~13% anual diluye el retorno
-(ver `experiments/agent_D/README.md`). En spot no hay funding pero no se puede
-SHORT — incompatible con F. Realista: V2 perp neto ≈ +9-10% anual después de
-funding. **Aún premium ~0-3% sobre CETES — modesto pero real.**
+**Costes — CORREGIDO 2026-08-11**: el "funding ~13% anual" de
+`agent_D/README.md` supone estar en mercado el **100% del tiempo**. V2 está
+dentro solo el **12,6%** (164 trades, 12,8 velas de media), así que el coste
+real es **~1,8%/año**, no 13%. La conclusión de que "el leverage no compensa"
+hay que rehacerla con ese número.
 
 Detalle completo: `experiments/combined_AF/README.md` y `experiments/VERDICTO_RONDA2.md`.
 
@@ -301,21 +314,16 @@ El objetivo no es el mejor modelo técnico posible, sino un sistema que genere *
 
 ## Próximos Pasos Prioritarios
 
-> Estado al 2026-05-19, tras re-validación completa de 22 pares + 6 agentes
-> de diseño con motor honesto. Ver `experiments/VERDICTO.md`, `experiments/VERDICTO_RONDA2.md`
-> y `experiments/combined_AF/README.md`.
+> Actualizado 2026-08-11. Los puntos 1 y 2 originales **ya están hechos**:
+> `ML_V15_PAIRS = ['BTC/USDT']` y el motor V2 corriendo en producción desde el
+> merge `8048163`. Detalle completo en `docs/SESION_2026-08-09.md`.
 
-1. **Reducir `ML_V15_PAIRS` a solo `['BTC/USDT']`** (urgente)
-   - Los otros 21 pares no superan el motor honesto. Mantenerlos consume
-     capital de testnet en señales sin edge.
-   - Sustituir el motor de señales por el combinado V2 (A + F_BTC).
-
-2. **Implementar V2 (A + F_BTC) como engine de producción**
-   - Adaptar `src/ml_strategy_v15.py` para usar la lógica de
-     `experiments/agent_A/strategy.py` y `experiments/agent_F/strategy.py`
-   - One position at a time en BTC; A tiene prioridad sobre F
-   - Asegurar que la simulación honesta (sin look-ahead intrabar) está
-     replicada en el path de live signal
+0. **NO buscar más retorno tuneando parámetros.** Seis búsquedas
+   (filtro ADX, techo del trail, suelo del trail, temporalidad diaria,
+   detector de régimen, conviction sizing) murieron todas en validación. El
+   edge de V2 es real pero pequeño y concentrado en tendencias limpias.
+   Ver los README de `experiments/` — los negativos están documentados
+   precisamente para no repetirlos.
 
 3. **Paper trade V2 en testnet 6-12 meses**
    - Acumular ≥30 trades reales
