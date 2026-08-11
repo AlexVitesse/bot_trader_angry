@@ -15,9 +15,17 @@ cd "$(dirname "$0")"
 echo "[WRAPPER] ML Bot Wrapper iniciado"
 echo "[WRAPPER] Directorio: $(pwd)"
 
+# Usar el venv de poetry si existe; si no, python del sistema.
+if command -v poetry >/dev/null 2>&1; then
+    RUN="poetry run python"
+else
+    RUN="python"
+fi
+echo "[WRAPPER] Interprete: $RUN"
+
 while true; do
     echo "[WRAPPER] Iniciando bot..."
-    python -u -m src.ml_bot
+    $RUN -u -m src.ml_bot
     EXIT_CODE=$?
 
     echo "[WRAPPER] Bot termino con codigo: $EXIT_CODE"
