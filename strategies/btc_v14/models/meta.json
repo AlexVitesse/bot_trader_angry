@@ -1,0 +1,32 @@
+{
+  "trained_up_to": "2026-01-31",
+  "n_setups_train": 475,
+  "n_outcomes_train": 463,
+  "context_features": [
+    "adx",
+    "di_diff",
+    "chop",
+    "atr_pct",
+    "bb_width"
+  ],
+  "momentum_features": [
+    "rsi14",
+    "rsi7",
+    "stoch_k",
+    "ret_5",
+    "ret_20"
+  ],
+  "volume_features": [
+    "vol_ratio",
+    "vol_trend",
+    "obv_slope"
+  ],
+  "skip_threshold": 0.3,
+  "wf_long": {
+    "folds_ok": 7,
+    "folds_total": 12,
+    "avg_wr": 0.3799,
+    "avg_pf": 1.85,
+    "approved": true
+  }
+}
