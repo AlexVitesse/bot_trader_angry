@@ -19,6 +19,7 @@ Senales compatibles con V14 (pair/direction int/tp_pct/sl_pct/setup/confidence).
 
 import json
 import logging
+import time
 import numpy as np
 import pandas as pd
 import pandas_ta as pta
@@ -52,6 +53,28 @@ LOOKBACK = 250  # candles to fetch (V14-compat path)
 # build_features (que recorta ~55 filas por la Donchian-55). Con 250 quedaban
 # 195 < 222 y get_live_signal devolvia None SIEMPRE. 420 -> ~365 utiles.
 V2_LOOKBACK = 420
+
+
+def _ohlcv(exchange, pair: str, timeframe: str, limit: int,
+           tries: int = 3, delay: int = 5):
+    """`fetch_ohlcv` con reintentos.
+
+    La red del VPS parpadea de madrugada: en el log del 19-22 ago, 6 de 21
+    velas 4h quedaron ciegas y el bot registro "Sin senales en este ciclo".
+    Un fallo de fetch NO es "mercado quieto" — es el motor sin datos, y una
+    senal perdida ahi no se recupera. ccxt tarda ~20s en agotar su timeout,
+    asi que el peor caso son ~70s por llamada: aceptable en un ciclo de 4h.
+    """
+    for intento in range(tries):
+        try:
+            return exchange.fetch_ohlcv(pair, timeframe, limit=limit)
+        except Exception as e:
+            if intento == tries - 1:
+                raise
+            logger.warning(f'[NET] {pair} {timeframe} intento '
+                           f'{intento + 1}/{tries} fallo ({e}); '
+                           f'reintento en {delay}s')
+            time.sleep(delay)
 
 
 @dataclass
@@ -208,7 +231,7 @@ class MLStrategyV15:
 
         try:
             # Fetch DAILY candles — need 250 days for EMA200
-            ohlcv_1d = exchange.fetch_ohlcv(pair, '1d', limit=250)
+            ohlcv_1d = _ohlcv(exchange, pair, '1d', 250)
             if not ohlcv_1d or len(ohlcv_1d) < 55:
                 logger.warning(f'[V15] {pair}: insufficient daily data')
                 return state
@@ -227,7 +250,7 @@ class MLStrategyV15:
             state.daily_ema200 = float(ema200.iloc[-1]) if ema200 is not None else None
 
             # Current price from latest 4h candle
-            ohlcv_4h = exchange.fetch_ohlcv(pair, '4h', limit=3)
+            ohlcv_4h = _ohlcv(exchange, pair, '4h', 3)
             cur_close = float(ohlcv_4h[-2][4]) if ohlcv_4h and len(ohlcv_4h) >= 2 else float(daily_close.iloc[-1])
 
             state.regime = self._classify_regime(
@@ -364,7 +387,7 @@ class MLStrategyV15:
             # filtro de regime — derivar daily de 250 velas 4h da solo 42 dias,
             # insuficiente para EMA200 confiable. Binance provee daily historico
             # directamente sin esperar.
-            ohlcv_4h = exchange.fetch_ohlcv(pair, '4h', limit=V2_LOOKBACK)
+            ohlcv_4h = _ohlcv(exchange, pair, '4h', V2_LOOKBACK)
             if not ohlcv_4h or len(ohlcv_4h) < 100:
                 logger.warning(f'[V2] {pair}: insufficient 4h data')
                 return []
@@ -376,7 +399,7 @@ class MLStrategyV15:
             # Fetch daily 300 velas (~10 meses) — suficiente para EMA200 daily
             df_1d = None
             try:
-                ohlcv_1d = exchange.fetch_ohlcv(pair, '1d', limit=300)
+                ohlcv_1d = _ohlcv(exchange, pair, '1d', 300)
                 if ohlcv_1d and len(ohlcv_1d) >= 200:
                     df_1d = pd.DataFrame(ohlcv_1d, columns=['timestamp', 'open',
                                                             'high', 'low',
@@ -430,7 +453,7 @@ class MLStrategyV15:
     def _fetch_and_compute(self, exchange, pair: str) -> Optional[pd.DataFrame]:
         """Fetch 4H OHLCV and compute features for a pair."""
         try:
-            ohlcv = exchange.fetch_ohlcv(pair, '4h', limit=LOOKBACK)
+            ohlcv = _ohlcv(exchange, pair, '4h', LOOKBACK)
             if not ohlcv or len(ohlcv) < 50:
                 logger.warning(f'[V15] {pair}: insufficient OHLCV data')
                 return None

@@ -204,7 +204,33 @@ Detalle completo: `experiments/combined_AF/README.md` y `experiments/VERDICTO_RO
 
 Antes de agregar cualquier modelo/dirección a main:
 
-1. **Walk-forward**: ≥ 7/12 folds positivos (o 6/10 para cross-pairs)
+1. **Bootstrap p < 0,05 + tamaño de efecto** sobre la historia completa.
+   Éste es el criterio primario. El conteo de folds pasa a ser descriptivo.
+
+   > ⚠️ **Corrección 2026-08-22.** El antiguo `≥ 7/12 folds positivos` estaba
+   > mal calibrado y se sustituye. Medido por remuestreo (20.000 iteraciones,
+   > `experiments/criterio_validacion/`):
+   >
+   > | sistema | pasa 7/12 |
+   > |---|--:|
+   > | V2 real (WR 45%, PF 1,83, edge real) | 90,2% |
+   > | **WR 66% con edge CERO (PF 0,93)** | **52,9%** |
+   >
+   > Contar folds solo mira el signo y tira la magnitud: **deja pasar más de la
+   > mitad de los sistemas sin edge** siempre que tengan win rate alto. Y ésa es
+   > exactamente la firma de los cinco fracasos de la tabla de arriba — V7, V9,
+   > BTC V2, SOL V2 y V13.03 declararon **WR 63-68%** en backtest. El filtro que
+   > se adoptó para evitar overfitting era ciego al perfil que ya había fallado.
+   >
+   > El bootstrap sí discrimina y ya está construido (`portfolio_sim/`,
+   > `v2_all_coins/`). V2 da **p=0,004 estable en todos los niveles de riesgo**.
+
+   El conteo de folds se sigue reportando, pero como **diagnóstico de
+   estacionariedad**, no como aprobado/suspenso: si el bootstrap dice que el
+   edge es real y los folds salen 2/6, eso no es ruido — significa que el edge
+   **se concentra en el tiempo** (V2 barajado pasa 4/6 el 91,4% de las veces).
+   Es información sobre *cuándo* funciona, que es la pregunta útil.
+
 2. **Cross-asset**: probar modelo en activos correlacionados, todos positivos
    - DOGE → SHIB, PEPE (o similares)
    - ADA → DOT, SOL, ATOM
