@@ -589,10 +589,16 @@ class PortfolioManager:
                       tp_pct_override: float = None,
                       sl_pct_override: float = None,
                       trail_mode: str = 'default',
-                      trail_fixed_dist: float = 0.0) -> bool:
+                      trail_fixed_dist: float = 0.0,
+                      max_hold_override: int = None) -> bool:
         """Abre una nueva posicion. sizing_mult from V8.4 macro intelligence.
         tp_pct_override/sl_pct_override permiten valores personalizados (V14).
         trail_mode='tight' activates immediate trailing with fixed distance (ADA/SOL).
+        max_hold_override: velas de hold maximo del MOTOR que genero la senal.
+          Sin esto se usaba ML_MAX_HOLD (15 en RANGE, 2.5 dias) mientras el
+          motor V2 asume 60 velas (10 dias) — y ese recorte cuesta: medido
+          sobre 6,5 anos, 15/15 da PF 1.68 / +16.8% / DD 17.0% frente a
+          60/40 con PF 1.83 / +19.1% / DD 14.7%. Ver experiments/max_bars/.
         """
         if not self.can_open(pair, direction):
             return False
@@ -630,7 +636,8 @@ class PortfolioManager:
             tp_price = price * (1 - pair_tp)
             sl_price = price * (1 + pair_sl)
 
-        max_hold = ML_MAX_HOLD.get(regime, 15)
+        max_hold = (max_hold_override if max_hold_override
+                    else ML_MAX_HOLD.get(regime, 15))
 
         # Cantidad en base currency
         quantity = notional / price

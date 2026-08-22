@@ -1038,6 +1038,9 @@ class MLBot:
             sl_pct_override=signal.get('sl_pct'),
             trail_mode=signal.get('trail_mode', 'default'),
             trail_fixed_dist=signal.get('trail_fixed_dist', 0.0),
+            # El motor V2 ya manda su max_bars en el payload; sin esto
+            # ML_MAX_HOLD lo recortaba a 15 velas. Ver experiments/max_bars/.
+            max_hold_override=signal.get('max_bars'),
         )
 
         if success:

@@ -169,9 +169,17 @@ class MLStrategyV15:
             else:
                 self._meta[pair] = {}
 
-            # Load ML models (only BTC has ML)
+            # Load ML models (only BTC has ML).
+            # Si el par enruta a V2 (meta_v2_paper.json), generate_signals hace
+            # `continue` antes de tocar la rama ML: cargar el GBM es trabajo
+            # muerto y su log ("SHORT GBM loaded") hace creer que hay ML activo
+            # cuando no lo hay. Ver experiments/oos_2026H1/.
+            routes_to_v2 = V2_AVAILABLE and (model_dir / 'meta_v2_paper.json').exists()
+            if routes_to_v2:
+                logger.info(f'[V15] {coin.upper()}: motor V2 (reglas congeladas), '
+                            f'sin modelos ML')
             has_ml = self._meta[pair].get('has_ml', True)  # default True for BTC compat
-            if has_ml and pair == 'BTC/USDT':
+            if has_ml and pair == 'BTC/USDT' and not routes_to_v2:
                 try:
                     self.short_model = joblib.load(model_dir / 'short_gbm.pkl')
                     self.short_scaler = joblib.load(model_dir / 'short_scaler.pkl')
