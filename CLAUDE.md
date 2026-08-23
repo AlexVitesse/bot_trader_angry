@@ -269,8 +269,23 @@ V15 Scripts:
 
 docs/
   AUDITORIA_2026-05.md     # Auditoría — estado real, overfitting, inspiración GitHub
+  SESION_2026-08-09.md     # Despliegue V2 BTC-only, walk-forward real
+  SESION_2026-08-22.md     # Criterio de validación corregido + mapa de familias cerrado
   V15_COMMITTEE_results.md # Resultados del comité BTC validado
   archive/                 # Documentación de versiones previas (V12-V14)
+
+experiments/               # Un README por experimento. Los negativos están
+                           # documentados PRECISAMENTE para no repetirlos.
+  criterio_validacion/     # El 7/12 folds dejaba pasar el 53% de sistemas sin edge
+  presupuesto_informacion/ # No caben los parámetros: 11 episodios, 131 trades
+  predictibilidad/         # No hay señal: R² in-sample 0,068%
+  oos_2026H1/              # OOS limpio: el filtro de régimen validado fuera de muestra
+  max_bars/                # Séptimo negativo de parámetros
+  funding_veto/            # Medido: 6 trades en 6,5 años. No se conecta
+  carry_funding/           # Rechazado + MAPA COMPLETO de familias probadas
+  estacionalidad/          # Rechazado (t-test p=0,005 -> rotación p=0,14)
+  stat_arb/                # Las cripto no cointegran + market making inaplicable
+  agent_A..O/              # Ronda de exploración de familias (2026-05)
 ```
 
 ---
@@ -315,11 +330,42 @@ El objetivo no es el mejor modelo técnico posible, sino un sistema que genere *
 2. **Preguntar el objetivo** si no está claro antes de implementar
 3. **No proponer código sin leer los archivos** que se van a modificar
 
+### ⚠️ La autocorrelación invalida el test estándar — leer antes de medir nada
+
+Añadido 2026-08-22 tras encontrar **el mismo error en tres sitios distintos**:
+
+| dónde | test estándar dice | test correcto dice |
+|---|---|---|
+| Tamaño de muestra | N = 15.187 velas | **N_eff(`adx`) = 35** (ρ = 0,995) |
+| Criterio `≥7/12 folds` | aprueba | **53% de falsos positivos** |
+| Efecto estacional | t-test **p = 0,005** | rotación de calendario **p = 0,14** |
+
+Las series de este proyecto están fuertemente autocorrelacionadas, así que
+**cualquier test que asuma independencia dará falsos positivos.** Antes de
+declarar un hallazgo:
+
+1. **Nunca un t-test crudo sobre velas.** Usar permutación/remuestreo con un
+   null que preserve la estructura temporal (rotar el calendario para efectos
+   de bucket, block-shuffle para series).
+2. **Calcular `N_eff`**, no `N`: `N_eff = N·(1−ρ)/(1+ρ)`.
+3. **Corregir por comparaciones múltiples** y decir cuántos positivos daría el
+   azar solo (con 210 pares a p<0,05, el azar da ~10).
+4. **Win rate alto no es evidencia de edge.** `stat_arb/` acierta el 69,7% y
+   pierde el 39,3%. Los cinco fracasos históricos declaraban WR 63-68%.
+
+Detalle: `experiments/criterio_validacion/`, `experiments/estacionalidad/`,
+`experiments/presupuesto_informacion/`.
+
 ### Sobre modelos ML
 - Si un modelo tiene AUC ~0.5 → no conectarlo, no "filtrarlo mejor" → descartarlo
 - Si un modelo falla walk-forward → rechazarlo o reentrenar, no usarlo con umbral estricto
-- Cualquier modelo nuevo: walk-forward ≥ 7/12 + cross-asset + documentar
+- Cualquier modelo nuevo: bootstrap p<0,05 + tamaño de efecto + cross-asset + documentar
 - ETH ML models (ethusdt_v14) = NEEDS_REVIEW, no conectar al bot sin reentrenamiento
+- **No proponer "un modelo más complejo".** Está cerrado por dos vías
+  independientes: no caben los parámetros (`presupuesto_informacion/`: 11
+  episodios y 131 trades vs 31.000 parámetros) y no hay señal que aprender
+  (`predictibilidad/`: R² in-sample 0,068%). Se probaron once familias,
+  incluida LSTM, y dos con purged CV.
 
 ### Sobre dirección SHORT
 - El historial del proyecto muestra que SHORT en altcoins/memecoins no funciona
@@ -340,26 +386,42 @@ El objetivo no es el mejor modelo técnico posible, sino un sistema que genere *
 
 ## Próximos Pasos Prioritarios
 
-> Actualizado 2026-08-11. Los puntos 1 y 2 originales **ya están hechos**:
-> `ML_V15_PAIRS = ['BTC/USDT']` y el motor V2 corriendo en producción desde el
-> merge `8048163`. Detalle completo en `docs/SESION_2026-08-09.md`.
+> Actualizado 2026-08-22. Detalle: `docs/SESION_2026-08-09.md` (despliegue) y
+> `docs/SESION_2026-08-22.md` (criterio de validación + cierre del mapa de
+> familias). Los puntos 1 y 2 originales ya están hechos: `ML_V15_PAIRS =
+> ['BTC/USDT']` y el motor V2 en producción desde el merge `8048163`.
 
-0. **NO buscar más retorno tuneando parámetros.** Seis búsquedas
-   (filtro ADX, techo del trail, suelo del trail, temporalidad diaria,
-   detector de régimen, conviction sizing) murieron todas en validación. El
-   edge de V2 es real pero pequeño y concentrado en tendencias limpias.
-   Ver los README de `experiments/` — los negativos están documentados
-   precisamente para no repetirlos.
+0. **NO buscar más retorno tuneando parámetros ni probando familias nuevas.**
+   *Siete* búsquedas de parámetros murieron en validación (filtro ADX, techo
+   del trail, suelo del trail, temporalidad diaria, detector de régimen,
+   conviction sizing, **`max_bars`**). Y desde el 2026-08-22 **tampoco quedan
+   familias de estrategia sin medir**: carry de funding, estacionalidad y
+   arbitraje estadístico se midieron y se rechazaron; market making es
+   inaplicable con esta infraestructura. Mapa completo en
+   `experiments/carry_funding/README.md`.
+
+   Dos argumentos independientes cierran además la vía de "modelos más
+   complejos":
+   - `experiments/presupuesto_informacion/` — **no caben los parámetros**:
+     11 episodios de régimen y 131 trades contra los 31.000 parámetros de un
+     LightGBM modesto (3.000× sobresuscrito).
+   - `experiments/predictibilidad/` — **no hay señal que aprender**: R²
+     in-sample de **0,068%**, cuatro de cinco features por debajo del suelo de
+     ruido, y cero estructura no lineal detectable.
+
+   Lo que queda con margen real: **ejecución** (slippage y fills, aún sin medir
+   en vivo) y **sizing**. No mejores señales.
 
 3. **Paper trade V2 en testnet 6-12 meses**
    - Acumular ≥30 trades reales
    - Trackear: trades reales vs simulados, bootstrap p rolling, DD
    - KPI de parada: real diverge >25% del simulado en 50 trades → STOP
 
-4. **Refrescar datos** (`download_new_pairs.py` en venv prod)
-   - Los `.parquet` terminan en feb-mar 2026; ya estamos a mayo
-   - Re-correr `experiments/verify_2026.py` con Mar-May 2026 OOS adicional
-   - Más muestra OOS = más confianza estadística
+4. **Refrescar datos** (`download_new_pairs.py` en venv prod) — higiene, pero
+   **no esperar información nueva**. Medido en `experiments/oos_2026H1/`: los
+   170 días posteriores al parquet aportan **1 episodio de régimen y 0 trades**
+   (el tramo entero tiene el régimen apagado). La curva de información es
+   plana hasta que el régimen se dé la vuelta.
 
 5. **Cuando haya una ventana alcista en BTC (Q3 2026 post-halving probable)**
    - Verificar que A_LONG se activa y entrega como predice in-sample
