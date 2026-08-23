@@ -114,10 +114,24 @@ conclusión cambiaría. La forma barata de vigilarlo es mirar el `funding_z` que
 el bot ya calcula cada vela para la línea de régimen: no hace falta construir
 nada para saber cuándo merecería la pena reabrir esta pregunta.
 
-## Lo que este experimento no cierra
+## Lo que este experimento no cerraba — ya cerrado
 
-Arbitraje estadístico y estacionalidad siguen sin medir. Ninguno de los dos es
-prometedor a priori — el primero hereda la correlación 0,69 que ya tumbó la vía
-multi-par, y el segundo tiene el mismo problema de muestra que todo lo demás
-(11 episodios). Pero no están medidos, y conviene decirlo en vez de darlos por
-descartados.
+Cuando se escribió esto, arbitraje estadístico y estacionalidad seguían sin
+medir. Ya no:
+
+- **Arbitraje estadístico** → `stat_arb/`: **REJECT**. En 210 pares cointegran
+  3 cuando el azar solo da 10,5; en el universo de histórico largo, 4 de 91
+  contra 4,5 esperados. Ninguno persiste en test (0%). El backtest da WR 65-70%
+  con PF 0,80-0,88 — el perfil exacto que `criterio_validacion/` enseña a
+  desconfiar.
+- **Estacionalidad** → `estacionalidad/`: **REJECT**. El efecto miércoles
+  sobrevive a persistencia y a outliers, pero el t-test (p=0,005) estaba mal
+  calibrado; con el null correcto por rotación de calendario da **p=0,14**. Y
+  operarlo rinde +15,1% anual contra +35,2% de comprar y mantener.
+- **Market making** → apéndice de `stat_arb/`: **no aplicable**. Spread de
+  0,015% contra comisión taker de 0,100%: cada ronda pierde 0,085%. Requiere
+  fee tier VIP y latencia de ms; el bot corre a 30s sobre velas de 4h.
+
+**Con eso no quedan familias de estrategia sin medir** dentro de lo que permite
+la arquitectura. Lo que sigue sin explorar son **fuentes de datos** (order
+book, open interest, liquidaciones), no estrategias.
