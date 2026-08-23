@@ -137,11 +137,26 @@ tiempo.
    parámetro es la única proporción sana del proyecto.
 2. **Refrescar datos no arregla esto.** Los últimos 5 meses aportaron 0 trades
    y 1 episodio. La curva de información es plana.
-3. **Lo único que movería la aguja es información ortogonal**, no capacidad:
-   order book, open interest, liquidaciones, on-chain. Todo lo que el bot mira
-   hoy deriva de OHLCV.
-4. **Y lo más barato de esa lista ya está en disco**: `btc_v15_funding.parquet`
-   tiene 6 años de funding rate (2020-01 → 2026-03) y en vivo la llamada es
-   `get_live_signal(..., df_funding=None)`. El veto de funding está muerto —
-   punto 3 de "Parte 7" de `docs/SESION_2026-08-09.md`. Es la única fuente
-   no-OHLCV ya descargada, con el mecanismo ya escrito en el motor.
+3. **Lo único que movería la aguja es información ortogonal**, no capacidad.
+   Todo lo que el bot mira hoy deriva de OHLCV.
+
+   > ⚠️ **Corrección 2026-08-22.** La versión original de este punto listaba
+   > "on-chain" entre las fuentes por explorar. Es un error: `agent_K/` ya
+   > probó features on-chain de Coin Metrics (MVRV, exchange flows, active
+   > addresses, hashrate) y las **rechazó** — el 35% de los shuffles aleatorios
+   > igualaban o superaban al real, y en el híbrido ML el on-chain *empeoraba*
+   > la generalización (test AUC 0,451 vs 0,479 solo-técnico).
+   >
+   > Lo que queda realmente sin explorar es más estrecho: **order book /
+   > profundidad, open interest y liquidaciones**. El carry de funding se midió
+   > aparte y se rechazó (`carry_funding/`).
+4. **El funding, que era el candidato barato, ya se midió y se descartó
+   por dos vías distintas**:
+   - como **veto** sobre señales ya generadas → `funding_veto/`: 6 trades
+     bloqueados en 6,5 años, retorno anual idéntico. No califica.
+   - como **fuente de retorno** (carry delta-neutral) → `carry_funding/`:
+     comprimido de +30,6% (2021) a +2,3% (2026), y paga 2,8× más en BULL que
+     en BEAR — está correlacionado con V2, no lo diversifica.
+
+   El mapa completo de familias probadas y pendientes está en
+   `carry_funding/README.md`.
