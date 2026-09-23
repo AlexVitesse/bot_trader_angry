@@ -187,6 +187,48 @@ YIELD_CONFIG = {
     'earn_product_id': 'USDT001',     # Binance Earn flexible USDT product id
 }
 
+# =============================================================================
+# PERFILES: dos bots con el mismo codigo (decision del usuario 2026-09-23)
+# =============================================================================
+# BOT_PROFILE=v2        V2 en paper INTERNO (src/paper_exchange.py): precios en
+#                       vivo, fills simulados, ninguna orden. Conserva ml_bot.db
+#                       y ml_bot.log para no romper el historial.
+# BOT_PROFILE=agresivo  Motor ML multi-regimen (src/agresivo_engine.py) en la
+#                       cuenta DEMO de Binance. Riesgo por trade adaptativo: lo
+#                       decide el modelo (experiments/agresivo/).
+BOT_PROFILE = os.getenv("BOT_PROFILE", "v2")
+PAPER_TRADING = False
+PAPER_STATE_FILE = DATA_DIR / "paper_v2_state.json"
+PAPER_CAPITAL = 5000.47        # balance de la cuenta demo al separar los bots
+LOG_NAME = "ml_bot.log"
+TELEGRAM_POLL = True           # solo UN proceso puede leer comandos de Telegram
+
+if BOT_PROFILE == "v2":
+    PAPER_TRADING = True
+    BOT_VERSION = "V2-PAPER"
+    TELEGRAM_POLL = False
+    ML_ENTRY_LIMIT_TIMEOUT_S = 0   # el paper no simula ordenes limit
+elif BOT_PROFILE == "agresivo":
+    BOT_VERSION = "AGRESIVO"
+    ML_DB_FILE = DATA_DIR / "ml_agresivo.db"
+    LOG_NAME = "agresivo.log"
+    ML_V15_PAIRS = ['BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'BNB/USDT', 'XRP/USDT',
+                    'DOGE/USDT', 'ADA/USDT', 'LINK/USDT', 'AVAX/USDT']
+    ML_V15_SIZING = {p: 1.0 for p in ML_V15_PAIRS}
+    ML_V15_ENGINE = {p: 'agresivo' for p in ML_V15_PAIRS}
+    ML_MAX_CONCURRENT = 3
+    # Con hasta 3 posiciones de hasta 2x equity cada una, a 5x el margen no
+    # cabe; a 10x ocupa como mucho el 60%. El leverage no cambia la exposicion
+    # (la fija riesgo/trail), solo el margen bloqueado.
+    ML_LEVERAGE = {'BULL': 10, 'BEAR': 10, 'RANGE': 10}
+    # Agresivo por decision del usuario, en cuenta demo. El motor ya reduce el
+    # riesgo con el drawdown (a 0 al 50%); el kill switch es la ultima red.
+    ML_MAX_DD_PCT = 0.60
+    ML_MAX_DAILY_LOSS_PCT = 0.25
+else:
+    raise ValueError(f"BOT_PROFILE desconocido: {BOT_PROFILE!r} (v2 | agresivo)")
+
+
 def validate_config() -> bool:
     """Valida que la configuracion este completa."""
     errors = []
@@ -199,7 +241,7 @@ def validate_config() -> bool:
     if not 0 < ML_MAX_DD_PCT < 1:
         errors.append(f"ML_MAX_DD_PCT fuera de rango: {ML_MAX_DD_PCT}")
     for pair in ML_V15_PAIRS:
-        if ML_V15_ENGINE.get(pair) != 'v2':
+        if ML_V15_ENGINE.get(pair) not in ('v2', 'agresivo'):
             errors.append(f"{pair} sin motor en ML_V15_ENGINE")
     for e in errors:
         logging.getLogger(__name__).error(f"[CONFIG] {e}")

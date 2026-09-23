@@ -708,7 +708,8 @@ class PortfolioManager:
                       sl_pct_override: float = None,
                       trail_mode: str = 'default',
                       trail_fixed_dist: float = 0.0,
-                      max_hold_override: int = None) -> bool:
+                      max_hold_override: int = None,
+                      risk_override: float = None) -> bool:
         """Abre una nueva posicion. sizing_mult from V8.4 macro intelligence.
         tp_pct_override/sl_pct_override permiten valores personalizados (V14).
         trail_mode='tight' activates immediate trailing with fixed distance (ADA/SOL).
@@ -731,6 +732,8 @@ class PortfolioManager:
         elif confidence > 1.5:
             risk_pct = 0.025
         risk_pct *= sizing_mult
+        if risk_override is not None:      # el motor agresivo decide su riesgo
+            risk_pct = risk_override
 
         # Sizing sobre el balance REAL, no sobre INITIAL_CAPITAL. Estaba fijo en
         # $100 con la cuenta en $4.437: cada trade arriesgaba $2 (0,045% del

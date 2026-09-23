@@ -40,6 +40,7 @@ def send_alert(text: str):
     """Envia alerta en un thread separado (no bloquea el bot)."""
     if not TELEGRAM_ENABLED:
         return
+    text = f"[{BOT_VERSION}] {text}"   # dos bots escriben al mismo chat
     t = threading.Thread(target=_send_message, args=(text,), daemon=True)
     t.start()
 

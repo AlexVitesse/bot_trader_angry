@@ -24,7 +24,9 @@ from config.settings import (
     ML_CHECK_INTERVAL, ML_CANDLE_HOURS, ML_LEVERAGE,
     ML_DB_FILE, LOG_LEVEL, LOGS_DIR, INITIAL_CAPITAL, ML_MAX_DAILY_LOSS_PCT,
     ML_MAX_CONCURRENT, BOT_VERSION, ML_MAX_DD_PCT, ML_V15_PAIRS,
+    PAPER_TRADING, PAPER_STATE_FILE, PAPER_CAPITAL, LOG_NAME, TELEGRAM_POLL,
 )
+from src.paper_exchange import PaperExchange
 from src.ml_strategy_v15 import MLStrategyV15
 from src.portfolio_manager import PortfolioManager
 from src.telegram_alerts import send_alert, send_document, TelegramPoller
@@ -74,7 +76,11 @@ class MLBot:
         return exchange
 
     def _init_exchange(self) -> ccxt.Exchange:
-        """Crea cliente ccxt autenticado."""
+        """Crea cliente ccxt autenticado (o el exchange de papel del perfil v2)."""
+        if PAPER_TRADING:
+            self._load_public_markets()
+            logger.info(f"[BOT] PAPER interno: {PAPER_STATE_FILE.name}, sin ordenes reales")
+            return PaperExchange(self.exchange_public, PAPER_STATE_FILE, PAPER_CAPITAL)
         config = {
             'apiKey': BINANCE_API_KEY,
             'secret': BINANCE_API_SECRET,
@@ -98,22 +104,25 @@ class MLBot:
                     )
             # Pre-load markets from public exchange to avoid
             # spot API calls (sapi) that fail with demo keys
-            for attempt in range(5):
-                try:
-                    self.exchange_public.load_markets()
-                    break
-                except Exception as e:
-                    if attempt < 4:
-                        wait = 10 * (attempt + 1)
-                        logger.warning(f"[BOT] load_markets intento {attempt+1}/5 fallo: {e} - reintentando en {wait}s")
-                        time.sleep(wait)
-                    else:
-                        raise
+            self._load_public_markets()
             exchange.markets = self.exchange_public.markets
             exchange.markets_by_id = self.exchange_public.markets_by_id
             exchange.currencies = self.exchange_public.currencies
             exchange.currencies_by_id = self.exchange_public.currencies_by_id
         return exchange
+
+    def _load_public_markets(self):
+        for attempt in range(5):
+            try:
+                self.exchange_public.load_markets()
+                return
+            except Exception as e:
+                if attempt == 4:
+                    raise
+                wait = 10 * (attempt + 1)
+                logger.warning(f"[BOT] load_markets intento {attempt+1}/5 fallo: {e} "
+                               f"- reintentando en {wait}s")
+                time.sleep(wait)
 
     def _setup_leverage(self):
         """Configura leverage para todos los pares."""
@@ -242,6 +251,11 @@ class MLBot:
         )
 
         # 7. Iniciar Telegram poller para comandos
+        if not TELEGRAM_POLL:
+            logger.info("[BOT] Telegram: solo alertas (otro proceso lee los comandos)")
+            logger.info("=" * 60)
+            logger.info("[BOT] Listo. Esperando senales...")
+            return
         self.tg_poller = TelegramPoller(callbacks={
             '/help': self._cmd_help,
             '/status': self._cmd_status,
@@ -417,23 +431,25 @@ class MLBot:
     def _cmd_log(self, arg: str = ""):
         """Responde al comando /log [N] - envia log actual o rotado N (1-5)."""
         import re
-        n = int(arg.strip()) if arg.strip().isdigit() else 0
+        a = arg.strip().lower()
+        name = "ml_bot.log" if a == "v2" else LOG_NAME     # /log v2 -> bot V2 paper
+        n = int(a) if a.isdigit() else 0
         if n > 0:
-            log_file = LOGS_DIR / f"ml_bot.log.{n}"
+            log_file = LOGS_DIR / f"{name}.{n}"
         else:
-            log_file = LOGS_DIR / "ml_bot.log"
+            log_file = LOGS_DIR / name
 
         if log_file.exists():
             size_kb = log_file.stat().st_size / 1024
             # Listar todos los archivos disponibles
-            rotados = sorted(LOGS_DIR.glob("ml_bot.log.*"))
+            rotados = sorted(LOGS_DIR.glob(f"{name}.*"))
             extras = f" | Rotados: {', '.join(f'.{r.suffix[1:]}' for r in rotados)}" if rotados else ""
             send_document(str(log_file), f"📄 {log_file.name} ({size_kb:.0f} KB){extras}")
         else:
-            rotados = sorted(LOGS_DIR.glob("ml_bot.log.*"))
+            rotados = sorted(LOGS_DIR.glob(f"{name}.*"))
             if rotados:
                 lista = "\n".join(f"  /log {i+1} → {r.name}" for i, r in enumerate(rotados))
-                send_alert(f"⚠️ ml_bot.log.{n} no existe\nDisponibles:\n{lista}")
+                send_alert(f"⚠️ {name}.{n} no existe\nDisponibles:\n{lista}")
             else:
                 send_alert("⚠️ Archivo de log no encontrado")
 
@@ -456,7 +472,7 @@ class MLBot:
 
     def _cmd_clearlog(self):
         """Responde al comando /clearlog - borra el archivo de log."""
-        log_file = LOGS_DIR / "ml_bot.log"
+        log_file = LOGS_DIR / LOG_NAME
         try:
             if log_file.exists():
                 size_kb = log_file.stat().st_size / 1024
@@ -832,6 +848,7 @@ class MLBot:
             # El motor V2 ya manda su max_bars en el payload; sin esto
             # ML_MAX_HOLD lo recortaba a 15 velas. Ver experiments/max_bars/.
             max_hold_override=signal.get('max_bars'),
+            risk_override=signal.get('risk_pct'),
         )
 
         if success:
@@ -1071,7 +1088,7 @@ class MLBot:
 def setup_logging():
     """Configura logging para el ML bot con rotacion automatica."""
     LOGS_DIR.mkdir(exist_ok=True)
-    log_file = LOGS_DIR / "ml_bot.log"
+    log_file = LOGS_DIR / LOG_NAME
 
     rotating = logging.handlers.RotatingFileHandler(
         log_file,

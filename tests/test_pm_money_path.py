@@ -191,7 +191,7 @@ def test_no_pause_after_losing_streak():
 def test_kill_switch_survives_restart():
     ex = FakeExchange()
     pm, db = _pm(ex)
-    pm.balance = 5_000.0                          # DD 50% > ML_MAX_DD_PCT
+    pm.balance = 2_000.0                          # DD 80% > ML_MAX_DD_PCT de cualquier perfil
     assert pm.check_risk() is False and pm.killed
     pm2, _ = _pm(ex, db)
     pm2.sync_positions()
@@ -267,21 +267,35 @@ def test_reconcile_fills_real_pnl_and_sim_exit():
     assert t['signal_close'] == 100_000.0
 
 
-def test_maker_entry_full_fill():
-    ex = FakeExchange()
-    ex.book = (99_990.0, 100_010.0)
-    pm, _ = _pm(ex)
-    assert _open_v2(pm)
-    pos = pm.positions[PAIR]
-    assert pos.entry_price == 99_990.0                 # al bid, sin market
-    assert ex.position[1] == pos.quantity
-
-
-def test_maker_entry_partial_then_market(monkeypatch=None):
+def _timeout(segundos):
+    """Fija ML_ENTRY_LIMIT_TIMEOUT_S (el perfil v2 lo pone a 0)."""
+    import contextlib
     import src.portfolio_manager as pmm
-    old = pmm.ML_ENTRY_LIMIT_TIMEOUT_S
-    pmm.ML_ENTRY_LIMIT_TIMEOUT_S = 0.01
-    try:
+
+    @contextlib.contextmanager
+    def cm():
+        old = pmm.ML_ENTRY_LIMIT_TIMEOUT_S
+        pmm.ML_ENTRY_LIMIT_TIMEOUT_S = segundos
+        try:
+            yield
+        finally:
+            pmm.ML_ENTRY_LIMIT_TIMEOUT_S = old
+    return cm()
+
+
+def test_maker_entry_full_fill():
+    with _timeout(60):
+        ex = FakeExchange()
+        ex.book = (99_990.0, 100_010.0)
+        pm, _ = _pm(ex)
+        assert _open_v2(pm)
+        pos = pm.positions[PAIR]
+        assert pos.entry_price == 99_990.0                 # al bid, sin market
+        assert ex.position[1] == pos.quantity
+
+
+def test_maker_entry_partial_then_market():
+    with _timeout(0.01):
         ex = FakeExchange()
         ex.book, ex.limit_fill = (99_000.0, 99_010.0), 0.5
         pm, _ = _pm(ex)
@@ -289,16 +303,15 @@ def test_maker_entry_partial_then_market(monkeypatch=None):
         pos = pm.positions[PAIR]
         assert abs(pos.quantity - ex.position[1]) < 1e-9     # sin duplicar
         assert 99_000.0 < pos.entry_price < 100_000.0        # media limit + market
-    finally:
-        pmm.ML_ENTRY_LIMIT_TIMEOUT_S = old
 
 
 def test_maker_entry_rejected_goes_market():
-    ex = FakeExchange()
-    ex.book, ex.gtx_reject = (99_990.0, 100_010.0), True
-    pm, _ = _pm(ex)
-    assert _open_v2(pm)
-    assert pm.positions[PAIR].entry_price == 100_000.0     # market al precio
+    with _timeout(60):
+        ex = FakeExchange()
+        ex.book, ex.gtx_reject = (99_990.0, 100_010.0), True
+        pm, _ = _pm(ex)
+        assert _open_v2(pm)
+        assert pm.positions[PAIR].entry_price == 100_000.0     # market al precio
 
 
 if __name__ == '__main__':
