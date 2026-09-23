@@ -946,6 +946,11 @@ class MLBot:
         # Status log cada 10 minutos
         if now - self.last_status_log >= 600:
             self.last_status_log = now
+            # PnL real (Binance) y salida simulada de los trades cerrados
+            try:
+                self.portfolio.reconcile_closed_trades()
+            except Exception as e:
+                logger.warning(f"[PM] reconcile de trades fallo: {e}")
             status = self.portfolio.get_status()
             # Yield info
             yield_info = ""

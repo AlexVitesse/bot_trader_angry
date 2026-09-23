@@ -9,6 +9,7 @@ import sqlite3
 import logging
 import time
 import ccxt
+import pandas as pd
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from typing import Optional, Dict, List
@@ -21,7 +22,22 @@ from config.settings import (
     COMMISSION_RATE, SLIPPAGE_PCT, INITIAL_CAPITAL,
 )
 
+from src.v2_engine import COMMISSION as SIM_COMMISSION
+from src.v2_engine import _sim_long_trailing, _sim_short_trailing
+
 logger = logging.getLogger(__name__)
+
+BAR_MS = 4 * 3600 * 1000
+# Columnas de ml_trades para medir vivo vs simulado (plan 2.1) y el PnL real
+# de Binance (plan 5.2). Se rellenan despues del cierre en
+# reconcile_closed_trades: el income tarda en aparecer y la salida simulada
+# puede necesitar velas posteriores a la salida real.
+TRADE_EXTRA_COLS = {
+    'trail_dist': 'REAL', 'max_hold': 'INTEGER',
+    'signal_close': 'REAL', 'exit_sim_price': 'REAL',
+    'exit_sim_reason': 'TEXT', 'pnl_sim_pct': 'REAL',
+    'pnl_real': 'REAL', 'commission_real': 'REAL', 'funding_real': 'REAL',
+}
 
 
 @dataclass
@@ -159,6 +175,11 @@ class PortfolioManager:
                 conn.commit()
             except Exception:
                 pass
+            have = {r['name'] for r in conn.execute("PRAGMA table_info(ml_trades)")}
+            for col, typ in TRADE_EXTRA_COLS.items():
+                if col not in have:
+                    conn.execute(f"ALTER TABLE ml_trades ADD COLUMN {col} {typ}")
+            conn.commit()
         finally:
             conn.close()
 
@@ -201,8 +222,8 @@ class PortfolioManager:
                 INSERT INTO ml_trades
                     (symbol, entry_time, exit_time, side, entry_price, exit_price,
                      quantity, notional, leverage, pnl, exit_reason, regime,
-                     confidence, commission, strategy)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     confidence, commission, strategy, trail_dist, max_hold)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 trade['symbol'], trade['entry_time'], trade['exit_time'],
                 trade['side'], trade['entry_price'], trade['exit_price'],
@@ -210,6 +231,7 @@ class PortfolioManager:
                 trade['pnl'], trade['exit_reason'], trade['regime'],
                 trade['confidence'], trade['commission'],
                 trade.get('strategy', 'v85_prod'),
+                trade.get('trail_dist'), trade.get('max_hold'),
             ))
             conn.commit()
         finally:
@@ -572,6 +594,8 @@ class PortfolioManager:
             'regime': pos.regime,
             'confidence': pos.confidence,
             'commission': commission,
+            'trail_dist': pos.trail_fixed_dist if pos.trail_mode == 'tight' else None,
+            'max_hold': pos.max_hold,
         }
         self._save_trade(trade)
         self.trade_log.append(trade)
@@ -1002,6 +1026,8 @@ class PortfolioManager:
             'regime': pos.regime,
             'confidence': pos.confidence,
             'commission': commission,
+            'trail_dist': pos.trail_fixed_dist if pos.trail_mode == 'tight' else None,
+            'max_hold': pos.max_hold,
         }
         self._save_trade(trade)
 
@@ -1080,9 +1106,95 @@ class PortfolioManager:
                     "(strategy IS NULL OR strategy NOT LIKE '%shadow%')",
                     (f"{today}%",)
                 ).fetchall()
-            return [dict(r) for r in rows]
+            out = [dict(r) for r in rows]
+            for t in out:   # el PnL de Binance manda sobre el estimado
+                if t.get('pnl_real') is not None:
+                    t['pnl'] = t['pnl_real']
+            return out
         finally:
             conn.close()
+
+    # =========================================================================
+    # VIVO vs SIMULADO / PnL REAL (plan 2.1 y 5.2)
+    # =========================================================================
+    def reconcile_closed_trades(self, limit: int = 20):
+        """Completa los trades cerrados con el PnL real de Binance y la salida
+        que habria dado el simulador (`_sim_*_trailing`) con la misma senal.
+        Idempotente: solo toca columnas NULL. Llamar periodicamente."""
+        now_ms = time.time() * 1000
+        conn = self._get_conn()
+        try:
+            rows = [dict(r) for r in conn.execute(
+                "SELECT * FROM ml_trades WHERE exit_time >= ? AND "
+                "(pnl_real IS NULL OR (exit_sim_reason IS NULL AND trail_dist > 0)) "
+                "ORDER BY id DESC LIMIT ?",
+                (datetime.fromtimestamp(now_ms / 1000 - 90 * 86400,
+                                        timezone.utc).isoformat(), limit)).fetchall()]
+        finally:
+            conn.close()
+        for t in rows:
+            upd = {}
+            entry_ms = datetime.fromisoformat(t['entry_time']).timestamp() * 1000
+            exit_ms = datetime.fromisoformat(t['exit_time']).timestamp() * 1000
+            if t['pnl_real'] is None and now_ms - exit_ms > 5 * 60 * 1000:
+                upd.update(self._income_between(t['symbol'], entry_ms - 60_000,
+                                                exit_ms + 5 * 60_000))
+            if t['exit_sim_reason'] is None and (t['trail_dist'] or 0) > 0:
+                upd.update(self._sim_exit(t, entry_ms, now_ms))
+            if upd:
+                conn = self._get_conn()
+                try:
+                    sets = ', '.join(f"{k} = ?" for k in upd)
+                    conn.execute(f"UPDATE ml_trades SET {sets} WHERE id = ?",
+                                 (*upd.values(), t['id']))
+                    conn.commit()
+                finally:
+                    conn.close()
+
+    def _income_between(self, pair: str, start_ms: float, end_ms: float) -> dict:
+        """REALIZED_PNL + COMMISSION + FUNDING_FEE de Binance en la ventana del
+        trade. Con una sola posicion a la vez por par la ventana no se mezcla
+        con otro trade. Sin REALIZED_PNL -> {} (se reintenta despues)."""
+        try:
+            rows = self.exchange.fapiPrivateGetIncome({
+                'symbol': pair.replace('/', ''), 'startTime': int(start_ms),
+                'endTime': int(end_ms), 'limit': 1000})
+        except Exception as e:
+            logger.warning(f"[PM] income {pair} no disponible: {e}")
+            return {}
+        tot = {'REALIZED_PNL': 0.0, 'COMMISSION': 0.0, 'FUNDING_FEE': 0.0}
+        for r in rows:
+            if r.get('incomeType') in tot:
+                tot[r['incomeType']] += float(r['income'])
+        if not any(r.get('incomeType') == 'REALIZED_PNL' for r in rows):
+            return {}
+        return {'pnl_real': sum(tot.values()),
+                'commission_real': tot['COMMISSION'],
+                'funding_real': tot['FUNDING_FEE']}
+
+    def _sim_exit(self, t: dict, entry_ms: float, now_ms: float) -> dict:
+        """Salida del simulador para esta senal: entrada al close de la vela de
+        senal (la anterior a la de entrada), mismo trail_dist y max_hold."""
+        signal_bar = int(entry_ms) // BAR_MS * BAR_MS - BAR_MS
+        try:
+            bars = self.exchange.fetch_ohlcv(t['symbol'], '4h', since=signal_bar,
+                                             limit=int(t['max_hold']) + 3)
+        except Exception as e:
+            logger.warning(f"[PM] velas para sim de trade {t['id']}: {e}")
+            return {}
+        bars = [b for b in bars if b[0] >= signal_bar and b[0] + BAR_MS <= now_ms]
+        if not bars or bars[0][0] != signal_bar:
+            return {}
+        df = pd.DataFrame(bars, columns=['ts', 'open', 'high', 'low', 'close', 'volume'])
+        sim = _sim_long_trailing if t['side'] == 'long' else _sim_short_trailing
+        reason, exit_p, pnl_pct, _ = sim(df, 0, float(df['close'].iloc[0]),
+                                         float(t['trail_dist']), int(t['max_hold']),
+                                         SIM_COMMISSION)
+        if reason == 'NO_RESUELTO':
+            return {'signal_close': float(df['close'].iloc[0])}
+        return {'signal_close': float(df['close'].iloc[0]),
+                'exit_sim_price': exit_p, 'exit_sim_reason': reason,
+                'pnl_sim_pct': pnl_pct}
 
     def get_status(self) -> dict:
         """Retorna estado actual del portfolio."""

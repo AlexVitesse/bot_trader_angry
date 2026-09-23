@@ -50,3 +50,20 @@ caen en los cruces de régimen, justo cuando hay señal.
   (plan 2.3, opción a), igual que el backtest. La fila "vela 1h" de la tabla 1
   describe el comportamiento **anterior** (trail por tick de 30 s) y ya no el
   actual.
+
+## Vivo vs simulado por trade (plan 2.1) — `compare_live_vs_sim.py`
+
+Desde el commit de la tarea 2.1, `PortfolioManager.reconcile_closed_trades`
+(cada 10 min) completa cada trade cerrado de `ml_trades` con:
+
+| columna | origen |
+|---|---|
+| `pnl_real`, `commission_real`, `funding_real` | `income` de Binance en la ventana del trade |
+| `signal_close` | close de la vela de señal (la anterior a la de entrada) |
+| `exit_sim_price`, `exit_sim_reason`, `pnl_sim_pct` | `_sim_*_trailing` con entrada en `signal_close`, mismo `trail_dist` y `max_hold` |
+
+La salida simulada queda en NULL hasta que haya velas suficientes para
+resolverla. `compare_live_vs_sim.py [ruta_db]` imprime real vs sim por trade,
+slippage de entrada y la divergencia acumulada; con ≥50 trades y >25% avisa
+del KPI de parada de `CLAUDE.md`. Trades anteriores a la tarea no tienen
+`trail_dist` y solo reciben el PnL real.

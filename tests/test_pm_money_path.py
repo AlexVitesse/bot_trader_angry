@@ -6,6 +6,7 @@ Cubre las Fases 1 y 2.3 de docs/PLAN_MEJORAS_2026-09.md:
   1.3 posicion 'pending' -> adopcion con parametros del motor / descarte
   1.4 reemplazo del stop sin dejar sl_order_id huerfano
   2.3 trail V2 solo con velas 4h cerradas
+  2.1/5.2 salida simulada y PnL real de Binance por trade
 
 Uso: python -m pytest tests/test_pm_money_path.py   (o python tests/...)
 """
@@ -33,6 +34,7 @@ class FakeExchange:
         self.fail_market = None       # 'before' | 'after' fill
         self.fail_stop = False
         self._n = 0
+        self.income = []
 
     def _id(self):
         self._n += 1
@@ -79,6 +81,9 @@ class FakeExchange:
 
     def fetch_ohlcv(self, pair, tf, since=None, limit=None):
         return [b for b in self.bars if since is None or b[0] >= since]
+
+    def fapiPrivateGetIncome(self, params):
+        return self.income
 
     def set_leverage(self, lev, symbol):
         pass
@@ -206,6 +211,34 @@ def test_trail_moves_only_with_closed_bars():
     assert abs(pos.trail_sl - 105_000.0 * 0.97) < 1e-6
     assert ex.orders[pos.sl_order_id]['stopPrice'] == round(105_000.0 * 0.97, 1)
     assert old_id in ex.cancelled
+
+
+def test_reconcile_fills_real_pnl_and_sim_exit():
+    import sqlite3
+    ex = FakeExchange()
+    pm, db = _pm(ex)
+    assert _open_v2(pm)
+    pos = pm.positions[PAIR]
+    # entrada hace 3 velas; vela de senal cerro a 100k
+    pos.entry_time = datetime.now(timezone.utc) - timedelta(hours=12, minutes=58)
+    sig = int(pos.entry_time.timestamp() * 1000) // BAR_MS * BAR_MS - BAR_MS
+    ex.bars = [[sig, 0, 100_000.0, 99_000.0, 100_000.0, 0],
+               [sig + BAR_MS, 0, 104_000.0, 99_500.0, 103_000.0, 0],  # peak 104k
+               [sig + 2 * BAR_MS, 0, 103_000.0, 100_000.0, 100_500.0, 0]]  # < 104k*0.97
+    ex.price = 101_000.0
+    pm._close_position(PAIR, 101_000.0, 'TRAIL')
+    with sqlite3.connect(db) as c:           # cierre hace 10 min
+        c.execute("UPDATE ml_trades SET exit_time = ?", (
+            (datetime.now(timezone.utc) - timedelta(minutes=10)).isoformat(),))
+    ex.income = [{'incomeType': 'REALIZED_PNL', 'income': '60.0'},
+                 {'incomeType': 'COMMISSION', 'income': '-2.5'},
+                 {'incomeType': 'FUNDING_FEE', 'income': '-0.5'}]
+    pm.reconcile_closed_trades()
+    t = pm.get_today_trades_from_db('all')[0]
+    assert t['pnl_real'] == 57.0 and t['pnl'] == 57.0
+    assert t['exit_sim_reason'] == 'TP'
+    assert abs(t['exit_sim_price'] - 104_000.0 * 0.97) < 1e-6
+    assert t['signal_close'] == 100_000.0
 
 
 if __name__ == '__main__':
