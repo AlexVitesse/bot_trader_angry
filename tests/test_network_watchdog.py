@@ -1,5 +1,5 @@
 """El bot debe SALIR tras 3 velas 4h seguidas sin red, para que run_bot.sh
-(Restart=always) lo reinicie con sockets y DNS limpios.
+lo reinicie con sockets y DNS limpios.
 
 Sin esto el loop principal se traga las excepciones para siempre y loguea
 "Sin senales en este ciclo", indistinguible de un mercado quieto: asi se
