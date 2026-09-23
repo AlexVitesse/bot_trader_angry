@@ -297,6 +297,8 @@ experiments/               # Un README por experimento. Los negativos están
   vol_sizing/              # ML de volatilidad (HAR) para sizing: no supera al ATR (p=0,84). Rechazado
   meta_labeling/           # Meta-modelo discrimina (AUC OOS 0,61) pero el sizing no mejora V2 (p=0,14)
   derivados/               # OI y DVOL como filtro: ninguno pasa etapa 1 (p 0,99 y 0,41). Rechazado
+  predictibilidad_fuentes/ # 10 celdas (BTC 1h/1d, panel altcoins, derivados): R2 OOS < 0 en todas. Sin señal que cubra costes
+  riesgo/                  # CAGR/DD/P(kill) por nivel de riesgo: al 4,5% DD hist. 42,4% (kill al 45%)
   criterio_validacion/     # El 7/12 folds dejaba pasar el 53% de sistemas sin edge
   presupuesto_informacion/ # No caben los parámetros: 11 episodios, 131 trades
   predictibilidad/         # No hay señal: R² in-sample 0,068%

@@ -1,0 +1,25 @@
+{'celda': 'BTC 1h tecnicas h=1', 'n': 30355, 'n_eff': 30355, 'ic': np.float64(0.02080755704134471), 'r2': np.float64(-0.0011399804443650297), 'p': np.float64(0.000999000999000999), 'sigma': np.float64(0.005072318622085109), 'desde': Timestamp('2022-01-08 00:00:00+0000', tz='UTC'), 'hasta': Timestamp('2026-03-05 17:00:00+0000', tz='UTC')}
+{'celda': 'BTC 1h tecnicas h=24', 'n': 30336, 'n_eff': 1264, 'ic': np.float64(0.005883845608357639), 'r2': np.float64(-0.008805427115638143), 'p': np.float64(0.4125874125874126), 'sigma': np.float64(0.024585667101425904), 'desde': Timestamp('2022-01-08 00:00:00+0000', tz='UTC'), 'hasta': Timestamp('2026-03-04 18:00:00+0000', tz='UTC')}
+{'celda': 'BTC 1d tecnicas h=1', 'n': 1925, 'n_eff': 1925, 'ic': np.float64(0.02160016290857412), 'r2': np.float64(-0.01976271096210991), 'p': np.float64(0.08291708291708291), 'sigma': np.float64(0.030992809895956697), 'desde': Timestamp('2019-11-07 00:00:00+0000', tz='UTC'), 'hasta': Timestamp('2026-03-03 00:00:00+0000', tz='UTC')}
+{'celda': 'BTC 1d tecnicas h=5', 'n': 1921, 'n_eff': 384, 'ic': np.float64(-0.09873468783330742), 'r2': np.float64(-0.07170346845811282), 'p': np.float64(0.8841158841158842), 'sigma': np.float64(0.06872876812319555), 'desde': Timestamp('2019-11-07 00:00:00+0000', tz='UTC'), 'hasta': Timestamp('2026-02-27 00:00:00+0000', tz='UTC')}
+{'celda': 'Panel 4h cross-sect h=1', 'n': 216732, 'n_eff': 11229, 'ic': np.float64(-0.0013736142322170928), 'r2': np.float64(-0.0002715056382533998), 'p': np.float64(0.7012987012987013), 'sigma': np.float64(0.010677324117270834), 'desde': Timestamp('2019-01-01 00:00:00+0000', tz='UTC'), 'hasta': Timestamp('2026-03-25 20:00:00+0000', tz='UTC')}
+{'celda': 'Panel 4h cross-sect h=6', 'n': 216644, 'n_eff': 1870, 'ic': np.float64(0.026292638727531185), 'r2': np.float64(-0.0027526204386405517), 'p': np.float64(0.27672327672327673), 'sigma': np.float64(0.026959666106909554), 'desde': Timestamp('2019-01-01 00:00:00+0000', tz='UTC'), 'hasta': Timestamp('2026-03-25 20:00:00+0000', tz='UTC')}
+{'celda': 'Panel 1d cross-sect h=1', 'n': 35567, 'n_eff': 1846, 'ic': np.float64(0.034688645369521175), 'r2': np.float64(-0.0018237939482819154), 'p': np.float64(0.0939060939060939), 'sigma': np.float64(0.026495303121476778), 'desde': Timestamp('2019-01-01 00:00:00+0000', tz='UTC'), 'hasta': Timestamp('2026-03-25 00:00:00+0000', tz='UTC')}
+{'celda': 'Panel 1d cross-sect h=5', 'n': 35500, 'n_eff': 368, 'ic': np.float64(0.06892851329892803), 'r2': np.float64(-0.007663046610973723), 'p': np.float64(0.015984015984015984), 'sigma': np.float64(0.060726667713555546), 'desde': Timestamp('2019-01-01 00:00:00+0000', tz='UTC'), 'hasta': Timestamp('2026-03-25 00:00:00+0000', tz='UTC')}
+{'celda': 'BTC 4h derivados h=1', 'n': 9967, 'n_eff': 9967, 'ic': np.float64(-0.004604519331097169), 'r2': np.float64(-0.0014296564266407241), 'p': np.float64(0.5514485514485514), 'sigma': np.float64(0.011102992068478331), 'desde': Timestamp('2020-09-09 00:00:00+0000', tz='UTC'), 'hasta': Timestamp('2026-02-27 12:00:00+0000', tz='UTC')}
+{'celda': 'BTC 4h derivados h=6', 'n': 9963, 'n_eff': 1660, 'ic': np.float64(0.003250028672591925), 'r2': np.float64(-0.0033463472952925954), 'p': np.float64(0.3016983016983017), 'sigma': np.float64(0.027537629395510105), 'desde': Timestamp('2020-09-09 00:00:00+0000', tz='UTC'), 'hasta': Timestamp('2026-02-26 16:00:00+0000', tz='UTC')}
+
+=== RESUMEN (10 celdas, Holm a 0,05) ===
+celda                              N  N_eff    R2 OOS   IC OOS       p  p Holm   sigma     edge  cubre  senal
+BTC 1h tecnicas h=1            30355  30355   -0.114%   0.0208   0.001   0.010   0.51%  0.0084%     no     no
+BTC 1h tecnicas h=24           30336   1264   -0.881%   0.0059   0.413   1.000   2.46%  0.0115%     no     no
+BTC 1d tecnicas h=1             1925   1925   -1.976%   0.0216   0.083   0.663   3.10%  0.0534%     no     no
+BTC 1d tecnicas h=5             1921    384   -7.170%  -0.0987   0.884   1.000   6.87% -0.5414%     no     no
+Panel 4h cross-sect h=1       216732  11229   -0.027%  -0.0014   0.701   1.000   1.07% -0.0012%     no     no
+Panel 4h cross-sect h=6       216644   1870   -0.275%   0.0263   0.277   1.000   2.70%  0.0566%     no     no
+Panel 1d cross-sect h=1        35567   1846   -0.182%   0.0347   0.094   0.663   2.65%  0.0733%     no     no
+Panel 1d cross-sect h=5        35500    368   -0.766%   0.0689   0.016   0.144   6.07%  0.3340%     si     no
+BTC 4h derivados h=1            9967   9967   -0.143%  -0.0046   0.551   1.000   1.11% -0.0041%     no     no
+BTC 4h derivados h=6            9963   1660   -0.335%   0.0033   0.302   1.000   2.75%  0.0071%     no     no
+
+coste ida y vuelta por pata: 0.12%  |  edge = IC*sigma*sqrt(2/pi)
