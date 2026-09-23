@@ -24,15 +24,47 @@ y se actualiza después.
 
 ## Resultado 1 — la config defendible es peor de lo que se había reportado
 
-BTC solo, sin `F_SHORT`, 165 trades, 2019-2026, PF 1,77 estable:
+BTC solo, sin `F_SHORT`, 165 trades, 2019-2026, PF 1,77 estable (costes
+**viejos**, ver abajo):
 
-| risk/trade | CAGR | DD | bootstrap p |
-|--:|--:|--:|--:|
-| 1,0% | +6,6% | 10,2% | 0,004 ✅ |
-| 2,0% | +13,2% | 19,7% | 0,004 ✅ |
-| 3,0% | +19,6% | 28,5% | 0,004 ✅ |
-| **4,5%** | **+29,0%** | **40,4%** | 0,004 ✅ |
-| 6,0% | +36,6% | 49,1% | 0,005 ✅ |
+| risk/trade | CAGR | DD |
+|--:|--:|--:|
+| 1,0% | +6,6% | 10,2% |
+| 2,0% | +13,2% | 19,7% |
+| 3,0% | +19,6% | 28,5% |
+| **4,5%** | **+29,0%** | **40,4%** |
+| 6,0% | +36,6% | 49,1% |
+
+**bootstrap p (i.i.d.) = 0,004 — un solo número, no uno por nivel de riesgo.**
+
+> ⚠️ Corrección 2026-09 (`docs/AUDITORIA_2026-09.md` §1.1). Esta tabla
+> mostraba antes una columna de p por nivel de riesgo, todas ≈0,004, y eso se
+> leyó como "p estable en todos los niveles de riesgo". Es una tautología:
+> `notional = equity·risk/trail` y `r = pnl/equity_entrada`, así que
+> `r ∝ risk_pct` y escalar `r` por una constante no cambia el signo de su
+> media. Los cinco p eran el mismo número (el 0,005 a 6% solo aparecía porque
+> muerde el tope de notional 2,5×). La robustez del p frente a la dependencia
+> temporal y a la selección de variante se mide en
+> `experiments/bootstrap_bloques/`.
+
+### Con costes nuevos (desde 2026-09)
+
+`PortfolioSim(..., costes='nuevos')` es ahora el **default**;
+`costes='viejos'` reproduce las cifras de arriba. Cambios (§1.7 de la
+auditoría): slippage 0,02%/lado (antes 0,01%), funding histórico real de BTC
+en vez de la mediana constante, y stop llenado a `min(stop, open)` cuando la
+vela abre con gap por debajo del stop.
+
+| costes | risk | n | PF | CAGR | DD | p i.i.d. |
+|---|--:|--:|--:|--:|--:|--:|
+| viejos | 2,0% | 165 | 1,77 | +13,2% | 19,7% | 0,004 |
+| **nuevos** | **2,0%** | 165 | **1,65** | **+11,1%** | **21,5%** | 0,008 |
+| viejos | 4,5% | 165 | 1,77 | +29,0% | 40,4% | 0,004 |
+| **nuevos** | **4,5%** | 165 | **1,65** | **+23,9%** | **43,4%** | 0,008 |
+
+Descomposición a 2% (cada coste añadido solo sobre los viejos): slippage
+−0,3 pts de CAGR, funding histórico −0,2 pts (+1,4 pts de DD), **gap del stop
+−1,6 pts** (PF 1,77 → 1,68). El gap es el coste que faltaba y el mayor.
 
 Comparado con la calibración del 2026-08-09 (que daba +32,7% con "DD p95 39%"
 a 4,5%): **el fill honesto cuesta ~3,7 puntos de CAGR** y el DD real es peor.
@@ -73,9 +105,9 @@ modelaba: el backtest asumía que todas las señales se ejecutaban.
 
 ## Limitaciones que quedan
 
-- **Funding es una constante** (0,013%/8h, mediana de `agent_D`), no el
-  histórico real con su signo y variación.
-- **Sin gaps ni slippage adicional** más allá del 0,05%/lado ya incluido.
+- ~~Funding constante~~ y ~~sin gaps~~: corregido en 2026-09 (`costes='nuevos'`).
+  El funding histórico solo cubre BTC desde 2020-01; antes y en otros pares
+  se usa la constante.
 - **DD es un único camino histórico**, no una distribución. La crítica de la
   revisión sobre las permutaciones sigue aplicando: permutar preserva el
   retorno final, así que no estima ruina futura.
@@ -128,7 +160,10 @@ Tres corolarios:
 ## Conclusión
 
 1. La calibración honesta para BTC sin `F_SHORT` es **2% → +13,2% anual con DD
-   19,7%**. El 30% cuesta ~41% de drawdown.
+   19,7%**. El 30% cuesta ~41% de drawdown. *(2026-09, costes nuevos: 2% →
+   +11,1% / DD 21,5%; 4,5% → +23,9% / DD 43,4%. El p resiste el bootstrap por
+   bloques pero no el null sintético con selección: ver
+   `experiments/bootstrap_bloques/`.)*
 2. **La vía multi-par está rechazada**: su ventaja es un artefacto de 2021.
 3. **V2 no supera el walk-forward del propio proyecto** (2/6 folds). No es
    candidato a capital real en su forma actual.

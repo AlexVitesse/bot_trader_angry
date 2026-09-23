@@ -42,9 +42,27 @@ sys.path.insert(0, str(ROOT))
 
 from src import v2_engine as v2
 
-# Costes (config/settings.py: 0.04% comision + 0.01% slippage por lado)
-COMISION = 0.0005
-FUNDING_8H = 0.00013          # mediana BTC perp (agent_D). Aproximacion.
+# Costes. Dos juegos para poder reproducir las cifras publicadas antes:
+#   'viejos'  (hasta 2026-09): 0,04% comision + 0,01% slippage por lado,
+#             funding constante, stop llenado al nivel exacto aunque haya gap.
+#   'nuevos'  (AUDITORIA_2026-09 §1.7): slippage 0,02%/lado, funding historico
+#             real de BTC (data/btc_v15_funding.parquet; constante como
+#             fallback fuera de cobertura y en otros pares), y stop llenado a
+#             min(stop, open) si la vela abre por debajo del stop (gap).
+COSTES = {
+    'viejos': {'comision': 0.0005, 'funding_hist': False, 'gap': False},
+    'nuevos': {'comision': 0.0006, 'funding_hist': True, 'gap': True},
+}
+COMISION = COSTES['viejos']['comision']   # compat: otros scripts lo importan
+FUNDING_8H = 0.00013          # mediana BTC perp (agent_D). Fallback.
+
+
+def _funding_btc() -> pd.Series:
+    f = ROOT / 'data' / 'btc_v15_funding.parquet'
+    s = pd.read_parquet(f)['funding_rate'].astype(float)
+    if s.index.tz is None:
+        s.index = s.index.tz_localize('UTC')
+    return s.sort_index()
 
 PARQUETS = {
     'BTC/USDT': 'BTC_USDT_4h_full.parquet',
@@ -88,6 +106,7 @@ class Pos:
     barras: int = 0
     funding_pagado: float = 0.0
     equity_entrada: float = 0.0   # denominador correcto para el retorno del trade
+    ts_entrada: object = None
 
 
 @dataclass
@@ -122,7 +141,8 @@ class PortfolioSim:
     def __init__(self, datos: dict, params: dict = None, risk_pct: float = 0.02,
                  max_concurrent: int = 3, max_misma_dir: int = 2,
                  leverage: int = 4, max_notional_pct: float = 2.5,
-                 capital: float = 10_000.0, aplicar_funding: bool = True):
+                 capital: float = 10_000.0, aplicar_funding: bool = True,
+                 costes: str = 'nuevos'):
         self.datos = datos
         self.params = params or v2.PARAMS_V2
         self.risk_pct = risk_pct
@@ -132,6 +152,7 @@ class PortfolioSim:
         self.max_notional_pct = max_notional_pct
         self.capital0 = capital
         self.aplicar_funding = aplicar_funding
+        self.costes = COSTES[costes]
 
     # -- gates de can_open, replicando portfolio_manager.can_open -------------
     def _puede_abrir(self, par, direccion, abiertas, notional, equity):
@@ -160,6 +181,15 @@ class PortfolioSim:
         # mapa timestamp -> posicion en el df de cada par
         pos_en = {p: {ts: i for i, ts in enumerate(d.index)}
                   for p, d in self.datos.items()}
+
+        # funding 8h vigente en cada vela (BTC; NaN fuera de cobertura)
+        fund_rate = {}
+        if self.costes['funding_hist'] and 'BTC/USDT' in self.datos:
+            fs = _funding_btc()
+            r = fs.reindex(maestro.union(fs.index)).ffill().reindex(maestro)
+            r[maestro < fs.index[0]] = np.nan
+            fund_rate = r.to_dict()
+        comision = self.costes['comision']
 
         cash = self.capital0
         abiertas: dict[str, Pos] = {}
@@ -193,13 +223,18 @@ class PortfolioSim:
                 p = abiertas[par]
                 p.barras += 1
                 if self.aplicar_funding:                 # 4h = medio periodo de 8h
-                    p.funding_pagado += p.notional * FUNDING_8H * 0.5 * p.direccion
+                    rate = fund_rate.get(ts, np.nan) if par == 'BTC/USDT' else np.nan
+                    if pd.isna(rate):
+                        rate = FUNDING_8H
+                    p.funding_pagado += p.notional * rate * 0.5 * p.direccion
 
+                op = float(d['open'].iloc[i])
+                gap = self.costes['gap']
                 salida, motivo = None, None
                 if p.direccion == 1 and lo <= p.stop:
-                    salida, motivo = p.stop, 'SL'
+                    salida, motivo = (min(p.stop, op) if gap else p.stop), 'SL'
                 elif p.direccion == -1 and hi >= p.stop:
-                    salida, motivo = p.stop, 'SL'
+                    salida, motivo = (max(p.stop, op) if gap else p.stop), 'SL'
                 elif p.barras >= p.max_bars:
                     salida, motivo = cl, 'TIMEOUT'
 
@@ -214,11 +249,11 @@ class PortfolioSim:
                     continue
 
                 bruto = (salida - p.entrada) / p.entrada * p.direccion
-                pnl = (bruto - 2 * COMISION) * p.notional - p.funding_pagado
+                pnl = (bruto - 2 * comision) * p.notional - p.funding_pagado
                 cash += pnl
                 trades.append({
                     'par': par, 'sig': p.sig, 'dir': p.direccion,
-                    'ts_salida': ts, 'motivo': motivo, 'barras': p.barras,
+                    'ts_entrada': p.ts_entrada, 'ts_salida': ts, 'motivo': motivo, 'barras': p.barras,
                     'notional': p.notional, 'pnl': pnl,
                     'r': pnl / p.equity_entrada,   # equity de ENTRADA, no de salida
                 })
@@ -251,7 +286,7 @@ class PortfolioSim:
                     par=par, direccion=direccion, sig=sig, entrada=entrada,
                     notional=notional, trail=trail, max_bars=mb,
                     stop=entrada * (1 - trail * direccion), extremo=entrada,
-                    equity_entrada=equity,
+                    equity_entrada=equity, ts_entrada=ts,
                 )
             pendientes = []
 

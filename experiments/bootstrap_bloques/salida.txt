@@ -1,0 +1,37 @@
+EXPECTATIVA - BTC solo, V2, simulador de cartera
+  costes   risk    n     WR    PF    CAGR     DD  p iid
+  viejos   2.0%  165  44.2%  1.77  +13.2%  19.7%  0.004
+  viejos   4.5%  165  44.2%  1.77  +29.0%  40.4%  0.004
+  nuevos   2.0%  165  44.2%  1.65  +11.1%  21.5%  0.008
+  nuevos   4.5%  165  44.2%  1.65  +23.9%  43.4%  0.008
+
+TRADES OBSERVADOS: n=165 mean(r)=+0.4914%
+
+P-VALOR SOBRE LOS TRADES (H0: mean(r) <= 0)
+  i.i.d.                          p=0.0089
+  bloques de  5 trades            p=0.0086
+  bloques de 10 trades            p=0.0075
+  bloques de 20 trades            p=0.0041
+  bloques de  40 dias ( 46 bl.)   p=0.0049
+  bloques de  30 dias ( 62 bl.)   p=0.0126
+  bloques de  90 dias ( 24 bl.)   p=0.0063
+  bloques de 180 dias ( 12 bl.)   p=0.0167
+  episodios de regimen (  6 ep.)  p=0.0326   (mediana entre trades 8.1 dias)
+
+VARIANTES OBSERVADAS:
+  V2 (A + F_LONG)    mean(r) +0.4914%   t  2.31
+  A + F bidir        mean(r) +0.4091%   t  2.25
+  A solo             mean(r) +0.5722%   t  2.29
+  F_LONG solo        mean(r) +0.2140%   t  0.81
+  F bidir solo       mean(r) +0.1621%   t  0.79
+  A + F_SHORT        mean(r) +0.4445%   t  2.20
+
+NULL SINTETICO bloques de 42 velas (7 dias), 800 series, 1918s
+  [mean(r)] obs +0.0049 | mediana null V2 +0.0034 | p sin seleccion 0.2013 | p con seleccion (max de 6) 0.5188
+  [t] obs +2.3089 | mediana null V2 +1.6688 | p sin seleccion 0.1625 | p con seleccion (max de 6) 0.3287
+  series con <10 trades en V2: 0
+
+NULL SINTETICO bloques de 180 velas (30 dias), 800 series, 1461s
+  [mean(r)] obs +0.0049 | mediana null V2 +0.0036 | p sin seleccion 0.1825 | p con seleccion (max de 6) 0.6787
+  [t] obs +2.3089 | mediana null V2 +1.6945 | p sin seleccion 0.1338 | p con seleccion (max de 6) 0.4238
+  series con <10 trades en V2: 0
