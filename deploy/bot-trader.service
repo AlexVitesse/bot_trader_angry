@@ -1,32 +1,26 @@
+# Unidad systemd de USUARIO para el bot (plantilla; setup_server.sh la instala
+# sustituyendo @BOT_DIR@ y @PYTHON@).
+#
+# Codigos de salida del bot:
+#   0  = parada limpia (Ctrl+C, kill switch) -> NO se relanza
+#   1  = watchdog de red (3 velas sin red)   -> se relanza
+#   43 = /restart, /update                   -> se relanza
+# Restart=on-failure hace exactamente eso. OJO: `kill <pid>` (SIGTERM) cuenta
+# como parada limpia para systemd y NO relanza: reiniciar con
+#   systemctl --user restart bot-trader
 [Unit]
-Description=Bot Trader Angry - Binance Scalper v6.7
+Description=Bot de trading V2 (BTC/USDT, Binance Futures 4h)
 After=network-online.target
 Wants=network-online.target
+StartLimitIntervalSec=600
+StartLimitBurst=5
 
 [Service]
 Type=simple
-User=botuser
-Group=botuser
-WorkingDirectory=/home/botuser/bot_trader_angry
-ExecStart=/home/botuser/.local/bin/poetry run python src/bot.py
-Restart=always
-RestartSec=10
-StartLimitIntervalSec=300
-StartLimitBurst=5
-
-# Environment
-EnvironmentFile=/home/botuser/bot_trader_angry/.env
-
-# Logging (stdout/stderr van a journald)
-StandardOutput=journal
-StandardError=journal
-SyslogIdentifier=bot-trader
-
-# Seguridad
-NoNewPrivileges=true
-ProtectSystem=strict
-ProtectHome=read-only
-ReadWritePaths=/home/botuser/bot_trader_angry/data /home/botuser/bot_trader_angry/bot.log
+WorkingDirectory=@BOT_DIR@
+ExecStart=@PYTHON@ -u -m src.ml_bot
+Restart=on-failure
+RestartSec=30
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=default.target

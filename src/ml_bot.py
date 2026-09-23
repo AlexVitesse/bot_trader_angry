@@ -1085,6 +1085,8 @@ def setup_logging():
         rotating,
     ]
 
+    # Log en UTC, como toda la logica del bot (antes: hora local del VPS, UTC-6)
+    logging.Formatter.converter = time.gmtime
     logging.basicConfig(
         level=getattr(logging, LOG_LEVEL, logging.INFO),
         format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
