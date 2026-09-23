@@ -271,6 +271,7 @@ docs/
   AUDITORIA_2026-05.md     # Auditoría — estado real, overfitting, inspiración GitHub
   SESION_2026-08-09.md     # Despliegue V2 BTC-only, walk-forward real
   SESION_2026-08-22.md     # Criterio de validación corregido + mapa de familias cerrado
+  SESION_2026-09-22.md     # Bug de fills demo-fapi: 2 ganadores registrados como pérdidas; VPS
   V15_COMMITTEE_results.md # Resultados del comité BTC validado
   archive/                 # Documentación de versiones previas (V12-V14)
 
@@ -298,6 +299,13 @@ Bot producción:      C:\Users\pcdec\AppData\Local\pypoetry\Cache\
                      virtualenvs\binance-scalper-bot-ofXWUGOe-py3.12\
                      Scripts\python.exe (sklearn 1.8.0)
 ```
+
+### Producción real: VPS condor-ia (desde 2026-08)
+- `ssh -p 2222 space-user2@100.87.103.87` (Tailscale; guía en Obsidian)
+- Dir `~/bot_trader_angry`, wrapper `bash run_bot.sh` (relanza al morir el
+  proceso: `kill <pid python>` = reinicio). Python: `/home/space-user2/envs/deepseek/bin/python`
+- Logs `logs/ml_bot.log` en hora local **UTC-6**. Sin sftp: copiar con `tar` por ssh.
+- Verdad de trades = income/userTrades de Binance demo, no `ml_trades`.
 
 - **Entrenar modelos SIEMPRE con el venv de producción** (sklearn 1.8.0)
 - Modelos del venv dan InconsistentVersionWarning en Claude bash (no es error)
@@ -416,6 +424,10 @@ Detalle: `experiments/criterio_validacion/`, `experiments/estacionalidad/`,
    - Acumular ≥30 trades reales
    - Trackear: trades reales vs simulados, bootstrap p rolling, DD
    - KPI de parada: real diverge >25% del simulado en 50 trades → STOP
+   - **Estado 2026-09-22**: 3 trades reales, los 3 ganadores (+$563 neto).
+     La DB llegó a registrar 2 como pérdidas por un bug de fills (`642ffd4`,
+     ver `docs/SESION_2026-09-22.md`). **Cruzar siempre con el income de
+     Binance, no fiarse solo de `ml_trades`.**
 
 4. **Refrescar datos** (`download_new_pairs.py` en venv prod) — higiene, pero
    **no esperar información nueva**. Medido en `experiments/oos_2026H1/`: los
