@@ -286,6 +286,7 @@ docs/
   SESION_2026-08-09.md     # Despliegue V2 BTC-only, walk-forward real
   SESION_2026-08-22.md     # Criterio de validación corregido + mapa de familias cerrado
   SESION_2026-09-22.md     # Bug de fills demo-fapi: 2 ganadores registrados como pérdidas; VPS
+  SESION_2026-09-23.md     # Ejecución del plan 2026-09 (fases 0-7), bootstrap honesto, despliegue
   archive/                 # Documentación obsoleta (V12-V14, METODOLOGIA_TESTING)
 
 experiments/               # Un README por experimento. Los negativos están

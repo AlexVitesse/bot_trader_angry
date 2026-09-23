@@ -11,6 +11,8 @@ auditoría; no se planifican aquí.
 
 ## Estado (2026-09-23) — desplegado en el VPS
 
+> Registro completo de la ejecución: `docs/SESION_2026-09-23.md`.
+
 | Fase | Estado | Commit |
 |---|---|---|
 | 0 | Hecha | `7c60de8` |
