@@ -19,7 +19,7 @@ from config.settings import (
     ML_DB_FILE, ML_MAX_CONCURRENT, ML_MAX_DD_PCT, ML_MAX_DAILY_LOSS_PCT,
     ML_RISK_PER_TRADE, ML_MAX_NOTIONAL_PCT, ML_LEVERAGE, ML_TP_PCT, ML_SL_PCT,
     ML_TRAILING_ACTIVATION, ML_TRAILING_LOCK, ML_MAX_HOLD,
-    COMMISSION_RATE, SLIPPAGE_PCT, INITIAL_CAPITAL,
+    COMMISSION_RATE, SLIPPAGE_PCT, INITIAL_CAPITAL, ML_ENTRY_LIMIT_TIMEOUT_S,
 )
 
 from src.v2_engine import COMMISSION as SIM_COMMISSION
@@ -503,6 +503,57 @@ class PortfolioManager:
         except Exception:
             pass  # Order might already be filled or cancelled
 
+    def _enter(self, pair: str, side: str, qty: float, ref_price: float) -> tuple:
+        """Entrada maker con fallback a market. Devuelve (precio medio, qty).
+
+        1. Limit post-only (GTX) al mejor bid (compra) / ask (venta). Si cruzara,
+           Binance la rechaza sin registrarla (-5022) y se va directo a market.
+        2. Espera hasta ML_ENTRY_LIMIT_TIMEOUT_S; si no se lleno entera, se
+           cancela y el resto va a market.
+        Un fallo a mitad deja la posicion 'pending': update_positions/sync la
+        adoptan con lo que haya en el exchange."""
+        filled, cost, oid = 0.0, 0.0, None
+        if ML_ENTRY_LIMIT_TIMEOUT_S > 0:
+            try:
+                ob = self.exchange.fetch_order_book(pair, 5)
+                px = ob['bids'][0][0] if side == 'buy' else ob['asks'][0][0]
+                o = self.exchange.create_order(pair, 'limit', side, qty, px,
+                                               {'timeInForce': 'GTX'})
+                oid = o.get('id')
+                deadline = time.time() + ML_ENTRY_LIMIT_TIMEOUT_S
+                while o.get('status') == 'open' and time.time() < deadline:
+                    time.sleep(2)
+                    o = self.exchange.fetch_order(oid, pair)
+                if o.get('status') == 'open':
+                    self._cancel_exchange_sl(pair, oid)       # cancela sin ruido
+                    o = self.exchange.fetch_order(oid, pair)  # filled definitivo
+                filled = float(o.get('filled') or 0)
+                cost = filled * float(o.get('average') or px)
+                logger.info(f"[PM] Entrada maker {pair}: {filled}/{qty} @ "
+                            f"{o.get('average') or px}")
+            except Exception as e:
+                logger.info(f"[PM] Entrada maker {pair} no aplicada ({e}); a market")
+                if oid:
+                    # La limit existio y pudo llenarse en parte: sin saber cuanto,
+                    # mandar la qty entera a market duplicaria la posicion. Si no
+                    # se puede leer, se propaga y la 'pending' se adopta del exchange.
+                    self._cancel_exchange_sl(pair, oid)
+                    o = self.exchange.fetch_order(oid, pair)
+                    filled = float(o.get('filled') or 0)
+                    cost = filled * float(o.get('average') or ref_price)
+        rest = qty - filled
+        min_qty = ((getattr(self.exchange, 'markets', None) or {}).get(pair, {})
+                   .get('limits', {}).get('amount', {}).get('min') or 0)
+        if rest > 1e-12 and rest >= min_qty:
+            rest = float(self.exchange.amount_to_precision(pair, rest))
+            o = self.exchange.create_order(pair, 'market', side, rest)
+            mq = float(o.get('filled') or rest)
+            cost += mq * self._order_fill_price(o, pair, ref_price)
+            filled += mq
+        if filled <= 0:
+            raise RuntimeError(f"entrada {pair} sin fill")
+        return cost / filled, filled
+
     def _order_fill_price(self, order: dict, pair: str, fallback: float) -> float:
         """Precio medio real de una orden market.
         demo-fapi devuelve la orden con average=None (la clave existe, asi que
@@ -756,15 +807,8 @@ class PortfolioManager:
 
             # Colocar orden
             order_side = 'buy' if direction == 1 else 'sell'
-            order = self.exchange.create_order(
-                symbol=symbol_ccxt,
-                type='market',
-                side=order_side,
-                amount=quantity,
-            )
-
-            fill_price = self._order_fill_price(order, symbol_ccxt, price)
-            pos.quantity = float(order.get('filled') or quantity)
+            fill_price, pos.quantity = self._enter(symbol_ccxt, order_side,
+                                                   quantity, price)
             pos.notional = pos.quantity * fill_price
             self._set_stops(pos, fill_price)
             pos.status = 'open'

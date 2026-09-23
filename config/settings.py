@@ -115,6 +115,11 @@ ML_MAX_HOLD = {'BULL': 30, 'BEAR': 30, 'RANGE': 15}
 ML_CHECK_INTERVAL = 30      # Segundos entre checks de posiciones
 ML_CANDLE_HOURS = [0, 4, 8, 12, 16, 20]  # 4h candle close hours UTC
 
+# Entrada maker: limit post-only (GTX) al mejor precio del libro; lo que no se
+# llene en este tiempo se cancela y va a market. Binance futures: maker 0,02% vs
+# taker 0,04% (demo-fapi, fapiPrivateGetCommissionRate, 2026-09-23). 0 = market.
+ML_ENTRY_LIMIT_TIMEOUT_S = 60
+
 
 # =============================================================================
 # VERSION DEL BOT (centralizado para Telegram y logs)

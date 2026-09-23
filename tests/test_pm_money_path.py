@@ -7,6 +7,7 @@ Cubre las Fases 1 y 2.3 de docs/PLAN_MEJORAS_2026-09.md:
   1.4 reemplazo del stop sin dejar sl_order_id huerfano
   2.3 trail V2 solo con velas 4h cerradas
   2.1/5.2 salida simulada y PnL real de Binance por trade
+  entrada maker (post-only) con fallback a market
 
 Uso: python -m pytest tests/test_pm_money_path.py   (o python tests/...)
 """
@@ -35,6 +36,9 @@ class FakeExchange:
         self.fail_stop = False
         self._n = 0
         self.income = []
+        self.book = None              # (bid, ask) -> activa la entrada maker
+        self.limit_fill = 1.0         # fraccion que llena la limit
+        self.gtx_reject = False
 
     def _id(self):
         self._n += 1
@@ -47,7 +51,7 @@ class FakeExchange:
         return [{'symbol': PAIR + ':USDT', 'contracts': qty, 'side': side,
                  'entryPrice': entry, 'leverage': 3}]
 
-    def create_order(self, symbol, type, side, amount, params=None):
+    def create_order(self, symbol, type, side, amount, price=None, params=None):
         if type == 'STOP_MARKET':
             if self.fail_stop:
                 raise Exception('stop rechazado')
@@ -55,22 +59,44 @@ class FakeExchange:
             self.orders[oid] = {'id': oid, 'status': 'open',
                                 'stopPrice': params['stopPrice']}
             return self.orders[oid]
+        if type == 'limit':
+            if self.gtx_reject:
+                raise Exception('-5022 post only rejected')
+            q = amount * self.limit_fill
+            self._fill(side, q, price)
+            oid = self._id()
+            self.orders[oid] = {'id': oid, 'status': 'closed' if self.limit_fill == 1 else 'open',
+                                'filled': q, 'average': price if q else None}
+            return dict(self.orders[oid])
         if self.fail_market == 'before':
             raise Exception('insufficient margin')
         if (params or {}).get('reduceOnly'):
             self.position = None
         else:
-            self.position = ('long' if side == 'buy' else 'short', amount, self.price)
+            self._fill(side, amount, self.price)
         if self.fail_market == 'after':
             raise Exception('read timeout')     # la orden SI entro
         oid = self._id()
         return {'id': oid, 'average': self.price, 'filled': amount}
+
+    def _fill(self, side, q, px):
+        if q <= 0:
+            return
+        s, qty, e = self.position or ('long' if side == 'buy' else 'short', 0.0, 0.0)
+        self.position = (s, qty + q, (qty * e + q * px) / (qty + q))
+
+    def fetch_order_book(self, pair, limit=None):
+        if self.book is None:
+            raise Exception('sin libro')
+        return {'bids': [[self.book[0], 1]], 'asks': [[self.book[1], 1]]}
 
     def cancel_order(self, oid, symbol):
         self.cancelled.append(oid)
         self.orders[oid]['status'] = 'canceled'
 
     def fetch_order(self, oid, symbol):
+        if 'filled' in self.orders.get(oid, {}):
+            return dict(self.orders[oid])
         return {'id': oid, 'average': self.price, 'status': 'closed'}
 
     def fetch_ticker(self, pair):
@@ -239,6 +265,40 @@ def test_reconcile_fills_real_pnl_and_sim_exit():
     assert t['exit_sim_reason'] == 'TP'
     assert abs(t['exit_sim_price'] - 104_000.0 * 0.97) < 1e-6
     assert t['signal_close'] == 100_000.0
+
+
+def test_maker_entry_full_fill():
+    ex = FakeExchange()
+    ex.book = (99_990.0, 100_010.0)
+    pm, _ = _pm(ex)
+    assert _open_v2(pm)
+    pos = pm.positions[PAIR]
+    assert pos.entry_price == 99_990.0                 # al bid, sin market
+    assert ex.position[1] == pos.quantity
+
+
+def test_maker_entry_partial_then_market(monkeypatch=None):
+    import src.portfolio_manager as pmm
+    old = pmm.ML_ENTRY_LIMIT_TIMEOUT_S
+    pmm.ML_ENTRY_LIMIT_TIMEOUT_S = 0.01
+    try:
+        ex = FakeExchange()
+        ex.book, ex.limit_fill = (99_000.0, 99_010.0), 0.5
+        pm, _ = _pm(ex)
+        assert _open_v2(pm)
+        pos = pm.positions[PAIR]
+        assert abs(pos.quantity - ex.position[1]) < 1e-9     # sin duplicar
+        assert 99_000.0 < pos.entry_price < 100_000.0        # media limit + market
+    finally:
+        pmm.ML_ENTRY_LIMIT_TIMEOUT_S = old
+
+
+def test_maker_entry_rejected_goes_market():
+    ex = FakeExchange()
+    ex.book, ex.gtx_reject = (99_990.0, 100_010.0), True
+    pm, _ = _pm(ex)
+    assert _open_v2(pm)
+    assert pm.positions[PAIR].entry_price == 100_000.0     # market al precio
 
 
 if __name__ == '__main__':
