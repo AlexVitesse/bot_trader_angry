@@ -124,6 +124,7 @@ V14 sigue en el código pero ML_V14_ENABLED=False. Se puede reactivar si necesar
 | `main` | ✓ Producción | V14 validado (preservado, ML_V14_ENABLED=False) |
 | `v15/multi-pair` | ✓ Deploy actual | V15 multi-par (22 pares) en paper trading |
 | `feature/v14.1-bidirectional` | ✗ Experimental | ETH ML (AUC~0.5) + SHORT ensemble (fallido) — NO mergear |
+| `feature/bot-agresivo` | ✗ Experimental | Infra para 2 bots (V2 en paper interno + agresivo en demo). El motor agresivo perdió en backtest — NO mergear sin un motor que pase validación |
 
 ### Flujo de deploy V15
 1. `v15/multi-pair` contiene el código V15 multi-par en paper trading testnet
@@ -287,6 +288,7 @@ docs/
   SESION_2026-08-22.md     # Criterio de validación corregido + mapa de familias cerrado
   SESION_2026-09-22.md     # Bug de fills demo-fapi: 2 ganadores registrados como pérdidas; VPS
   SESION_2026-09-23.md     # Ejecución del plan 2026-09 (fases 0-7), bootstrap honesto, despliegue
+  INVESTIGACION_GITHUB_ML_2026-09.md  # 25 repos de ML revisados + qué pasó al probar cada idea
   archive/                 # Documentación obsoleta (V12-V14, METODOLOGIA_TESTING)
 
 experiments/               # Un README por experimento. Los negativos están
@@ -299,6 +301,7 @@ experiments/               # Un README por experimento. Los negativos están
   derivados/               # OI y DVOL como filtro: ninguno pasa etapa 1 (p 0,99 y 0,41). Rechazado
   predictibilidad_fuentes/ # 10 celdas (BTC 1h/1d, panel altcoins, derivados): R2 OOS < 0 en todas. Sin señal que cubra costes
   riesgo/                  # CAGR/DD/P(kill) por nivel de riesgo: al 4,5% DD hist. 42,4% (kill al 45%)
+  agresivo/                # Bot ML multi-régimen + Kelly (9 pares): AUC 0,497, CAGR −12,6%, DD 50,5%. Rechazado
   criterio_validacion/     # El 7/12 folds dejaba pasar el 53% de sistemas sin edge
   presupuesto_informacion/ # No caben los parámetros: 11 episodios, 131 trades
   predictibilidad/         # No hay señal: R² in-sample 0,068%
@@ -431,6 +434,10 @@ Detalle: `experiments/criterio_validacion/`, `experiments/estacionalidad/`,
 >   no sobre si hay edge demostrado: no lo hay.
 > - Al 4,5% de riesgo el DD histórico con costes realistas es 43,4%, a 1,6
 >   puntos del kill switch.
+> - **Búsqueda de ML cerrada (2026-09-23):** volatilidad (HAR), meta-labeling,
+>   derivados, otras fuentes/horizontes y un bot agresivo multi-régimen con
+>   Kelly. Ninguno mejora V2; el agresivo pierde −12,6%/año en backtest.
+>   Detalle: `docs/SESION_2026-09-23.md` Parte 12.
 > - Vivo y simulado ya son el mismo sistema (trail por vela cerrada, régimen
 >   con 1000 velas, funding, sin pausa por racha) y cada trade guarda su
 >   salida simulada y su PnL real → el KPI del punto 3 ya se mide solo.

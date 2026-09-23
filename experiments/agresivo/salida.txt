@@ -1,0 +1,49 @@
+eventos etiquetados: 25657 | por tipo: {'mr': 14577, 'don55': 5285, 'don20': 3017, 'comp': 2778} | y=1: 0.372
+AUC OOS (todos los candidatos 2021-2026, n=21208): 0.4968
+  2021: n= 4079 AUC 0.478 | p medio 0.394 | y medio 0.370
+  2022: n= 4089 AUC 0.500 | p medio 0.372 | y medio 0.365
+  2023: n= 3819 AUC 0.517 | p medio 0.377 | y medio 0.378
+  2024: n= 4204 AUC 0.489 | p medio 0.389 | y medio 0.368
+  2025: n= 4320 AUC 0.494 | p medio 0.398 | y medio 0.388
+  2026: n=  697 AUC 0.527 | p medio 0.401 | y medio 0.363
+calibracion (p pronosticada vs tasa real):
+                n      p   real     rR
+bin                                   
+(0.0, 0.3]    677  0.275  0.343 -0.135
+(0.3, 0.4]  13240  0.368  0.377 -0.004
+(0.4, 0.5]   6960  0.427  0.370 -0.055
+(0.5, 0.6]    309  0.531  0.382 -0.017
+(0.6, 1.0]     22  0.624  0.455  0.149
+
+=== CARTERA AGRESIVA (walk-forward 2021-01 -> fin de datos) ===
+CAGR -12.6% | DD 50.5% | PF 0.32 | WR 38.0% | trades 1963 (381/año) | riesgo medio 0.07% | final x0.50
+p bootstrap bloques (mean r > 0): 0.9816
+
+por tipo:
+          n     wr  suma_r  riesgo
+tipo                              
+comp    170  0.359  -0.003   0.000
+don20   124  0.347  -0.013   0.000
+don55   150  0.493   0.003   0.000
+mr     1519  0.374  -0.662   0.001
+
+por dir:
+        n     wr  suma_r  riesgo
+dir                             
+-1   1136  0.389  -0.702   0.001
+ 1    827  0.368   0.027   0.000
+
+por año:
+        n     wr    ret
+ts                     
+2021  664  0.349 -0.500
+2022  270  0.356 -0.001
+2023  201  0.468  0.000
+2024  375  0.379 -0.000
+2025  386  0.409 -0.000
+2026   67  0.358 -0.000
+
+=== COMPARACION (misma ventana) ===
+agresivo      CAGR -12.6% DD 50.5% PF 0.32 trades/año 381
+V2 4,5%       CAGR +7.5% DD 40.9% PF 1.26 trades/año 22
+buy&hold BTC  CAGR +16.8% DD 77.0%
