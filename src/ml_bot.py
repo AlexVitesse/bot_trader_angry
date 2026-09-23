@@ -25,7 +25,7 @@ from config.settings import (
     ML_DB_FILE, MODELS_DIR, TELEGRAM_ENABLED, LOG_LEVEL,
     LOGS_DIR, INITIAL_CAPITAL, ML_MAX_DAILY_LOSS_PCT,
     ML_SHADOW_ENABLED, ML_V9_ENABLED, ML_TIMEFRAME,
-    ML_MAX_CONCURRENT, BOT_VERSION,
+    ML_MAX_CONCURRENT, BOT_VERSION, ML_MAX_DD_PCT,
     ML_V1304_ENABLED, ML_V1304_PAIRS,
     ML_V14_ENABLED, ML_V14_EXPERTS,
 )
@@ -1368,7 +1368,7 @@ class MLBot:
         send_alert(
             f"🚨🚨🚨 <b>KILL SWITCH ACTIVADO</b>\n"
             f"━━━━━━━━━━━━━━━\n"
-            f"📉 DD: {status['dd']:.1%} >= 20%\n"
+            f"📉 DD: {status['dd']:.1%} >= {ML_MAX_DD_PCT:.0%}\n"
             f"💰 Balance: ${status['balance']:,.2f}\n"
             f"🏔️ Peak: ${status['peak']:,.2f}\n"
             f"🛑 Bot DETENIDO"

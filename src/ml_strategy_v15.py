@@ -404,11 +404,13 @@ class MLStrategyV15:
             df_4h['timestamp'] = pd.to_datetime(df_4h['timestamp'], unit='ms', utc=True)
             df_4h = df_4h.set_index('timestamp').sort_index()
 
-            # Fetch daily 300 velas (~10 meses) — suficiente para EMA200 daily
+            # 1000 velas diarias: EMA50/200 con adjust=False arrastran el valor
+            # inicial; con 300 velas bull_1d difería del backtest 29 dias en
+            # 2019-2026 (justo en los cruces), con 1000 en 0. AUDITORIA_2026-09 §2.2
             df_1d = None
             try:
-                ohlcv_1d = _ohlcv(exchange, pair, '1d', 300)
-                if ohlcv_1d and len(ohlcv_1d) >= 200:
+                ohlcv_1d = _ohlcv(exchange, pair, '1d', 1000)
+                if ohlcv_1d and len(ohlcv_1d) >= 600:
                     df_1d = pd.DataFrame(ohlcv_1d, columns=['timestamp', 'open',
                                                             'high', 'low',
                                                             'close', 'volume'])

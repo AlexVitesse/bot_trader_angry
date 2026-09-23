@@ -451,7 +451,10 @@ ML_V15_SIZING = {
 #
 # Testnet: simula yield virtualmente (testnet no tiene Earn). Mainnet: opera
 # con la API real de Binance.
-YIELD_MANAGER_ENABLED = True
+# Apagado 2026-09-22 (AUDITORIA_2026-09 §3.3): nunca probado en mainnet, mueve
+# capital real y el sizing no ve el saldo en Earn. Reactivar solo tras la
+# Fase 5.4 de docs/PLAN_MEJORAS_2026-09.md.
+YIELD_MANAGER_ENABLED = False
 YIELD_CONFIG = {
     'enabled': YIELD_MANAGER_ENABLED,
     'simulate_mode': None,            # None = auto-detect (True si testnet)
