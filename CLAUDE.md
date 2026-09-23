@@ -147,56 +147,51 @@ V14 sigue en el código pero ML_V14_ENABLED=False. Se puede reactivar si necesar
 
 ---
 
-## Candidato real para paper trade
+## Candidato real para paper trade — V2 (lo desplegado)
 
-> ⚠️ **Actualizado 2026-08-11.** Las cifras de abajo (in-sample, sleeve, fill al
-> close que genera la señal) resultaron optimistas. Con el simulador de cartera
-> y fills honestos (`experiments/portfolio_sim/`), el walk-forward REAL da
-> **+6,2%/año a 2% de riesgo** y solo **2/6 folds positivos** — por debajo del
-> ≥7/12 que este mismo documento exige. Ver `docs/SESION_2026-08-09.md`.
->
-> Cambios ya aplicados y desplegados: **`f_enable_short=False`** (44 trades,
-> PF 0,88, p=0,644 — sin edge) y **`ML_V15_PAIRS = ['BTC/USDT']`** (el
-> walk-forward rechazó la vía multi-par: toda su ventaja venía del fold de 2021,
-> con correlación 0,69 entre pares).
+> Actualizado 2026-09-23. **Una sola definición de V2 de referencia**: la de
+> `experiments/portfolio_sim/` (BTC solo, `f_enable_short=False`, fill al open
+> t+1, sin apalancamiento en F, 165 trades 2019-01 → 2026-02) con los costes
+> de la Fase 4 (gap en el stop, funding histórico, slippage 0,02%/lado).
+> Las cifras de `combined_AF/` (163 trades, fill al close, F apalancado) y de
+> `criterio_validacion/` (131 trades) son **otras variantes**: no citarlas como V2.
 
-### V2 = A + F_BTC (sin ETH)
+| riesgo/trade | n | WR | PF | CAGR | DD máx |
+|--:|--:|--:|--:|--:|--:|
+| 2,0% | 165 | 44,2% | 1,65 | +11,1% | 21,5% |
+| **4,5% (desplegado)** | 165 | 44,2% | 1,65 | **+23,9%** | **43,4%** |
 
-| Métrica | Valor in-sample 2020-2025 |
-|---------|---------------------------|
-| Annual return | +22.6% |
-| PF | 1.59 |
-| WR | 43% |
-| DD | 23.9% |
-| Trades | 163 (~27/año) |
-| **Bootstrap p** | **0.031 ✅** |
+Historia completa (incluye los años que se usaron para elegir la variante),
+así que es un techo, no una expectativa. El walk-forward con parámetros
+congelados dio +6,2%/año a 2% (costes viejos). **Al 4,5% el DD histórico
+(43,4%) ya roza el kill switch (45%).**
 
-**Mecanismo (single engine, una posición por par):**
-- **A** (Donchian-55 4h + EMA daily filter + ATR×2.5 trailing, LONG-only):
-  trend-following clásico estilo Turtle. Captura bull markets.
-- **F_BTC** (vol-compression breakout, bidireccional): cuando BB-width está
-  en cuantil bajo histórico, entrar en dirección de la ruptura. Captura
-  expansiones de volatilidad — útil tanto en bull breakouts como bear breakdowns.
-- En cada vela: probar A primero (más conservador). Si A no fira, probar F.
+**Evidencia estadística (Fase 4, `experiments/bootstrap_bloques/`):**
 
-**OOS 2026 (Ene-Feb, 57 días, BTC -23% YTD)**: solo F_BTC SHORT firmó (3 trades:
-+8.78%, -3.40%, -2.91%, neto +2%, DD 6%). A no firmó (correcto: filtro daily
-bloqueó en bear). El LONG no se probó en OOS — necesita ventana alcista.
+| pregunta | p |
+|---|--:|
+| ¿Los trades de V2 ganan dinero? (bootstrap por bloques de trades/calendario) | 0,004–0,033 |
+| ¿V2 supera a la misma regla sobre BTC con la misma deriva en otro orden? (null sintético, block-shuffle de velas) | **0,13–0,20** |
+| Lo mismo, eligiendo la mejor de las 6 variantes en cada serie | **0,33–0,68** |
 
-**Lo que falta probar antes de capital real:**
-1. Paper trade 6-12 meses cubriendo al menos un tramo alcista
-2. ≥30 trades reales acumulados
-3. Bootstrap p actualizado mensual mantiene < 0.05
-4. DD real ≤ 30%
-5. Real diverge < 25% del simulado a 50 trades
+**Lectura honesta:** V2 gana dinero, pero **no hay evidencia de que su timing
+de régimen aporte algo** sobre capturar la deriva alcista de BTC con una regla
+long-only. El "p=0,004 estable en todos los niveles de riesgo" que figuraba
+aquí era un solo número repetido (`r ∝ risk_pct`, AUDITORIA_2026-09 §1.1).
 
-**Costes — CORREGIDO 2026-08-11**: el "funding ~13% anual" de
-`agent_D/README.md` supone estar en mercado el **100% del tiempo**. V2 está
-dentro solo el **12,6%** (164 trades, 12,8 velas de media), así que el coste
-real es **~1,8%/año**, no 13%. La conclusión de que "el leverage no compensa"
-hay que rehacerla con ese número.
+**Mecanismo (una posición a la vez):**
+- **A** (Donchian-55 4h + filtro EMA50/200 diario + trailing ATR, LONG-only).
+- **F** (ruptura tras compresión de BB-width). SHORT desactivado
+  (44 trades, PF 0,88, p=0,644).
+- En cada vela: probar A primero; si no fira, F.
 
-Detalle completo: `experiments/combined_AF/README.md` y `experiments/VERDICTO_RONDA2.md`.
+**Lo que falta antes de capital real:**
+1. Paper trade 6-12 meses cubriendo al menos un tramo alcista, ≥30 trades.
+2. Real vs simulado **por trade** (`experiments/ejecucion_vivo/compare_live_vs_sim.py`):
+   divergencia < 25% a 50 trades.
+3. DD real ≤ 30%.
+4. Una decisión explícita sobre si un sistema sin edge de timing demostrado
+   justifica el riesgo frente a comprar y mantener BTC.
 
 ---
 
@@ -223,10 +218,30 @@ Antes de agregar cualquier modelo/dirección a main:
    > se adoptó para evitar overfitting era ciego al perfil que ya había fallado.
    >
    > El bootstrap sí discrimina y ya está construido (`portfolio_sim/`,
-   > `v2_all_coins/`). V2 da **p=0,004 estable en todos los niveles de riesgo**.
+   > `v2_all_coins/`).
+
+   > ⚠️ **Corrección 2026-09** (`docs/AUDITORIA_2026-09.md` §1.1-1.5,
+   > `experiments/bootstrap_bloques/`). Un bootstrap i.i.d. sobre trades
+   > **tampoco basta**: los trades se agrupan en pocos regímenes y la variante
+   > se eligió mirando la historia. El bootstrap exige además:
+   >
+   > - **Bloques** (de trades y de calendario ≥30 días, o por episodio de
+   >   régimen), no remuestreo i.i.d.
+   > - **Null sintético** con la misma deriva y autocorrelación (block-shuffle
+   >   de velas) corriendo el sistema completo: separa "gana dinero" de "tiene
+   >   edge sobre la deriva".
+   > - **Corrección por selección**: declarar cuántas variantes/parámetros se
+   >   probaron y elegir la mejor **dentro** del null. V2: 6 variantes en
+   >   `combined_AF`, 29 evaluaciones en `agent_F/explore_params.py`, 1
+   >   ablación → Bonferroni sobre el p i.i.d. da 0,053 (m=6) y 0,32 (m=36).
+   >
+   > V2 con este estándar: p=0,004–0,033 por bloques, **p=0,13–0,68** contra
+   > el null sintético.
 
    El conteo de folds se sigue reportando, pero como **diagnóstico de
-   estacionariedad**, no como aprobado/suspenso: si el bootstrap dice que el
+   estacionariedad** (y ojo: con parámetros congelados, los "2/6" de V2 y los
+   "WF 7/12, 8/12" históricos de V15 son **la misma curva in-sample partida en
+   trozos**, no walk-forward — AUDITORIA_2026-09 §1.4), no como aprobado/suspenso: si el bootstrap dice que el
    edge es real y los folds salen 2/6, eso no es ruido — significa que el edge
    **se concentra en el tiempo** (V2 barajado pasa 4/6 el 91,4% de las veces).
    Es información sobre *cuándo* funciona, que es la pregunta útil.
@@ -240,7 +255,8 @@ Antes de agregar cualquier modelo/dirección a main:
    - Con TP 3% / SL 1.5%: necesita WR > 33%
 4. **Documentar resultados** antes de mergear
 
-**Regla de METODOLOGIA_TESTING.md:**
+**Regla** (de `docs/archive/METODOLOGIA_TESTING.md`, archivada por obsoleta — la
+metodología vigente es esta sección):
 > Un modelo con métricas malas NO se arregla con umbral más estricto. Se rechaza o se reentrena con mejor metodología.
 
 ---
@@ -250,39 +266,39 @@ Antes de agregar cualquier modelo/dirección a main:
 ```
 src/
   ml_bot.py              # Bot principal (loop 30s, señales 4h)
-  ml_strategy_v15.py     # Motor de señales V15 Expert Committee (ACTIVO)
-  ml_strategy_v14.py     # Motor de señales V14 (desactivado, preservado)
-  portfolio_manager.py   # Gestión posiciones + trailing stop
+  ml_strategy_v15.py     # Enrutado por par (ML_V15_ENGINE) + régimen para el log
+  v2_engine.py           # Motor V2 (reglas congeladas, sin ML)
+  portfolio_manager.py   # Posiciones, stops, trail por vela cerrada, PnL real
   telegram_alerts.py     # Alertas + TelegramPoller
+  yield_manager.py       # APAGADO (YIELD_MANAGER_ENABLED=False) hasta validarlo
 
 config/
-  settings.py            # BOT_VERSION="V15", ML_V15_ENABLED=True
+  settings.py            # Solo config viva: V2, BTC, riesgo, Telegram, yield (off)
 
-strategies/
-  {coin}_v15/models/     # 22 pares: meta_v15.json por par (BTC además: short_gbm.pkl)
-  btc_v14/models/        # V14 (preservado)
-
-V15 Scripts:
-  train_v15_prod.py        # Entrenar SHORT model BTC para producción
-  v15_framework.py          # Framework compartido (sim, features, WF)
-  evaluate_new_pairs_v15.py # Evaluación masiva de pares (ver auditoría)
+tests/                   # pytest; FakeExchange en test_pm_money_path.py
+deploy/                  # setup_server.sh (cron @reboot), update.sh
+backup_models/strategies/  # Metas/pkl V14-V15 archivados. NO USAR (README)
+archive_scripts/         # Entrenamiento V14/V15 y scripts retirados
 
 docs/
-  AUDITORIA_2026-05.md     # Auditoría — estado real, overfitting, inspiración GitHub
+  AUDITORIA_2026-09.md     # Auditoría completa: validación, ejecución, higiene
+  PLAN_MEJORAS_2026-09.md  # Plan derivado y su estado por fase
   SESION_2026-08-09.md     # Despliegue V2 BTC-only, walk-forward real
   SESION_2026-08-22.md     # Criterio de validación corregido + mapa de familias cerrado
   SESION_2026-09-22.md     # Bug de fills demo-fapi: 2 ganadores registrados como pérdidas; VPS
-  V15_COMMITTEE_results.md # Resultados del comité BTC validado
-  archive/                 # Documentación de versiones previas (V12-V14)
+  archive/                 # Documentación obsoleta (V12-V14, METODOLOGIA_TESTING)
 
 experiments/               # Un README por experimento. Los negativos están
                            # documentados PRECISAMENTE para no repetirlos.
+  bootstrap_bloques/       # p por bloques + null sintético: timing de V2 no demostrado
+  ejecucion_vivo/          # Trail 1h vs 4h, warm-up del régimen, real vs sim por trade
+  portfolio_sim/           # Simulador de cartera = definición de referencia de V2
   criterio_validacion/     # El 7/12 folds dejaba pasar el 53% de sistemas sin edge
   presupuesto_informacion/ # No caben los parámetros: 11 episodios, 131 trades
   predictibilidad/         # No hay señal: R² in-sample 0,068%
   oos_2026H1/              # OOS limpio: el filtro de régimen validado fuera de muestra
   max_bars/                # Séptimo negativo de parámetros
-  funding_veto/            # Medido: 6 trades en 6,5 años. No se conecta
+  funding_veto/            # Medido: 6 trades en 6,5 años (conectado en vivo desde 2026-09)
   carry_funding/           # Rechazado + MAPA COMPLETO de familias probadas
   estacionalidad/          # Rechazado (t-test p=0,005 -> rotación p=0,14)
   stat_arb/                # Las cripto no cointegran + market making inaplicable
@@ -302,10 +318,19 @@ Bot producción:      C:\Users\pcdec\AppData\Local\pypoetry\Cache\
 
 ### Producción real: VPS condor-ia (desde 2026-08)
 - `ssh -p 2222 space-user2@100.87.103.87` (Tailscale; guía en Obsidian)
-- Dir `~/bot_trader_angry`, wrapper `bash run_bot.sh` (relanza al morir el
-  proceso: `kill <pid python>` = reinicio). Python: `/home/space-user2/envs/deepseek/bin/python`
-- Logs `logs/ml_bot.log` en hora local **UTC-6**. Sin sftp: copiar con `tar` por ssh.
-- Verdad de trades = income/userTrades de Binance demo, no `ml_trades`.
+- Dir `~/bot_trader_angry`, wrapper `run_bot.sh` con
+  `PYTHON=/home/space-user2/envs/deepseek/bin/python`. Relanza al morir el
+  proceso: `kill <pid python>` = reinicio. Exit 0 (kill switch) = no relanza.
+- Arranque tras reboot: cron `@reboot` (`bash deploy/setup_server.sh`). **No hay
+  sudo ni systemd de usuario** en este VPS.
+- ⚠️ **Nunca `pkill -f run_bot.sh` / `pkill -f src.ml_bot` dentro de un `ssh
+  '...'`**: el patrón coincide con la propia línea de comando y mata la sesión.
+  Matar por PID.
+- Deps exactas: `requirements-vps.txt` (el VPS no usa poetry).
+- Logs `logs/ml_bot.log` en **UTC** desde 2026-09-23 (antes hora local UTC-6).
+  Sin sftp: copiar con `tar` por ssh.
+- Verdad de trades = income de Binance. Desde 2026-09 `ml_trades.pnl_real` lo
+  rellena el bot solo (`reconcile_closed_trades`).
 
 - **Entrenar modelos SIEMPRE con el venv de producción** (sklearn 1.8.0)
 - Modelos del venv dan InconsistentVersionWarning en Claude bash (no es error)
@@ -321,8 +346,7 @@ Bot producción:      C:\Users\pcdec\AppData\Local\pypoetry\Cache\
 | `/status` | Balance, posición, trades hoy |
 | `/log` | Últimas líneas del log principal |
 | `/log 1` | Log rotado (ml_bot.log.1) |
-| `/resume` | Reanudar bot pausado |
-| `/export_v14` | Reentrenar modelos V14 |
+| `/resume` | Reanudar pausa por pérdida diaria (el kill switch NO se levanta por Telegram) |
 
 ---
 
@@ -333,7 +357,7 @@ El objetivo no es el mejor modelo técnico posible, sino un sistema que genere *
 
 ### Antes de cualquier cambio
 1. **Leer TODA la documentación relevante** antes de opinar o proponer
-   - Mínimo: ARQUITECTURA_V14.md, METODOLOGIA_TESTING.md, ANALISIS_CRITICO_OVERFITTING.md
+   - Mínimo: este archivo, `docs/AUDITORIA_2026-09.md`, ANALISIS_CRITICO_OVERFITTING.md
    - No asumir el estado del código — leerlo
 2. **Preguntar el objetivo** si no está claro antes de implementar
 3. **No proponer código sin leer los archivos** que se van a modificar
@@ -393,6 +417,17 @@ Detalle: `experiments/criterio_validacion/`, `experiments/estacionalidad/`,
 ---
 
 ## Próximos Pasos Prioritarios
+
+> **2026-09-23**: auditoría y plan de mejoras ejecutados (fases 0-7,
+> `docs/PLAN_MEJORAS_2026-09.md`). Lo nuevo que cambia prioridades:
+> - El timing de V2 **no supera** al null sintético (p=0,13–0,68). La
+>   decisión de seguir es sobre riesgo/beneficio frente a comprar y mantener,
+>   no sobre si hay edge demostrado: no lo hay.
+> - Al 4,5% de riesgo el DD histórico con costes realistas es 43,4%, a 1,6
+>   puntos del kill switch.
+> - Vivo y simulado ya son el mismo sistema (trail por vela cerrada, régimen
+>   con 1000 velas, funding, sin pausa por racha) y cada trade guarda su
+>   salida simulada y su PnL real → el KPI del punto 3 ya se mide solo.
 
 > Actualizado 2026-08-22. Detalle: `docs/SESION_2026-08-09.md` (despliegue) y
 > `docs/SESION_2026-08-22.md` (criterio de validación + cierre del mapa de

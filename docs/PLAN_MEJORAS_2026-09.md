@@ -9,21 +9,35 @@
 de `chat_id` en Telegram y §3.2 rotación del token. Quedan registrados en la
 auditoría; no se planifican aquí.
 
-## Estado (2026-09-23)
+## Estado (2026-09-23) — desplegado en el VPS
 
 | Fase | Estado | Commit |
 |---|---|---|
 | 0 | Hecha | `7c60de8` |
-| 1.1 | Hecha — opción **(a)**: pausa por racha eliminada | `50bbcb4` |
-| 1.2–1.6 | Hechas | `50bbcb4` |
-| 2.3 | Hecha — opción **(a)**: trail por vela 4h cerrada | `50bbcb4` |
-| 7 | Tests de lo anterior: `tests/test_pm_money_path.py`, `tests/test_regime_warmup.py` | `50bbcb4` |
-| 2.1, 2.2, 3, 4, 5, 6 | Pendientes | — |
+| 1.1–1.6 | Hechas. 1.1 opción **(a)**: pausa por racha eliminada | `50bbcb4` |
+| 2.1 + 5.2 | Hechas: `reconcile_closed_trades` rellena `pnl_real` (income) y `exit_sim_*` por trade; `experiments/ejecucion_vivo/compare_live_vs_sim.py` | `de60d90` |
+| 2.2 | Hecha: `experiments/ejecucion_vivo/` | `af547eb` |
+| 2.3 | Hecha, opción **(a)**: trail por vela 4h cerrada | `50bbcb4` |
+| 3.1–3.4 | Hechas (`CLAUDE.md`, nota en SESION_2026-08-22, METODOLOGIA_TESTING archivada, portfolio_sim README) | ver log |
+| 4 | Hecha: `experiments/bootstrap_bloques/`. **p por bloques 0,004–0,033; contra null sintético 0,13–0,20 (0,33–0,68 con selección)** | `e64b837` |
+| 5.1 | Hecha **con cambio**: el VPS no tiene sudo ni systemd de usuario → cron `@reboot` + `run_bot.sh` (`deploy/setup_server.sh`) | `0762409` |
+| 5.3 | Hecha **con cambio**: `requirements-vps.txt` (pip freeze de prod; el VPS no usa poetry). Log en UTC. pytest en dev | `432ae0c`, `3bd8f4d` |
+| 5.4 | No hecha: el yield queda **apagado** (decisión del usuario: aún no se puede validar) | — |
+| 6.1–6.4 | Hechas | `877a7c2` |
+| 6.5 | Parcial: borrado `ml_trades.db` (0 B). **No** se borraron duplicados (ambos nombres los usan ~35 scripts de `experiments/`) ni `bot_trades.db`, ni se refrescaron los parquets (cambiaría las cifras de todos los README; `oos_2026H1/` ya midió que no aportan información) | — |
+| 7 | Hecha: 17 tests (`tests/`), pasan en local y en el VPS | varios |
 
-**Sin desplegar en el VPS todavía.** Tras `git pull` + reinicio, verificar
-en el log: `[BOT] Listo`, `Pos=0/1`, ninguna línea `Yield manager activado`,
-y, con posición abierta, una línea `[PM] Trail BTC/USDT` en cada vela 4h
-que marque un máximo nuevo (nunca entre velas).
+**5.2, aceptación:** en #84-86 el REALIZED_PNL coincide exacto con la tabla de
+`SESION_2026-09-22.md` (149,88 / 324,41 / 113,02). El `pnl_real` total sale
+$4,93 más alto que los $563,11 de la sesión: faltan comisión de entrada y
+funding porque la DB tiene `entry_time` posteriores a la apertura real en esos
+trades (herencia del bug de fills). Trades nuevos no tienen ese problema.
+
+**Despliegue 2026-09-23 06:29 UTC:** `git checkout -- src && git pull`
+(los cambios locales del VPS eran idénticos a `b23ad0d`), backup
+`data/ml_bot.db.bak-20260923`, bot relanzado sin posición abierta. Verificado:
+un solo `run_bot.sh` + un solo python, `[BOT] Listo`, `Pos=0/1`, sin línea de
+yield, motor V2 sin ML, log en UTC.
 
 ---
 
