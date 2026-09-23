@@ -271,6 +271,8 @@ src/
   v2_engine.py           # Motor V2 (reglas congeladas, sin ML)
   portfolio_manager.py   # Posiciones, stops, trail por vela cerrada, PnL real
   telegram_alerts.py     # Alertas + TelegramPoller
+
+scripts/record_stream.py # Graba forceOrder/bookTicker en data_live/ (proceso aparte, cron @reboot)
   yield_manager.py       # APAGADO (YIELD_MANAGER_ENABLED=False) hasta validarlo
 
 config/
@@ -289,6 +291,8 @@ docs/
   SESION_2026-09-22.md     # Bug de fills demo-fapi: 2 ganadores registrados como pérdidas; VPS
   SESION_2026-09-23.md     # Ejecución del plan 2026-09 (fases 0-7), bootstrap honesto, despliegue
   INVESTIGACION_GITHUB_ML_2026-09.md  # 25 repos de ML revisados + qué pasó al probar cada idea
+  FUENTES_DE_DATOS_2026-09.md  # Por qué pierde el bot agresivo + inventario de fuentes de datos
+  GRABACION_DATOS_VIVO.md      # Snapshots de ejecución (ml_exec_snapshots) + recorder de streams
   archive/                 # Documentación obsoleta (V12-V14, METODOLOGIA_TESTING)
 
 experiments/               # Un README por experimento. Los negativos están
@@ -299,6 +303,7 @@ experiments/               # Un README por experimento. Los negativos están
   vol_sizing/              # ML de volatilidad (HAR) para sizing: no supera al ATR (p=0,84). Rechazado
   meta_labeling/           # Meta-modelo discrimina (AUC OOS 0,61) pero el sizing no mejora V2 (p=0,14)
   derivados/               # OI y DVOL como filtro: ninguno pasa etapa 1 (p 0,99 y 0,41). Rechazado
+  derivados_ratios/        # Ratio taker y premium index 4h: etapa 1 p 0,31 y 0,43. Rechazado
   predictibilidad_fuentes/ # 10 celdas (BTC 1h/1d, panel altcoins, derivados): R2 OOS < 0 en todas. Sin señal que cubra costes
   riesgo/                  # CAGR/DD/P(kill) por nivel de riesgo: al 4,5% DD hist. 42,4% (kill al 45%)
   agresivo/                # Bot ML multi-régimen + Kelly (9 pares): AUC 0,497, CAGR −12,6%, DD 50,5%. Rechazado
