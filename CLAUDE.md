@@ -294,6 +294,7 @@ experiments/               # Un README por experimento. Los negativos están
   bootstrap_bloques/       # p por bloques + null sintético: timing de V2 no demostrado
   ejecucion_vivo/          # Trail 1h vs 4h, warm-up del régimen, real vs sim por trade
   portfolio_sim/           # Simulador de cartera = definición de referencia de V2
+  vol_sizing/              # ML de volatilidad (HAR) para sizing: no supera al ATR (p=0,84). Rechazado
   criterio_validacion/     # El 7/12 folds dejaba pasar el 53% de sistemas sin edge
   presupuesto_informacion/ # No caben los parámetros: 11 episodios, 131 trades
   predictibilidad/         # No hay señal: R² in-sample 0,068%

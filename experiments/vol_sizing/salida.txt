@@ -1,0 +1,7 @@
+=== ETAPA 1: pronostico de la varianza de los 2 dias siguientes ===
+dias evaluados: 2126 (2020-05-01 -> 2026-02-24)
+QLIKE medio  HAR 0.3120 | control ATR 0.3072
+mejora HAR: -0.0048 (-1.6% del control) | p = 0.8367
+corr(log real, log pronostico): HAR 0.684 | ATR 0.690
+
+Etapa 1 NO pasa (p >= 0,05): regla de parada pre-registrada. Fin.

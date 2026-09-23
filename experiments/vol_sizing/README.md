@@ -77,6 +77,12 @@ H1, la mejora viene del vol-targeting y no del ML, y se reporta así.
 **Secundarias (descriptivas, sin test):** CAGR, DD máximo, PF y peor trade por
 brazo, también al 4,5% de riesgo.
 
+**Adenda al pre-registro (2026-09-23, también antes de correr):** los trades
+anteriores al primer pronóstico disponible (el primer año sirve para entrenar)
+usan el sizing de B en los tres brazos. Los tests de H1 y H2 se calculan solo
+sobre los trades **con** pronóstico. El conjunto de trades sigue siendo
+idéntico en los tres brazos.
+
 ## Riesgos conocidos antes de empezar
 
 - V2 ya dimensiona por el inverso del trail (ATR×k), así que B ya es un sizing
@@ -90,4 +96,45 @@ brazo, también al 4,5% de riesgo.
 
 ## Resultados
 
-*(se completan después de correr `test_vol_sizing.py`)*
+> Corrida el 2026-09-23 · salida completa en `salida.txt`.
+
+### Etapa 1: el pronóstico HAR **no** es mejor. Se aplica la regla de parada.
+
+2.126 días evaluados fuera de muestra (2020-05-01 → 2026-02-24).
+
+| pronóstico | QLIKE medio | corr(log real, log pronóstico) |
+|---|--:|--:|
+| **HAR** (4 parámetros: diario, semanal, mensual) | 0,3120 | 0,684 |
+| **Control ATR** (2 parámetros) | **0,3072** | **0,690** |
+
+Mejora de HAR sobre el control: **−0,0048 (−1,6%)**, **p = 0,84**. El HAR
+pronostica un poco *peor* que el `atr_pct` que V2 ya usa.
+
+**El experimento termina aquí.** La etapa 2 no se corrió, como exige el
+pre-registro: si el pronóstico no es mejor, no hay nada que el sizing pueda
+aprovechar.
+
+### Lectura
+
+- La volatilidad de BTC sí es predecible (correlación ~0,69 con la realizada),
+  pero **el ATR de 14 velas 4h ya captura esa predictibilidad**. Añadir las
+  componentes semanal y mensual del HAR no aporta a 2 días vista.
+- Encaja con lo que ya decía `predictibilidad/`: `atr_pct` es la única feature
+  por encima del ruido, y V2 ya dimensiona con ella (`notional = riesgo / trail`,
+  con `trail = ATR × k`). **V2 ya hace el sizing por volatilidad que el ML podría
+  aportar.**
+- También coincide con `tonykark1/btc-realized-volatility`: en BTC, los mejores
+  pronósticos de volatilidad no se tradujeron en mejores estrategias.
+
+### Lo que NO se probó, a propósito
+
+El brazo A (vol-targeting con el control ATR frente al sizing por trail) sería
+una hipótesis nueva, y además no es ML. Correrlo ahora, después de ver este
+resultado, sería una búsqueda post-hoc. Si se quiere probar, debe tener su
+propio pre-registro.
+
+### Veredicto
+
+**RECHAZADO.** El ML de volatilidad no mejora el insumo que V2 ya usa para
+dimensionar. Es el octavo negativo de ajustes sobre V2, y el primero en
+aplicar pre-registro y regla de parada.

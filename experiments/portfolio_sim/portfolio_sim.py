@@ -142,7 +142,7 @@ class PortfolioSim:
                  max_concurrent: int = 3, max_misma_dir: int = 2,
                  leverage: int = 4, max_notional_pct: float = 2.5,
                  capital: float = 10_000.0, aplicar_funding: bool = True,
-                 costes: str = 'nuevos'):
+                 costes: str = 'nuevos', sizing=None):
         self.datos = datos
         self.params = params or v2.PARAMS_V2
         self.risk_pct = risk_pct
@@ -153,6 +153,9 @@ class PortfolioSim:
         self.capital0 = capital
         self.aplicar_funding = aplicar_funding
         self.costes = COSTES[costes]
+        # sizing(par, ts, equity, trail) -> notional o None (= sizing por trail).
+        # Lo usa experiments/vol_sizing/; por defecto, el sizing de siempre.
+        self.sizing = sizing
 
     # -- gates de can_open, replicando portfolio_manager.can_open -------------
     def _puede_abrir(self, par, direccion, abiertas, notional, equity):
@@ -276,8 +279,10 @@ class PortfolioSim:
                     direccion = 1 if sig == 'F_LONG' else -1
                 trail = min(max(atr * mult, fl), ce)
 
-                notional = min((equity * self.risk_pct) / trail,
-                               equity * self.max_notional_pct)
+                notional = self.sizing and self.sizing(par, ts, equity, trail)
+                if notional is None:
+                    notional = (equity * self.risk_pct) / trail
+                notional = min(notional, equity * self.max_notional_pct)
                 motivo = self._puede_abrir(par, direccion, abiertas, notional, equity)
                 if motivo:
                     rechazos[motivo] = rechazos.get(motivo, 0) + 1
