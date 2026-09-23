@@ -453,6 +453,21 @@ class PortfolioManager:
         except Exception:
             pass  # Order might already be filled or cancelled
 
+    def _order_fill_price(self, order: dict, pair: str, fallback: float) -> float:
+        """Precio medio real de una orden market.
+        demo-fapi devuelve la orden con average=None (la clave existe, asi que
+        order.get('average', x) no cae al default y float(None) revienta DESPUES
+        de ejecutar la orden). Eso dejaba posiciones abiertas sin SL y cierres
+        registrados al precio del SL: 2 trades ganadores (+$437 reales) quedaron
+        como perdidas en la DB (sep-2026)."""
+        avg = order.get('average')
+        if not avg and order.get('id'):
+            try:
+                avg = self.exchange.fetch_order(order['id'], pair).get('average')
+            except Exception as e:
+                logger.warning(f"[PM] No se pudo leer fill de {pair}: {e}")
+        return float(avg or fallback)
+
     def _get_exchange_sl_fill(self, pair: str, pos) -> Optional[float]:
         """Check if position was closed by exchange SL. Returns fill price or None."""
         try:
@@ -706,8 +721,8 @@ class PortfolioManager:
                 amount=quantity,
             )
 
-            fill_price = float(order.get('average', price))
-            filled_qty = float(order.get('filled', quantity))
+            fill_price = self._order_fill_price(order, symbol_ccxt, price)
+            filled_qty = float(order.get('filled') or quantity)
 
             # Recalcular TP/SL con precio real de fill (V13.01: per-pair)
             if direction == 1:
@@ -919,7 +934,7 @@ class PortfolioManager:
                 params={'reduceOnly': True},
             )
 
-            fill_price = float(order.get('average', exit_price))
+            fill_price = self._order_fill_price(order, pair, exit_price)
         except Exception as e:
             # Check if exchange already closed it via SL
             fill_price = self._get_exchange_sl_fill(pair, pos)
@@ -1043,8 +1058,10 @@ class PortfolioManager:
                 ).fetchall()
             else:
                 rows = conn.execute(
+                    # Los trades reales se guardan como 'v85_prod'; filtrar por
+                    # 'v9' dejaba el resumen diario siempre en 0 trades.
                     "SELECT * FROM ml_trades WHERE exit_time LIKE ? AND "
-                    "(strategy = 'v9' OR strategy IS NULL)",
+                    "(strategy IS NULL OR strategy NOT LIKE '%shadow%')",
                     (f"{today}%",)
                 ).fetchall()
             return [dict(r) for r in rows]
