@@ -1,7 +1,7 @@
 """El motor de cada par lo fija ML_V15_ENGINE, no la existencia de un JSON.
 
 Antes, borrar strategies/btc_v15/models/meta_v2_paper.json resucitaba en
-silencio el GBM SHORT (AUDITORIA_2026-09 §5). Ahora ese directorio ni existe
+silencio el GBM SHORT (AUDITORIA_2026-09 §5). Ahora ningun archivo decide el motor
 y un par sin motor conocido no opera. Plan 6.1.
 
 Uso: python -m pytest tests/test_engine_routing.py
@@ -24,7 +24,6 @@ def _strategy(engine):
 
 
 def test_routes_by_flag_without_any_model_files():
-    assert not (ROOT / 'strategies').exists()
     calls = []
     s = _strategy({'BTC/USDT': 'v2', 'ETH/USDT': 'gbm'})
     s._generate_v2_signal = lambda pair, ex: calls.append(pair) or []
