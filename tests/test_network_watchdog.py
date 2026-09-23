@@ -1,4 +1,4 @@
-"""El bot debe SALIR tras 3 velas 4h seguidas sin red, para que systemd
+"""El bot debe SALIR tras 3 velas 4h seguidas sin red, para que run_bot.sh
 (Restart=always) lo reinicie con sockets y DNS limpios.
 
 Sin esto el loop principal se traga las excepciones para siempre y loguea

@@ -1,34 +1,22 @@
 #!/bin/bash
 # ============================================================
-# Instala el bot como servicio systemd de usuario (sobrevive a reboots).
-# Uso: PYTHON=/ruta/al/python bash deploy/setup_server.sh
-#   (por defecto el python del VPS condor-ia: ~/envs/deepseek/bin/python)
-# Requiere linger para arrancar sin sesion abierta:
-#   sudo loginctl enable-linger $(whoami)
+# Arranque del bot tras un reboot via cron @reboot.
+#
+# En condor-ia no hay sudo ni bus de systemd de usuario ("Failed to connect to
+# bus: No medium found"), asi que la unidad systemd del plan 5.1 no aplica.
+# cron @reboot si funciona (ya arranca sshd y tailscaled).
+#
+# Supervisor = run_bot.sh: relanza en crash (30 s) y con /restart (43);
+# sale con 0 (Ctrl+C, kill switch) y entonces NO relanza.
+#
+# Uso: bash deploy/setup_server.sh     (idempotente)
 # ============================================================
 set -e
-
 BOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 PYTHON="${PYTHON:-$HOME/envs/deepseek/bin/python}"
-UNIT_DIR="$HOME/.config/systemd/user"
-
 [ -x "$PYTHON" ] || { echo "[ERROR] no existe $PYTHON"; exit 1; }
-[ -f "$BOT_DIR/.env" ] || { echo "[ERROR] falta $BOT_DIR/.env"; exit 1; }
 
-# Dos supervisores = dos instancias del bot (paso en agosto).
-if pgrep -f run_bot.sh >/dev/null; then
-    echo "[ERROR] run_bot.sh sigue corriendo. Paralo antes: pkill -f run_bot.sh"
-    exit 1
-fi
-
-mkdir -p "$UNIT_DIR"
-sed -e "s|@BOT_DIR@|$BOT_DIR|" -e "s|@PYTHON@|$PYTHON|" \
-    "$BOT_DIR/deploy/bot-trader.service" > "$UNIT_DIR/bot-trader.service"
-systemctl --user daemon-reload
-systemctl --user enable bot-trader.service
-
-loginctl show-user "$(whoami)" -p Linger | grep -q yes || \
-    echo "[AVISO] linger desactivado: el bot no arrancara tras un reboot sin login."
-
-echo "Instalado. Arrancar:  systemctl --user start bot-trader"
-echo "Log del bot:          tail -f $BOT_DIR/logs/ml_bot.log"
+LINE="@reboot sleep 30 && pgrep -f run_bot.sh >/dev/null || (cd $BOT_DIR && PYTHON=$PYTHON nohup bash run_bot.sh >> logs/wrapper.log 2>&1 &)"
+( crontab -l 2>/dev/null | grep -v 'run_bot.sh'; echo "$LINE" ) | crontab -
+echo "cron @reboot instalado:"
+crontab -l | grep run_bot.sh

@@ -15,8 +15,11 @@ cd "$(dirname "$0")"
 echo "[WRAPPER] ML Bot Wrapper iniciado"
 echo "[WRAPPER] Directorio: $(pwd)"
 
-# Usar el venv de poetry si existe; si no, python del sistema.
-if command -v poetry >/dev/null 2>&1; then
+# Interprete: $PYTHON si se pasa (cron @reboot, ver deploy/setup_server.sh);
+# si no, poetry si existe; si no, python del PATH.
+if [ -n "$PYTHON" ]; then
+    RUN="$PYTHON"
+elif command -v poetry >/dev/null 2>&1; then
     RUN="poetry run python"
 else
     RUN="python"

@@ -776,7 +776,7 @@ class MLBot:
         # Actualizar balance. Ademas hace de sonda de red: si falla, el proceso
         # esta ciego (no puede pedir velas ni operar) y seguir en el loop solo
         # produce "Sin senales" indistinguible de un mercado quieto — asi se
-        # perdieron ~2 meses de paper trade. Salimos y systemd (Restart=always)
+        # perdieron ~2 meses de paper trade. Salimos y run_bot.sh (relanza en 30 s)
         # reinicia limpio: sockets y resolucion DNS nuevos.
         if self.portfolio.refresh_balance():
             self.blind_candles = 0
@@ -786,7 +786,7 @@ class MLBot:
                          f"sin poder consultar el exchange")
             if self.blind_candles >= 3:   # ~12h ciego
                 logger.critical("[BOT] 3 velas sin red -> saliendo para que "
-                                "systemd reinicie el proceso")
+                                "run_bot.sh reinicie el proceso")
                 sys.exit(1)   # SystemExit no lo captura el `except Exception`
 
         # Trail V2 con la vela recien cerrada, antes de buscar senales nuevas.
