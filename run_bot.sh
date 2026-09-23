@@ -12,6 +12,11 @@
 
 cd "$(dirname "$0")"
 
+# Perfil: bash run_bot.sh [v2|agresivo]. Va en la linea de comando para que
+# `pgrep -f "run_bot.sh agresivo"` distinga los dos wrappers.
+export BOT_PROFILE="${1:-${BOT_PROFILE:-v2}}"
+echo "[WRAPPER] Perfil: $BOT_PROFILE"
+
 echo "[WRAPPER] ML Bot Wrapper iniciado"
 echo "[WRAPPER] Directorio: $(pwd)"
 

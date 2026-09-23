@@ -124,7 +124,7 @@ V14 sigue en el código pero ML_V14_ENABLED=False. Se puede reactivar si necesar
 | `main` | ✓ Producción | V14 validado (preservado, ML_V14_ENABLED=False) |
 | `v15/multi-pair` | ✓ Deploy actual | V15 multi-par (22 pares) en paper trading |
 | `feature/v14.1-bidirectional` | ✗ Experimental | ETH ML (AUC~0.5) + SHORT ensemble (fallido) — NO mergear |
-| `feature/bot-agresivo` | ✗ Experimental | Infra para 2 bots (V2 en paper interno + agresivo en demo). El motor agresivo perdió en backtest — NO mergear sin un motor que pase validación |
+| `feature/bot-agresivo` | ✗ Histórica | Integrada en `main` el 2026-10-17 con los papeles invertidos (ver abajo) |
 
 ### Flujo de deploy V15
 1. `v15/multi-pair` contiene el código V15 multi-par en paper trading testnet
@@ -147,6 +147,26 @@ V14 sigue en el código pero ML_V14_ENABLED=False. Se puede reactivar si necesar
   `docs/revalidation/PASO0_lookahead.md` (2 bugs de simulador identificados)
 
 ---
+
+## Bot AGRESIVO en paper interno (2026-10-17, decisión del usuario)
+
+Segundo proceso en el VPS (`bash run_bot.sh agresivo`), **separado de V2**:
+`src/paper_exchange.py` con **$100 virtuales**, precios en vivo y fills
+simulados. No manda órdenes ni toca la cuenta demo de V2. Estado en
+`data/paper_agresivo_state.json`, trades en `data/ml_agresivo.db` y log en
+`logs/agresivo.log`. Las alertas de Telegram llevan el prefijo `[AGRESIVO]`;
+solo V2 lee comandos.
+
+- **Motor:** `src/agresivo_engine.py`. Opera 9 criptos, long y short, con
+  rupturas de 20 y 55 velas, compresión y reversión a la media. Un modelo HGB
+  decide si opera y Kelly/2 fija el riesgo (1-10%). Trailing ATR siempre.
+  Reentrena cada 30 días con el histórico 4h de Binance desde 2020.
+- **Sin validar y con backtest perdedor** (`experiments/agresivo/`: AUC 0,497,
+  −12,6%/año, DD 50,5%). Corre porque el usuario quiere medirlo en vivo frente
+  a V2. Kill switch al 60% de DD.
+- **No conectar a capital real** sin pasar los requisitos de validación de
+  abajo. Su resultado en vivo se compara con la predicción del backtest
+  (pierde), no con V2.
 
 ## Candidato real para paper trade — V2 (lo desplegado)
 

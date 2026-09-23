@@ -22,6 +22,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from src import v2_engine as _v2_engine
+from src import agresivo_engine as _agr
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +31,11 @@ FAPI_BASE = 'https://fapi.binance.com'
 # build_features (que recorta ~55 filas por la Donchian-55). Con 250 quedaban
 # 195 < 222 y get_live_signal devolvia None SIEMPRE. 420 -> ~365 utiles.
 V2_LOOKBACK = 420
+# Motor agresivo: historia para entrenar (como el backtest, desde 2020) y
+# velas para las features en vivo (EMA200 diaria = 1200 velas 4h + margen).
+AGR_DESDE = '2020-01-01'
+AGR_LOOKBACK = 1500
+AGR_REENTRENO = pd.Timedelta(days=30)
 
 
 def _ohlcv(exchange, pair: str, timeframe: str, limit: int,
@@ -94,6 +100,7 @@ class MLStrategyV15:
         self._sizing = dict(ML_V15_SIZING)
         self._engine = dict(ML_V15_ENGINE)
         self._pair_state = {pair: PairState() for pair in self.pairs}
+        self._agr_bundle = None             # modelo del motor agresivo
 
     # Backward compat: self.regime = BTC regime
     @property
@@ -133,6 +140,8 @@ class MLStrategyV15:
             engine = self._engine.get(pair)
             if engine == 'v2':
                 logger.info(f'[V15] {pair}: motor V2 (reglas congeladas), sin ML')
+                loaded += 1
+            elif engine == 'agresivo':
                 loaded += 1
             else:
                 logger.error(f'[V15] {pair}: motor desconocido {engine!r} en '
@@ -260,8 +269,9 @@ class MLStrategyV15:
     # =================================================================
     # SIGNAL GENERATION (called every 4h candle)
     # =================================================================
-    def generate_signals(self, exchange, open_pairs=None) -> list:
-        """Senales de todos los pares con motor V2 (formato de open_position)."""
+    def generate_signals(self, exchange, open_pairs=None, dd_actual: float = 0.0) -> list:
+        """Senales de todos los pares (formato de open_position).
+        dd_actual: drawdown de la cuenta, el motor agresivo baja el riesgo con el."""
         open_pairs = open_pairs or set()
         all_signals = []
         for pair in self.pairs:
@@ -270,7 +280,66 @@ class MLStrategyV15:
                 continue
             if self._engine.get(pair) == 'v2':
                 all_signals.extend(self._generate_v2_signal(pair, exchange))
+        agr = [p for p in self.pairs if self._engine.get(p) == 'agresivo']
+        if agr:
+            all_signals.extend(self._generate_agr_signals(agr, exchange, open_pairs, dd_actual))
         return all_signals
+
+    # ------------------------------------------------------- motor agresivo
+    def _df_4h(self, exchange, pair, limit=None, since=None) -> pd.DataFrame:
+        """Velas 4h CERRADAS (sin la vela en curso). Con `since`, pagina."""
+        filas = []
+        if since is None:
+            filas = _ohlcv(exchange, pair, '4h', limit)
+        else:
+            ms = int(pd.Timestamp(since, tz='UTC').timestamp() * 1000)
+            while True:
+                lote = exchange.fetch_ohlcv(pair, '4h', since=ms, limit=1500)
+                if not lote:
+                    break
+                filas += lote
+                if len(lote) < 1500:
+                    break
+                ms = lote[-1][0] + 1
+        df = pd.DataFrame(filas, columns=['ts', 'open', 'high', 'low', 'close', 'volume'])
+        df.index = pd.to_datetime(df['ts'], unit='ms', utc=True)
+        df = df[~df.index.duplicated(keep='last')].sort_index()
+        return df.iloc[:-1][['open', 'high', 'low', 'close', 'volume']].astype(float)
+
+    def _agr_entrenar(self, pairs, exchange):
+        """Ventana expansiva, misma purga que el backtest (agresivo_engine.reentrenar)."""
+        datos = {p: self._df_4h(exchange, p, since=AGR_DESDE) for p in pairs}
+        btc = datos.get('BTC/USDT')
+        if btc is None:
+            btc = self._df_4h(exchange, 'BTC/USDT', since=AGR_DESDE)
+        feats = {p: _agr.features(d, btc) for p, d in datos.items()}
+        self._agr_bundle = _agr.reentrenar(feats, pd.Timestamp.now(tz='UTC'))
+        self._agr_bundle['entrenado'] = pd.Timestamp.now(tz='UTC')
+        b = self._agr_bundle
+        logger.info(f"[AGR] modelo entrenado: {b['n']} eventos hasta {b['hasta']:%Y-%m-%d}, "
+                    f"b={b['b']:.2f} (win {b['win_R']:.2f}R / loss {b['loss_R']:.2f}R)")
+
+    def _generate_agr_signals(self, pairs, exchange, open_pairs, dd_actual) -> list:
+        try:
+            b = self._agr_bundle
+            if b is None or pd.Timestamp.now(tz='UTC') - b['entrenado'] > AGR_REENTRENO:
+                self._agr_entrenar(pairs, exchange)
+            dfs = {p: self._df_4h(exchange, p, limit=AGR_LOOKBACK) for p in pairs}
+            btc = dfs.get('BTC/USDT')
+            if btc is None:
+                btc = self._df_4h(exchange, 'BTC/USDT', limit=AGR_LOOKBACK)
+            sigs = _agr.señal_vivo(self._agr_bundle, dfs, btc, open_pairs, dd_actual)
+        except Exception as e:
+            logger.error(f'[AGR] error generando senales: {e}')
+            return []
+        for s in sigs:
+            # open_position dimensiona con sl_pct: debe ser la distancia del trail
+            s.update({'sl_pct': s['trail_fixed_dist'], 'tp_pct': s['trail_fixed_dist'] * 2.0})
+            logger.info(f"[AGR] {s['pair']} {s['setup']} {s['side']} p={s['confidence']:.2f} "
+                        f"riesgo={s['risk_pct']:.1%} trail={s['trail_fixed_dist']:.3f}")
+        if not sigs:
+            logger.info(f'[AGR] sin senales (dd={dd_actual:.1%})')
+        return sigs
 
     def _generate_v2_signal(self, pair: str, exchange) -> list:
         """Senal V2 para un par: una posicion a la vez, trailing sin
