@@ -47,3 +47,6 @@ models/*.pkl
 # CatBoost training artifacts
 catboost_info/
 data/yield_state.json
+
+# Datos grabados en vivo (scripts/record_stream.py)
+data_live/

@@ -301,6 +301,35 @@ def test_maker_entry_rejected_goes_market():
     assert pm.positions[PAIR].entry_price == 100_000.0     # market al precio
 
 
+def test_exec_snapshots_never_block_orders():
+    import sqlite3
+    ex = FakeExchange()
+    ex.book = (99_990.0, 100_010.0)
+    pm, db = _pm(ex)
+    ex.fapiPublicGetPremiumIndex = lambda p: {
+        'markPrice': '100005', 'indexPrice': '100000',
+        'lastFundingRate': '0.0001', 'nextFundingTime': 1}
+    assert _open_v2(pm)
+    ex.book = None                                     # libro caido al salir
+    ex.fapiPublicGetPremiumIndex = lambda p: 1 / 0
+    assert pm._close_position(PAIR, 100_000.0, 'TRAIL')
+    rows = sqlite3.connect(db).execute(
+        "SELECT event, order_type, best_bid, mark, avg_price FROM ml_exec_snapshots "
+        "ORDER BY id").fetchall()
+    assert [r[0] for r in rows] == ['signal', 'entry_fill', 'exit_fill']
+    assert rows[1][1] == 'maker' and rows[1][2] == 99_990.0 and rows[1][4] == 99_990.0
+    assert rows[2][2] is None and rows[2][3] is None   # campos caidos -> NULL
+    # Si la grabacion entera revienta, la orden sigue
+    pm2, _ = _pm(FakeExchange())
+    import src.portfolio_manager as pmm
+    orig = pmm.PortfolioManager._snapshot
+    try:
+        pmm.PortfolioManager._snapshot = lambda self, *a, **k: orig(self, *a, **{**k, 'no_col': 1})
+        assert _open_v2(pm2)                           # INSERT falla -> solo warning
+    finally:
+        pmm.PortfolioManager._snapshot = orig
+
+
 if __name__ == '__main__':
     for name, fn in list(globals().items()):
         if name.startswith('test_'):

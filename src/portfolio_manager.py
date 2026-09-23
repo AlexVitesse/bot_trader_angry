@@ -145,6 +145,23 @@ class PortfolioManager:
                     key TEXT PRIMARY KEY,
                     value TEXT NOT NULL
                 );
+
+                -- Foto del mercado en cada senal y fill (docs/GRABACION_DATOS_VIVO.md,
+                -- capa A). Se une con ml_trades por (symbol, entry_time).
+                CREATE TABLE IF NOT EXISTS ml_exec_snapshots (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    ts TEXT NOT NULL,
+                    symbol TEXT NOT NULL,
+                    event TEXT NOT NULL,
+                    entry_time TEXT,
+                    best_bid REAL, best_ask REAL, spread_bps REAL,
+                    depth_bid_1pct REAL, depth_ask_1pct REAL,
+                    mark REAL, index_price REAL, premium REAL,
+                    funding_rate REAL, next_funding_ts INTEGER,
+                    open_interest REAL, taker_ratio_5m REAL,
+                    order_type TEXT, filled_qty REAL, avg_price REAL,
+                    ref_price REAL, latency_ms REAL
+                );
             """)
             conn.commit()
             # Migration: add sl_order_id column if missing
@@ -245,6 +262,51 @@ class PortfolioManager:
             conn.commit()
         finally:
             conn.close()
+
+    def _snapshot(self, event: str, pair: str, entry_time: datetime, **fill):
+        """Graba libro, mark/index/funding, OI y ratio taker en ml_exec_snapshots.
+        Nunca bloquea una orden: cada campo que falle queda NULL y cualquier
+        otro error solo se loguea. `fill`: order_type, filled_qty, avg_price,
+        ref_price, latency_ms."""
+        def _try(fn):
+            try:
+                return fn()
+            except Exception:
+                return None
+        try:
+            sym = pair.replace('/', '')
+            row = {'ts': datetime.now(timezone.utc).isoformat(), 'symbol': pair,
+                   'event': event, 'entry_time': entry_time.isoformat(), **fill}
+            ob = _try(lambda: self.exchange.fetch_order_book(pair, 100))
+            if ob and ob.get('bids') and ob.get('asks'):
+                bid, ask = ob['bids'][0][0], ob['asks'][0][0]
+                mid = (bid + ask) / 2
+                # ponytail: solo los 100 niveles pedidos; si no llegan al 1% la
+                # profundidad sale truncada (sigue sirviendo frente a nuestro notional)
+                row.update(
+                    best_bid=bid, best_ask=ask, spread_bps=(ask - bid) / mid * 1e4,
+                    depth_bid_1pct=sum(p * q for p, q, *_ in ob['bids'] if p >= mid * 0.99),
+                    depth_ask_1pct=sum(p * q for p, q, *_ in ob['asks'] if p <= mid * 1.01))
+            pi = _try(lambda: self.exchange.fapiPublicGetPremiumIndex({'symbol': sym}))
+            if pi:
+                mark, idx = float(pi['markPrice']), float(pi['indexPrice'])
+                row.update(mark=mark, index_price=idx, premium=mark / idx - 1,
+                           funding_rate=float(pi['lastFundingRate']),
+                           next_funding_ts=int(pi['nextFundingTime']))
+            row['open_interest'] = _try(lambda: float(
+                self.exchange.fapiPublicGetOpenInterest({'symbol': sym})['openInterest']))
+            row['taker_ratio_5m'] = _try(lambda: float(
+                self.exchange.fapiDataGetTakerlongshortRatio(
+                    {'symbol': sym, 'period': '5m', 'limit': 1})[-1]['buySellRatio']))
+            conn = self._get_conn()
+            try:
+                conn.execute(f"INSERT INTO ml_exec_snapshots ({', '.join(row)}) "
+                             f"VALUES ({', '.join('?' * len(row))})", tuple(row.values()))
+                conn.commit()
+            finally:
+                conn.close()
+        except Exception as e:
+            logger.warning(f"[PM] snapshot {event} {pair} no grabado: {e}")
 
     def _get_state(self, key: str, default: str = '') -> str:
         conn = self._get_conn()
@@ -544,6 +606,7 @@ class PortfolioManager:
         rest = qty - filled
         min_qty = ((getattr(self.exchange, 'markets', None) or {}).get(pair, {})
                    .get('limits', {}).get('amount', {}).get('min') or 0)
+        maker_q = filled
         if rest > 1e-12 and rest >= min_qty:
             rest = float(self.exchange.amount_to_precision(pair, rest))
             o = self.exchange.create_order(pair, 'market', side, rest)
@@ -552,7 +615,8 @@ class PortfolioManager:
             filled += mq
         if filled <= 0:
             raise RuntimeError(f"entrada {pair} sin fill")
-        return cost / filled, filled
+        otype = 'maker' if maker_q >= filled else ('market' if maker_q <= 0 else 'mixed')
+        return cost / filled, filled, otype
 
     def _order_fill_price(self, order: dict, pair: str, fallback: float) -> float:
         """Precio medio real de una orden market.
@@ -619,6 +683,11 @@ class PortfolioManager:
             effective_sl = pos.trail_sl if (pos.trail_active and pos.trail_sl) else pos.sl_price
             fill_price = effective_sl
             reason = 'SL'
+        # El libro ya es posterior al fill (se detecta en el siguiente tick);
+        # lo que vale aqui es avg_price frente al stop.
+        self._snapshot('exit_fill', pair, pos.entry_time, order_type='EXCHANGE_SL',
+                       filled_qty=pos.quantity, avg_price=fill_price,
+                       ref_price=self._effective_sl(pos))
 
         # Calculate PnL
         if pos.direction == 1:
@@ -807,8 +876,13 @@ class PortfolioManager:
 
             # Colocar orden
             order_side = 'buy' if direction == 1 else 'sell'
-            fill_price, pos.quantity = self._enter(symbol_ccxt, order_side,
-                                                   quantity, price)
+            self._snapshot('signal', pair, pos.entry_time, ref_price=price)
+            t0 = time.time()
+            fill_price, pos.quantity, otype = self._enter(symbol_ccxt, order_side,
+                                                          quantity, price)
+            self._snapshot('entry_fill', pair, pos.entry_time, order_type=otype,
+                           filled_qty=pos.quantity, avg_price=fill_price,
+                           ref_price=price, latency_ms=(time.time() - t0) * 1000)
             pos.notional = pos.quantity * fill_price
             self._set_stops(pos, fill_price)
             pos.status = 'open'
@@ -1030,6 +1104,9 @@ class PortfolioManager:
                 logger.error(f"[PM] Error cerrando {pair}: {e}")
                 return None
             reason = 'SL'
+        self._snapshot('exit_fill', pair, pos.entry_time, order_type=reason,
+                       filled_qty=pos.quantity, avg_price=fill_price,
+                       ref_price=exit_price)
 
         # Calcular PnL
         if pos.direction == 1:

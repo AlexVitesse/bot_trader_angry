@@ -17,6 +17,9 @@ PYTHON="${PYTHON:-$HOME/envs/deepseek/bin/python}"
 [ -x "$PYTHON" ] || { echo "[ERROR] no existe $PYTHON"; exit 1; }
 
 LINE="@reboot sleep 30 && pgrep -f run_bot.sh >/dev/null || (cd $BOT_DIR && PYTHON=$PYTHON nohup bash run_bot.sh >> logs/wrapper.log 2>&1 &)"
-( crontab -l 2>/dev/null | grep -v 'run_bot.sh'; echo "$LINE" ) | crontab -
+# Grabador de streams (docs/GRABACION_DATOS_VIVO.md, capa B). Proceso aparte:
+# si muere se relanza a los 30 s y el bot no se entera.
+REC="@reboot sleep 40 && pgrep -f record_stream.py >/dev/null || (cd $BOT_DIR && nohup bash -c 'while true; do $PYTHON scripts/record_stream.py; sleep 30; done' >> logs/record_stream.log 2>&1 &)"
+( crontab -l 2>/dev/null | grep -v 'run_bot.sh' | grep -v 'record_stream.py'; echo "$LINE"; echo "$REC" ) | crontab -
 echo "cron @reboot instalado:"
-crontab -l | grep run_bot.sh
+crontab -l | grep -E 'run_bot.sh|record_stream.py'
