@@ -84,8 +84,102 @@ Filtros sobre los trades de V2:
   mínima.
 - DVOL solo cubre unos 4 episodios de régimen.
 
+## Adenda al pre-registro (2026-09-23, escrita antes de descargar datos)
+
+Interpretaciones de lo ambiguo, elegidas antes de ver ningún número:
+
+1. **OI en un instante `T`:** último `sum_open_interest` con `create_time ≤ T`
+   (asof). La vela de señal cierra en `ts_entrada`, así que
+   `oi_chg = OI(ts_entrada) / OI(ts_entrada − 24 h) − 1`. Vela o trade sin OI
+   en ambos extremos → sin cobertura, se excluye.
+2. **S1-OI:** solo cuentan los eventos con `oi_chg` definido (desde
+   2020-09-02). El retorno es `log(close[t+12] / open[t+1])` y se excluyen los
+   eventos sin 12 velas futuras.
+   - **Rotación:** `oi_chg` se calcula en **todas** las velas 4h con cobertura.
+     Esa serie se rota circularmente k velas, con k de 180 (30 días) a N − 180,
+     y se toman sus valores en las velas-evento. Se usan 10.000 k
+     equiespaciados.
+3. **S1-DVOL:**
+   - `dvol_pos` usa los 90 valores diarios hasta el día incluido, con ventana
+     completa obligatoria.
+   - El close diario sale del último close 4h del día UTC.
+   - Solo cuentan los días con `dvol_pos` y retorno a 60 días definidos.
+   - **Rotación:** la serie booleana de señal se rota k días, con k de 90 a
+     N − 90, y se usan 10.000 k equiespaciados.
+   - **Rango degenerado:** si `max90 = min90`, `dvol_pos` queda sin definir.
+4. **Etapa 2:**
+   - H-DVOL usa `dvol_pos` del día UTC anterior al de `ts_entrada`.
+   - Un trade "con cobertura" es el que tiene la feature definida.
+   - **Bootstrap de los descartados:** se hace sobre los trades descartados en
+     orden temporal, con bloques circulares de `min(10, n)`.
+   - **p (una cola, H0: media ≥ 0):** fracción de réplicas centradas
+     (`media* − media_obs`) que son ≤ `media_obs`.
+   - Si no hay ningún trade descartado, la hipótesis se reporta como "sin
+     trades que descartar" y no se adopta.
+5. **Caché de datos:** va en `data/deriv_oi_btcusdt_5m.parquet` y
+   `data/deriv_dvol_btc_1d.parquet`. No se usa `data/derivados/` porque el
+   patrón `data/*.parquet` de `.gitignore` no ignora subdirectorios.
+
 ---
 
 ## Resultados
 
-*(se completan después de correr `test_derivados.py`)*
+> Corrida el 2026-09-23 · salida completa en `salida.txt`.
+>
+> - **Datos:** 636.237 filas de OI a 5 min (2020-09-01 → 2026-09-22) y 2.010
+>   días de DVOL (2021-03-24 → 2026-09-23).
+> - **Velas 4h hasta 2026-02-27.** El parquet no se refrescó, para que todos
+>   los experimentos sigan siendo comparables.
+
+### Corrección de datos detectada al correr (post-hoc, documentada)
+
+El dataset de Binance tiene **473 filas con `sum_open_interest = 0`**. En BTC
+eso es imposible: son huecos, no datos. En la primera corrida producían 13
+`oi_chg` infinitos y varios de −100%.
+
+- **Corrección:** se descartan las filas con OI ≤ 0 y el asof toma el último
+  valor válido.
+- **Qué cambia:** la conclusión es **idéntica** en las dos corridas. La primera
+  se conserva en `salida_con_oi_cero.txt`: diferencia −1,33 %, p = 0,992.
+
+### Etapa 1: no pasa ninguna hipótesis. Se aplica la regla de parada.
+
+| test | eventos | grupo con señal | resto | diferencia | p (una cola) | ¿pasa a 0,025? |
+|---|--:|--:|--:|--:|--:|:--:|
+| **S1-OI:** rupturas D55, retorno 12 velas, OI sube vs no sube | 395 (294 / 101) | +0,65% | +2,04% | **−1,39%** | **0,993** | no |
+| **S1-DVOL:** días con DVOL en el 5% inferior de su rango, retorno 60 d | 1.653 días, 208 con señal | +1,79% | +2,95% | −1,16% | **0,406** | no |
+
+- **S1-OI:** 10.000 rotaciones, desplazamiento de 30 días a N − 30 días.
+- **S1-DVOL:** solo existen **1.474** rotaciones circulares distintas con
+  desplazamiento ≥ 90 días en 1.653 días, así que se usaron todas en vez de
+  10.000.
+
+**El experimento termina aquí.** La etapa 2 (filtros sobre los trades de V2)
+no se corrió, como exige el pre-registro.
+
+### Lectura
+
+- **OI:** la hipótesis de trader ("ruptura con OI subiendo = posicionamiento
+  nuevo = mejor") no solo falla, sino que el signo sale **al revés**. Las
+  rupturas con OI **bajando o plano** rindieron más a 12 velas (+2,04% frente a
+  +0,65%). Coincide con que `pavel-shkliar` también rechazó el OI.
+  - Esto **no** es un hallazgo aprovechable. Invertir el filtro después de ver
+    el resultado sería una hipótesis post-hoc: con el test a dos colas sería
+    p ≈ 0,014 sin corregir, y aquí ya hubo 2 hipótesis. Si alguien quiere
+    probar "rupturas con OI cayendo", necesita un pre-registro nuevo y datos
+    que no sean estos.
+- **DVOL:** la señal de `pavel-shkliar` (DVOL en mínimos → peor retorno a 60
+  días) apunta en la dirección que él dice (−1,16 puntos), pero con un null
+  que respeta la autocorrelación **no se distingue del azar (p = 0,41)**. Su
+  p = 0,0086 venía de un t-test sobre ventanas solapadas de 60 días: el mismo
+  error que `CLAUDE.md` documenta en `estacionalidad/` (p = 0,005 → 0,14).
+  Es otra instancia del mismo error.
+
+### Veredicto
+
+**RECHAZADO**, en las dos hipótesis:
+- ni el open interest de Binance;
+- ni el DVOL de Deribit.
+
+Ninguno de los dos aporta una señal a nivel de mercado que justifique filtrar
+V2. No se conecta nada al bot.
