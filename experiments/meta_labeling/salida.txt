@@ -1,0 +1,23 @@
+=== ETAPA 1: AUC fuera de muestra del meta-modelo ===
+velas-evento: 823 | eventos con etiqueta: 823 | tasa y=1: 0.439
+N_eff (unicidad, todos los eventos): 355.1
+  2021: train   252 (N_eff   109.7) | test  126 | AUC 0.589
+  2022: train   384 (N_eff   161.4) | test   77 | AUC 0.539
+  2023: train   463 (N_eff   201.5) | test  102 | AUC 0.593
+  2024: train   564 (N_eff   252.2) | test  125 | AUC 0.625
+  2025: train   691 (N_eff   301.0) | test  117 | AUC 0.572
+  2026: train   806 (N_eff   345.7) | test   15 | AUC 0.841
+AUC OOS pooled 2021-2026: 0.6058 | eventos 562 | bloques de 30 d: 63 | p = 0.0005
+  coef 2021: atr_pct -0.206, dist_ema200 +0.134, bb_width -0.103
+  coef 2022: atr_pct -0.457, dist_ema200 +0.178, bb_width -0.105
+  coef 2023: atr_pct -0.472, dist_ema200 +0.269, bb_width -0.076
+  coef 2024: atr_pct -0.427, dist_ema200 +0.206, bb_width -0.060
+  coef 2025: atr_pct -0.448, dist_ema200 +0.206, bb_width -0.062
+  coef 2026: atr_pct -0.378, dist_ema200 +0.180, bb_width -0.032
+
+=== ETAPA 2: sizing meta-labeling vs V2 (mismos trades) ===
+trades 2021-2026: 115 de 165 | multiplicador medio 1.165 (min 0.53, max 1.50)
+corr(m, r_V2) = +0.119
+Sharpe por trade V2 0.0746 | meta 0.0955 | dif +0.0210 | p = 0.1386
+  V2    PF 1.22 | CAGR 2021-26 +4.0% | DD 2021-26 21.5%
+  meta  PF 1.32 | CAGR 2021-26 +6.3% | DD 2021-26 24.2%
