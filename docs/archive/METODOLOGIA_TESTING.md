@@ -1,3 +1,9 @@
+> ⚠️ **V14, OBSOLETO (archivado 2026-09).** Describe cómo añadir filtros
+> post-hoc por modelo ("filtros que retengan 20% de trades"): exactamente la
+> receta de overfitting que `CLAUDE.md` prohíbe. La metodología vigente es la
+> sección **"Requisitos de Validación"** de `CLAUDE.md`. Ver
+> `docs/AUDITORIA_2026-09.md` §4.2.
+
 # Metodologia de Testing de Modelos V14
 
 ## Principio Fundamental
