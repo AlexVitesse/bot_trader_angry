@@ -18,21 +18,10 @@ from config.settings import (
     ML_DB_FILE, ML_MAX_CONCURRENT, ML_MAX_DD_PCT, ML_MAX_DAILY_LOSS_PCT,
     ML_RISK_PER_TRADE, ML_MAX_NOTIONAL_PCT, ML_LEVERAGE, ML_TP_PCT, ML_SL_PCT,
     ML_TRAILING_ACTIVATION, ML_TRAILING_LOCK, ML_MAX_HOLD,
-    COMMISSION_RATE, SLIPPAGE_PCT, INITIAL_CAPITAL, ML_BTC_CONFIG,
+    COMMISSION_RATE, SLIPPAGE_PCT, INITIAL_CAPITAL,
 )
 
 logger = logging.getLogger(__name__)
-
-
-def get_pair_tp_sl(pair: str) -> tuple:
-    """
-    V13.01: Get TP/SL percentages for a pair.
-    BTC uses specialized config, others use default.
-    Returns (tp_pct, sl_pct).
-    """
-    if pair == 'BTC/USDT' and ML_BTC_CONFIG.get('tp_pct'):
-        return ML_BTC_CONFIG['tp_pct'], ML_BTC_CONFIG['sl_pct']
-    return ML_TP_PCT, ML_SL_PCT
 
 
 @dataclass
@@ -62,7 +51,7 @@ class Position:
     trail_fixed_dist: float = 0.0     # 0.008 = 0.8% for tight trailing
     # 'pending' = guardada ANTES de mandar la orden; si el proceso muere entre
     # la orden y el fill, el arranque la adopta con estos parametros del motor
-    # en vez de con el TP/SL generico de get_pair_tp_sl (AUDITORIA_2026-09 §2.4).
+    # en vez de con el TP/SL generico ML_TP_PCT/ML_SL_PCT (AUDITORIA_2026-09 §2.4).
     status: str = 'open'
 
 
@@ -381,7 +370,7 @@ class PortfolioManager:
             notional = contracts * entry_price
 
             # Calcular TP/SL con valores por defecto (V13.01: per-pair)
-            pair_tp, pair_sl = get_pair_tp_sl(pair)
+            pair_tp, pair_sl = ML_TP_PCT, ML_SL_PCT
             if direction == 1:
                 tp_price = entry_price * (1 + pair_tp)
                 sl_price = entry_price * (1 - pair_sl)
@@ -676,7 +665,7 @@ class PortfolioManager:
         if tp_pct_override is not None and sl_pct_override is not None:
             pair_tp, pair_sl = tp_pct_override, sl_pct_override
         else:
-            pair_tp, pair_sl = get_pair_tp_sl(pair)
+            pair_tp, pair_sl = ML_TP_PCT, ML_SL_PCT
         notional = risk_amt / pair_sl if pair_sl > 0 else risk_amt
         # Tope relativo al balance, no absoluto: un tope en dolares se queda
         # obsoleto en cuanto cambia el capital (que es lo que paso con los $300).

@@ -37,6 +37,9 @@ class _Portfolio:
 class _Strategy:
     regime = 'RANGE'
 
+    def get_regime(self, pair):
+        return self.regime
+
 
 def _bot(portfolio):
     bot = ml_bot.MLBot.__new__(ml_bot.MLBot)   # sin __init__: no toca la red
@@ -66,7 +69,7 @@ def test_open_position_acepta_el_override():
 
 def test_reenvia_el_max_bars_del_motor():
     pf = _Portfolio()
-    _bot(pf)._execute_v14_signal(_payload(max_bars=60))
+    _bot(pf)._execute_signal(_payload(max_bars=60))
     assert pf.kwargs is not None, 'open_position no llego a llamarse'
     got = pf.kwargs.get('max_hold_override')
     assert got == 60, f'esperaba max_hold_override=60, llego {got!r}'
@@ -77,7 +80,7 @@ def test_sin_max_bars_no_rompe():
     """Las senales V9/V14 no llevan max_bars: debe pasar None y que
     open_position caiga en ML_MAX_HOLD como siempre."""
     pf = _Portfolio()
-    _bot(pf)._execute_v14_signal(_payload())
+    _bot(pf)._execute_signal(_payload())
     assert pf.kwargs.get('max_hold_override') is None, \
         'sin max_bars en el payload el override debe ser None'
     print('  OK  sin max_bars en el payload, se mantiene el comportamiento viejo')

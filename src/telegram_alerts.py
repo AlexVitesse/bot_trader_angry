@@ -6,12 +6,9 @@ Envia alertas asincronas via Telegram sin bloquear el trading.
 
 import logging
 import threading
-import subprocess
 import requests
-from datetime import datetime
-from pathlib import Path
 
-from config.settings import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, TELEGRAM_ENABLED, SYMBOL, BOT_VERSION
+from config.settings import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, TELEGRAM_ENABLED, BOT_VERSION
 
 logger = logging.getLogger(__name__)
 
@@ -74,201 +71,6 @@ def send_document(file_path: str, caption: str = ""):
 
 
 # =====================================================================
-# ALERTAS ESPECIFICAS
-# =====================================================================
-
-def alert_trade_opened(side: str, price: float, quantity: float, margin: float):
-    """Alerta cuando se abre un trade."""
-    emoji = "\U0001F7E2" if side.upper() == "LONG" else "\U0001F534"
-    text = (
-        f"{emoji} <b>TRADE ABIERTO</b>\n"
-        f"Par: {SYMBOL}\n"
-        f"Side: {side.upper()}\n"
-        f"Precio: ${price:,.2f}\n"
-        f"Qty: {quantity}\n"
-        f"Margen: ${margin:.2f}"
-    )
-    send_alert(text)
-
-
-def alert_trade_closed(side: str, entry_price: float, exit_price: float,
-                       pnl: float, exit_reason: str, duration_min: float):
-    """Alerta cuando se cierra un trade."""
-    emoji = "\u2705" if pnl > 0 else "\u274C"
-    text = (
-        f"{emoji} <b>TRADE CERRADO</b>\n"
-        f"Par: {SYMBOL} | {side.upper()}\n"
-        f"Entry: ${entry_price:,.2f} -> Exit: ${exit_price:,.2f}\n"
-        f"PnL: <b>${pnl:+.4f}</b>\n"
-        f"Razon: {exit_reason}\n"
-        f"Duracion: {duration_min:.1f} min"
-    )
-    send_alert(text)
-
-
-def alert_dca_executed(so_num: int, price: float, new_avg: float, total_qty: float):
-    """Alerta cuando se ejecuta un DCA."""
-    text = (
-        f"\U0001F504 <b>DCA #{so_num}</b>\n"
-        f"Precio: ${price:,.2f}\n"
-        f"Nuevo promedio: ${new_avg:,.2f}\n"
-        f"Qty total: {total_qty}"
-    )
-    send_alert(text)
-
-
-def alert_kill_switch(reason: str):
-    """Alerta cuando se activa un kill switch."""
-    text = (
-        f"\U0001F6A8 <b>KILL SWITCH ACTIVADO</b>\n"
-        f"Razon: {reason}\n"
-        f"Bot PAUSADO - revisar manualmente"
-    )
-    send_alert(text)
-
-
-def alert_ws_disconnected(attempt: int, max_attempts: int):
-    """Alerta cuando el WebSocket se desconecta."""
-    text = (
-        f"\u26A0\uFE0F <b>WS DESCONECTADO</b>\n"
-        f"Reintento: {attempt}/{max_attempts}"
-    )
-    send_alert(text)
-
-
-def alert_error(error_msg: str):
-    """Alerta para errores criticos."""
-    text = (
-        f"\U0001F4A5 <b>ERROR CRITICO</b>\n"
-        f"{error_msg}"
-    )
-    send_alert(text)
-
-
-def alert_daily_summary(trades_today: int, wins: int, losses: int,
-                        pnl: float, balance: float, win_rate: float):
-    """Resumen diario automatico."""
-    emoji = "\U0001F4C8" if pnl >= 0 else "\U0001F4C9"
-    text = (
-        f"{emoji} <b>RESUMEN DIARIO</b>\n"
-        f"Trades: {trades_today} | Wins: {wins} | Losses: {losses}\n"
-        f"Win Rate: {win_rate:.1f}%\n"
-        f"PnL: <b>${pnl:+.4f}</b>\n"
-        f"Balance: ${balance:,.2f}"
-    )
-    send_alert(text)
-
-
-def alert_bot_started(balance: float, mode: str):
-    """Alerta cuando el bot arranca."""
-    text = (
-        f"\U0001F680 <b>BOT INICIADO</b>\n"
-        f"Modo: {mode}\n"
-        f"Par: {SYMBOL}\n"
-        f"Balance: ${balance:,.2f}"
-    )
-    send_alert(text)
-
-
-def alert_status(balance: float, in_position: bool, side: str,
-                 pnl_unrealized: float, trades_today: int):
-    """Respuesta al comando /status."""
-    pos_text = f"{side.upper()} | PnL: ${pnl_unrealized:+.4f}" if in_position else "Sin posicion"
-    text = (
-        f"\U0001F4CA <b>STATUS</b>\n"
-        f"Balance: ${balance:,.2f}\n"
-        f"Posicion: {pos_text}\n"
-        f"Trades hoy: {trades_today}"
-    )
-    send_alert(text)
-
-
-# =====================================================================
-# COMANDOS DE MANTENIMIENTO
-# =====================================================================
-
-def run_git_pull():
-    """Ejecuta git pull y notifica resultado."""
-    send_alert("\U0001F504 Ejecutando git pull...")
-    try:
-        project_root = Path(__file__).parent.parent
-        result = subprocess.run(
-            ['git', 'pull', 'origin', 'main'],
-            cwd=project_root,
-            capture_output=True,
-            text=True,
-            timeout=60
-        )
-        if result.returncode == 0:
-            # Extraer resumen del output
-            output = result.stdout.strip()
-            if 'Already up to date' in output:
-                send_alert("\u2705 Git: Ya actualizado")
-            else:
-                lines = output.split('\n')[-3:]  # Ultimas 3 lineas
-                send_alert(f"\u2705 Git pull OK:\n<code>{chr(10).join(lines)}</code>")
-        else:
-            send_alert(f"\u274C Git pull ERROR:\n<code>{result.stderr[:200]}</code>")
-    except subprocess.TimeoutExpired:
-        send_alert("\u274C Git pull TIMEOUT (60s)")
-    except Exception as e:
-        send_alert(f"\u274C Git pull ERROR: {e}")
-
-
-def run_export_models():
-    """Ejecuta reentrenamiento de modelos (legacy, usar /retrain en bot)."""
-    send_alert("\U0001F52C Reentrenando modelos...\nEsto puede tomar 1-2 minutos.")
-    try:
-        project_root = Path(__file__).parent.parent
-        result = subprocess.run(
-            ['poetry', 'run', 'python', 'train_v15_prod.py'],
-            cwd=project_root,
-            capture_output=True,
-            text=True,
-            timeout=300
-        )
-        if result.returncode == 0:
-            send_alert("\u2705 Modelos reentrenados correctamente")
-        else:
-            error_msg = result.stderr[:300] if result.stderr else result.stdout[:300]
-            send_alert(f"\u274C Retrain ERROR:\n<code>{error_msg}</code>")
-    except subprocess.TimeoutExpired:
-        send_alert("\u274C Retrain TIMEOUT (5min)")
-    except Exception as e:
-        send_alert(f"\u274C Retrain ERROR: {e}")
-
-
-def run_pull_and_export():
-    """Ejecuta git pull + retrain en secuencia."""
-    send_alert("\U0001F680 Iniciando actualizacion completa...")
-
-    # 1. Git pull
-    try:
-        project_root = Path(__file__).parent.parent
-        result = subprocess.run(
-            ['git', 'pull', 'origin', 'main'],
-            cwd=project_root,
-            capture_output=True,
-            text=True,
-            timeout=60
-        )
-        if result.returncode != 0:
-            send_alert(f"\u274C Git pull fallo:\n<code>{result.stderr[:200]}</code>")
-            return
-
-        if 'Already up to date' in result.stdout:
-            send_alert("\u2705 Git: Sin cambios nuevos")
-        else:
-            send_alert("\u2705 Git pull OK")
-    except Exception as e:
-        send_alert(f"\u274C Git pull ERROR: {e}")
-        return
-
-    # 2. Retrain models
-    run_export_models()
-
-
-# =====================================================================
 # POLLING DE COMANDOS (para /status)
 # =====================================================================
 
@@ -278,9 +80,7 @@ class TelegramPoller:
     Comandos soportados:
     - /status: Estado actual del bot
     - /resume: Reanudar trading
-    - /pull: Git pull desde main
-    - /retrain: Reentrenar modelos
-    - /update: Git pull + retrain (combo)
+    - /pull, /update, /restart, /log ... (ver ml_bot._startup)
     """
 
     def __init__(self, callbacks: dict = None):

@@ -25,16 +25,18 @@ class _Portfolio:
         self.llamadas += 1
         return self.con_red
 
+    def update_trail_on_closed_bars(self):
+        pass
+
 
 def _bot(con_red):
     """MLBot minimo: solo el camino que toca el watchdog."""
     b = object.__new__(ml_bot.MLBot)
     b.blind_candles = 0
     b.portfolio = _Portfolio(con_red)
-    b.v14_mode = True
     # hoy == last_regime_date -> se salta update_regime (necesitaria red)
     b.last_regime_date = datetime.now(timezone.utc).strftime('%Y-%m-%d')
-    b._on_new_candle_v14 = lambda: None
+    b._process_signals = lambda: None
     return b
 
 

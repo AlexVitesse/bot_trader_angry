@@ -21,32 +21,12 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from config.settings import (
     TRADING_MODE, BINANCE_API_KEY, BINANCE_API_SECRET,
-    ML_PAIRS, ML_CHECK_INTERVAL, ML_CANDLE_HOURS, ML_LEVERAGE,
-    ML_DB_FILE, MODELS_DIR, TELEGRAM_ENABLED, LOG_LEVEL,
-    LOGS_DIR, INITIAL_CAPITAL, ML_MAX_DAILY_LOSS_PCT,
-    ML_SHADOW_ENABLED, ML_V9_ENABLED, ML_TIMEFRAME,
-    ML_MAX_CONCURRENT, BOT_VERSION, ML_MAX_DD_PCT,
-    ML_V1304_ENABLED, ML_V1304_PAIRS,
-    ML_V14_ENABLED, ML_V14_EXPERTS,
+    ML_CHECK_INTERVAL, ML_CANDLE_HOURS, ML_LEVERAGE,
+    ML_DB_FILE, LOG_LEVEL, LOGS_DIR, INITIAL_CAPITAL, ML_MAX_DAILY_LOSS_PCT,
+    ML_MAX_CONCURRENT, BOT_VERSION, ML_MAX_DD_PCT, ML_V15_PAIRS,
 )
-
-# V15 import (conditional to avoid errors if file missing)
-try:
-    from config.settings import ML_V15_ENABLED
-except ImportError:
-    ML_V15_ENABLED = False
-
-try:
-    from config.settings import ML_V15_PAIRS
-except ImportError:
-    ML_V15_PAIRS = ['BTC/USDT']
-
-from src.ml_strategy import MLStrategy
-from src.ml_strategy_v14 import MLStrategyV14
-if ML_V15_ENABLED:
-    from src.ml_strategy_v15 import MLStrategyV15
+from src.ml_strategy_v15 import MLStrategyV15
 from src.portfolio_manager import PortfolioManager
-from src.shadow_portfolio_manager import ShadowPortfolioManager
 from src.telegram_alerts import send_alert, send_document, TelegramPoller
 
 logger = logging.getLogger('ml_bot')
@@ -58,19 +38,8 @@ class MLBot:
     def __init__(self):
         self.exchange_public = self._init_exchange_public()
         self.exchange = self._init_exchange()
-        # Usar estrategia V15 (Expert Committee) o V14
-        if ML_V15_ENABLED:
-            self.strategy = MLStrategyV15()
-            self.v14_mode = True  # reuse V14 signal execution flow
-        elif ML_V14_ENABLED:
-            self.strategy = MLStrategyV14()
-            self.v14_mode = True
-        else:
-            self.strategy = MLStrategy()
-            self.v14_mode = False
+        self.strategy = MLStrategyV15()
         self.portfolio = PortfolioManager(self.exchange, ML_DB_FILE)
-        self.shadow_enabled = ML_SHADOW_ENABLED and ML_V9_ENABLED
-        self.shadow_portfolio = ShadowPortfolioManager(strategy='v9_shadow') if self.shadow_enabled else None
         # Yield manager (Mercado-Pago style yield para capital ocioso)
         self.yield_mgr = None
         try:
@@ -190,7 +159,7 @@ class MLBot:
                         f"▶️ <b>BOT REANUDADO</b>\n"
                         f"━━━━━━━━━━━━━━━\n"
                         f"💰 Balance: ${self.portfolio.balance:,.2f}\n"
-                        f"📊 Regimes: {self.strategy.get_regimes_str() if hasattr(self.strategy, 'get_regimes_str') else self.strategy.regime}\n"
+                        f"📊 Regimes: {self.strategy.get_regimes_str()}\n"
                         f"🔄 Operando normalmente"
                     )
 
@@ -219,12 +188,11 @@ class MLBot:
         logger.info(f"Modo: {TRADING_MODE.upper()}")
         logger.info(f"Capital: ${INITIAL_CAPITAL}")
 
-        # 1. Cargar modelos
+        # 1. Motores por par (ML_V15_ENGINE)
         count = self.strategy.load_models()
         if count == 0:
-            logger.critical("[BOT] No se encontraron modelos. "
-                            "Ejecutar primero: poetry run python ml_export_models.py")
-            send_alert("ERROR: No hay modelos ML. Bot no puede iniciar.")
+            logger.critical("[BOT] Ningun par con motor valido en ML_V15_ENGINE")
+            send_alert("ERROR: ningun par con motor valido. Bot no puede iniciar.")
             sys.exit(1)
         logger.info(f"[BOT] {count} par(es) configurados: {', '.join(self.strategy.pairs)}")
 
@@ -232,18 +200,7 @@ class MLBot:
         logger.info("[BOT] Detectando regime de mercado...")
         self.strategy.update_regime(self.exchange_public)
         self.last_regime_date = datetime.now(timezone.utc).strftime('%Y-%m-%d')
-        if hasattr(self.strategy, 'get_regimes_str'):
-            logger.info(f"[BOT] Regimes: {self.strategy.get_regimes_str()}")
-        else:
-            logger.info(f"[BOT] Regime: {self.strategy.regime}")
-
-        # 2b. Update macro intelligence (V8.4) - solo para estrategia legacy
-        if not self.v14_mode and hasattr(self.strategy, 'v84_enabled') and self.strategy.v84_enabled:
-            logger.info("[BOT] Actualizando datos macro (V8.4)...")
-            self.strategy.update_macro()
-            logger.info(f"[BOT] Macro: score={self.strategy.macro_score:.3f}, "
-                        f"sizing={self.strategy.get_sizing_multiplier():.2f}x, "
-                        f"thresh={self.strategy.get_adaptive_threshold():.2f}")
+        logger.info(f"[BOT] Regimes: {self.strategy.get_regimes_str()}")
 
         # 3. Recuperar posiciones
         self.portfolio.sync_positions()
@@ -255,11 +212,6 @@ class MLBot:
             logger.critical(f"[BOT] {msg}")
             send_alert(f"🚨 <b>KILL SWITCH PERSISTENTE</b>\n{msg}")
             sys.exit(0)
-
-        # 3b. Recuperar posiciones shadow
-        if self.shadow_enabled:
-            self.shadow_portfolio.sync_positions()
-            logger.info(f"[BOT] Shadow V9: {len(self.shadow_portfolio.positions)} posiciones")
 
         # 4. Actualizar balance
         self.portfolio.refresh_balance()
@@ -273,28 +225,10 @@ class MLBot:
         regime_emoji = {'BULL': '🟢🐂', 'BEAR': '🔴🐻', 'RANGE': '🟡↔️'}.get(regime, '⚪')
         n_pos = len(self.portfolio.positions)
 
-        # Model info for Telegram
-        if ML_V15_ENABLED:
-            v15_coins = [p.split('/')[0] for p in self.strategy.pairs]
-            regimes_str = self.strategy.get_regimes_str() if hasattr(self.strategy, 'get_regimes_str') else regime
-            model_str = f"🧠 Expert Committee\n📊 Pairs: {', '.join(v15_coins)}\n📈 Regimes: {regimes_str}"
-            count = len(self.strategy.pairs)
-        elif self.v14_mode:
-            n_experts = len(ML_V14_EXPERTS)
-            model_str = f"🤖 Ensemble Voting\n📊 {n_experts} expertos activos"
-            count = n_experts
-        # V13.04 info
-        elif ML_V1304_ENABLED:
-            v1304_pairs = [p.replace('/USDT', '') for p in ML_V1304_PAIRS]
-            model_str = f"🔬 Ridge LONG_ONLY\n📊 Pares: {', '.join(v1304_pairs)}"
-            count = len(ML_V1304_PAIRS)  # Override count for V13.04
-        else:
-            extras = []
-            if hasattr(self.strategy, 'v84_enabled') and self.strategy.v84_enabled:
-                extras.append(f"🌐 Macro: {self.strategy.macro_score:.2f}")
-            if hasattr(self.strategy, 'v85_enabled') and self.strategy.v85_enabled:
-                extras.append("🎯 Conv: ON")
-            model_str = " | ".join(extras) if extras else ""
+        coins = ', '.join(p.split('/')[0] for p in self.strategy.pairs)
+        count = len(self.strategy.pairs)
+        model_str = (f"🧠 Motor V2 | {coins}\n"
+                     f"📈 Regimes: {self.strategy.get_regimes_str()}")
 
         send_alert(
             f"🚀 <b>{BOT_VERSION} INICIADO</b>\n"
@@ -323,8 +257,6 @@ class MLBot:
             '/install': self._cmd_install,
             '/restart': self._cmd_restart,
             '/restart_clean': self._cmd_restart_clean,
-            '/retrain': self._cmd_retrain,
-            '/export_v14': self._cmd_retrain,  # Alias legacy
             '/clearlog': self._cmd_clearlog,
             '/resetdb': self._cmd_resetdb,
         })
@@ -361,8 +293,7 @@ class MLBot:
             f"<b>DevOps:</b>\n"
             f"  /update - Pull + Install + Restart\n"
             f"  /pull - git stash + pull\n"
-            f"  /install - poetry install\n"
-            f"  /retrain - Reentrenar modelos {BOT_VERSION}"
+            f"  /install - poetry install"
         )
 
     def _cmd_yield(self):
@@ -450,16 +381,7 @@ class MLBot:
         pnl_emoji = '📈' if total_pnl >= 0 else '📉'
         paused_str = "\n⏸️ <b>PAUSADO</b> - usa /resume" if self.portfolio.paused else ""
 
-        # Model info
-        if ML_V15_ENABLED:
-            regimes_str = self.strategy.get_regimes_str() if hasattr(self.strategy, 'get_regimes_str') else self.strategy.regime
-            model_str = f"\n🧠 Expert Committee | {regimes_str}"
-        elif self.v14_mode:
-            model_str = f"\n🤖 Ensemble Voting ({len(ML_V14_EXPERTS)} expertos)"
-        elif ML_V1304_ENABLED:
-            model_str = "\n🔬 Ridge LONG_ONLY"
-        else:
-            model_str = ""
+        model_str = f"\n🧠 Motor V2 | {self.strategy.get_regimes_str()}"
 
         send_alert(
             f"📊 <b>STATUS {BOT_VERSION}</b>\n"
@@ -801,57 +723,6 @@ class MLBot:
 
         threading.Thread(target=_do_update, daemon=True).start()
 
-    def _cmd_retrain(self):
-        """Responde al comando /retrain - reentrena modelos de la version activa."""
-        if ML_V15_ENABLED:
-            script = 'train_v15_prod.py'
-            desc = "SHORT GBM (BTC only)"
-        else:
-            script = 'ml_export_v14.py'
-            desc = "Ensemble (RF+GB+LR)"
-
-        send_alert(
-            f"🔬 <b>REENTRENANDO {BOT_VERSION}</b>\n"
-            f"━━━━━━━━━━━━━━━\n"
-            f"📊 Modelo: {desc}\n"
-            f"⏱️ Tiempo estimado: 3-5 minutos"
-        )
-        logger.info(f"[BOT] Retrain {BOT_VERSION} solicitado via /retrain")
-        project_root = str(Path(__file__).parent.parent)
-
-        def _do_export():
-            try:
-                cmd = [sys.executable, script]
-                if script == 'train_v15_prod.py':
-                    cmd.append('--refresh')
-                elif script == 'ml_export_v14.py':
-                    cmd.append('--force')
-                result = subprocess.run(
-                    cmd,
-                    capture_output=True, text=True,
-                    timeout=600, cwd=project_root,
-                )
-                ok = result.returncode == 0
-                output = result.stdout.strip() or result.stderr.strip() or "Sin output"
-
-                if ok:
-                    lines = output.split('\n')[-6:]
-                    summary = '\n'.join(lines)
-                    send_alert(f"✅ <b>{BOT_VERSION} REENTRENADO</b>\n<code>{summary}</code>")
-                else:
-                    error_msg = output[-300:]
-                    send_alert(f"❌ <b>{BOT_VERSION} ERROR</b>\n<code>{error_msg}</code>")
-
-                logger.info(f"[BOT] retrain: rc={result.returncode}")
-            except subprocess.TimeoutExpired:
-                send_alert(f"❌ <b>{BOT_VERSION} TIMEOUT</b>\nSuperados 10 minutos")
-                logger.error("[BOT] retrain timeout (10min)")
-            except Exception as e:
-                send_alert(f"❌ Error en retrain {BOT_VERSION}: {e}")
-                logger.error(f"[BOT] retrain error: {e}")
-
-        threading.Thread(target=_do_export, daemon=True).start()
-
     def _shutdown(self):
         """Limpieza al cerrar."""
         logger.info("[BOT] Cerrando bot...")
@@ -902,14 +773,6 @@ class MLBot:
             if ok is not False:
                 self.last_regime_date = today
 
-            # V8.4: Refresh macro data daily (solo para estrategia legacy)
-            if not self.v14_mode and hasattr(self.strategy, 'v84_enabled') and self.strategy.v84_enabled:
-                logger.info("[BOT] Actualizando macro (V8.4)...")
-                self.strategy.update_macro()
-                logger.info(f"[BOT] Macro: score={self.strategy.macro_score:.3f}, "
-                            f"sizing={self.strategy.get_sizing_multiplier():.2f}x, "
-                            f"thresh={self.strategy.get_adaptive_threshold():.2f}")
-
         # Actualizar balance. Ademas hace de sonda de red: si falla, el proceso
         # esta ciego (no puede pedir velas ni operar) y seguir en el loop solo
         # produce "Sin senales" indistinguible de un mercado quieto — asi se
@@ -929,17 +792,10 @@ class MLBot:
         # Trail V2 con la vela recien cerrada, antes de buscar senales nuevas.
         self.portfolio.update_trail_on_closed_bars()
 
-        # V14: Flujo simplificado
-        if self.v14_mode:
-            self._on_new_candle_v14()
-        # Legacy: dual-mode si V9 activo
-        elif self.shadow_enabled and self.strategy.v9_enabled:
-            self._on_new_candle_dual()
-        else:
-            self._on_new_candle_single()
+        self._process_signals()
 
-    def _on_new_candle_v14(self):
-        """V14: Flujo simplificado con multiples expertos."""
+    def _process_signals(self):
+        """Genera las senales del motor y las ejecuta."""
         open_symbols = set(self.portfolio.positions.keys())
         signals = self.strategy.generate_signals(self.exchange_public, open_symbols)
 
@@ -953,97 +809,21 @@ class MLBot:
             logger.info(f"[{BOT_VERSION}] Sin senales en este ciclo")
 
         for signal in signals:
-            self._execute_v14_signal(signal)
+            self._execute_signal(signal)
 
-    def _on_new_candle_single(self):
-        """Modo legacy: generate_signals sin shadow."""
-        open_pairs = set(self.portfolio.positions.keys())
-        signals = self.strategy.generate_signals(self.exchange_public, open_pairs)
-
-        if signals:
-            logger.info(f"[BOT] {len(signals)} senales generadas:")
-            for s in signals:
-                side = 'LONG' if s['direction'] == 1 else 'SHORT'
-                sm = s.get('sizing_mult', 1.0)
-                cm = s.get('conviction_mult', 1.0)
-                logger.info(f"  {s['pair']} {side} | conf={s['confidence']:.2f} | "
-                            f"pred={s['prediction']:+.4f} | ${s['price']:,.2f} | "
-                            f"sizing={sm:.2f}x | conv={cm:.2f}x")
-        else:
-            logger.info("[BOT] Sin senales en este ciclo")
-
-        for signal in signals:
-            self._execute_v9_signal(signal)
-
-    def _on_new_candle_dual(self):
-        """Modo dual: V8.5 ejecuta en exchange (PROD), V9 ejecuta en shadow."""
-        open_pairs_prod = set(self.portfolio.positions.keys())
-        open_pairs_shadow = set(self.shadow_portfolio.positions.keys())
-
-        # Fetch BTC 4h data once (shared by both strategies)
-        try:
-            btc_ohlcv = self.exchange_public.fetch_ohlcv('BTC/USDT', ML_TIMEFRAME, limit=100)
-            import pandas as pd
-            btc_df = pd.DataFrame(btc_ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
-            btc_df['timestamp'] = pd.to_datetime(btc_df['timestamp'], unit='ms')
-            btc_df.set_index('timestamp', inplace=True)
-        except Exception as e:
-            logger.warning(f"[BOT] Error fetching BTC data: {e}")
-            btc_df = None
-
-        # NOTA: generate_dual_signals retorna (v9_filtered, v85_base)
-        # Pero ahora INVERTIMOS: v85 va a PROD, v9 va a shadow
-        v9_signals, v85_signals = self.strategy.generate_dual_signals(
-            self.exchange_public, open_pairs_shadow, open_pairs_prod, btc_df,
-        )
-
-        # Log V8.5 signals (ahora PROD)
-        if v85_signals:
-            logger.info(f"[BOT] V8.5 PROD: {len(v85_signals)} senales:")
-            for s in v85_signals:
-                side = 'LONG' if s['direction'] == 1 else 'SHORT'
-                logger.info(f"  [PROD] {s['pair']} {side} | conf={s['confidence']:.2f} | "
-                            f"${s['price']:,.2f} | sizing={s.get('sizing_mult', 1.0):.2f}x")
-        else:
-            logger.info("[BOT] V8.5 PROD: sin senales")
-
-        # Log V9 shadow signals
-        if v9_signals:
-            logger.info(f"[BOT] V9 shadow: {len(v9_signals)} senales:")
-            for s in v9_signals:
-                side = 'LONG' if s['direction'] == 1 else 'SHORT'
-                logger.info(f"  [SHADOW] {s['pair']} {side} | conf={s['confidence']:.2f} | "
-                            f"${s['price']:,.2f}")
-        else:
-            logger.info("[BOT] V9 shadow: sin senales")
-
-        # Execute V8.5 signals on exchange (PROD)
-        for signal in v85_signals:
-            self._execute_v9_signal(signal)
-
-        # Execute V9 signals on shadow portfolio
-        for signal in v9_signals:
-            self._execute_shadow_signal(signal)
-
-    def _execute_v14_signal(self, signal):
-        """Execute a V14 signal with per-pair TP/SL."""
+    def _execute_signal(self, signal):
+        """Abre la posicion de una senal V2 con sus parametros de salida."""
         if not self.portfolio.can_open(signal['pair'], signal['direction']):
             return
 
-        # Use pair-specific regime if V15 multi-pair
-        if hasattr(self.strategy, 'get_regime'):
-            regime = self.strategy.get_regime(signal['pair'])
-        else:
-            regime = self.strategy.regime
-
-        # V14 usa TP/SL del signal (especifico por par)
+        regime = self.strategy.get_regime(signal['pair'])
         success = self.portfolio.open_position(
             pair=signal['pair'],
             direction=signal['direction'],
             confidence=signal['confidence'],
             regime=regime,
             price=signal['price'],
-            atr_pct=0.02,  # Default, V14 usa TP/SL fijos
+            atr_pct=0.02,  # sin uso con trail_mode='tight'
             sizing_mult=signal.get('sizing_mult', 1.0),  # V2: ML_V15_SIZING por par
             tp_pct_override=signal.get('tp_pct'),
             sl_pct_override=signal.get('sl_pct'),
@@ -1079,100 +859,12 @@ class MLBot:
                     f"🔮 Regime: {regime}"
                 )
 
-    def _execute_v9_signal(self, signal):
-        """Execute a signal on the real portfolio (V9 or legacy)."""
-        if not self.portfolio.can_open(signal['pair'], signal['direction']):
-            return
-
-        success = self.portfolio.open_position(
-            pair=signal['pair'],
-            direction=signal['direction'],
-            confidence=signal['confidence'],
-            regime=self.strategy.regime,
-            price=signal['price'],
-            atr_pct=signal['atr_pct'],
-            sizing_mult=signal.get('sizing_mult', 1.0),
-        )
-
-        if success:
-            pos = self.portfolio.positions.get(signal['pair'])
-            if pos:
-                side = 'LONG' if signal['direction'] == 1 else 'SHORT'
-                side_emoji = '🟢' if signal['direction'] == 1 else '🔴'
-                conf_bar = '🔥' if signal['confidence'] > 2.0 else '⚡' if signal['confidence'] > 1.5 else '📊'
-                margin = pos.notional / pos.leverage
-                action = 'COMPRANDO' if signal['direction'] == 1 else 'VENDIENDO'
-                coin = signal['pair'].split('/')[0]
-                if signal['direction'] == 1:
-                    explain = f"📖 Compra {pos.quantity} {coin} esperando que SUBA"
-                    tp_dir = '↗️ sube'
-                    sl_dir = '↘️ baja'
-                else:
-                    explain = f"📖 Vende {pos.quantity} {coin} esperando que BAJE"
-                    tp_dir = '↘️ baja'
-                    sl_dir = '↗️ sube'
-                sm = signal.get('sizing_mult', 1.0)
-                cm = signal.get('conviction_mult', 1.0)
-                # Model info for trade alert
-                if ML_V15_ENABLED:
-                    model_str = f"🧠 {signal.get('setup', 'V15')}"
-                elif self.v14_mode:
-                    model_str = f"🤖 Ensemble"
-                elif ML_V1304_ENABLED:
-                    model_str = "🔬 Ridge LONG_ONLY"
-                else:
-                    model_str = ""
-
-                send_alert(
-                    f"{side_emoji} <b>TRADE ABIERTO</b>\n"
-                    f"━━━━━━━━━━━━━━━\n"
-                    f"💎 {signal['pair']} <b>{side}</b>\n"
-                    f"📥 Entry: ${pos.entry_price:,.2f}\n"
-                    f"📦 Notional: ${pos.notional:,.2f} ({pos.leverage}x)\n"
-                    f"🎯 TP: ${pos.tp_price:,.2f} ({pos.tp_pct:.1%})\n"
-                    f"🛡️ SL: ${pos.sl_price:,.2f} ({pos.sl_pct:.1%})\n"
-                    f"{conf_bar} Conf: {signal['confidence']:.2f}\n"
-                    f"📊 {self.strategy.regime} | {model_str}"
-                )
-
-    def _execute_shadow_signal(self, signal):
-        """Execute a signal on the shadow portfolio (V8.5 paper trading)."""
-        self.shadow_portfolio.open_position(
-            pair=signal['pair'],
-            direction=signal['direction'],
-            confidence=signal['confidence'],
-            regime=self.strategy.regime,
-            price=signal['price'],
-            atr_pct=signal['atr_pct'],
-            sizing_mult=signal.get('sizing_mult', 1.0),
-        )
-
     # =========================================================================
     # POSITION MONITORING
     # =========================================================================
     def _monitor_positions(self):
         """Monitorea posiciones abiertas cada 30s."""
         closed_trades = self.portfolio.update_positions()
-
-        # Shadow positions: fetch tickers and update
-        if self.shadow_enabled and self.shadow_portfolio.positions:
-            try:
-                tickers = {}
-                for pair in list(self.shadow_portfolio.positions.keys()):
-                    try:
-                        t = self.exchange_public.fetch_ticker(pair)
-                        tickers[pair] = t['last']
-                    except Exception:
-                        pass
-                shadow_closed = self.shadow_portfolio.update_positions(tickers)
-                for st in shadow_closed:
-                    sign = '+' if st['pnl'] > 0 else ''
-                    logger.info(
-                        f"[SHADOW] Cerrado {st['symbol']} {st['side'].upper()} | "
-                        f"PnL: ${st['pnl']:{sign}.2f} | {st['exit_reason']}"
-                    )
-            except Exception as e:
-                logger.warning(f"[BOT] Error updating shadow positions: {e}")
 
         for trade in closed_trades:
             win = trade['pnl'] > 0
@@ -1255,10 +947,6 @@ class MLBot:
         if now - self.last_status_log >= 600:
             self.last_status_log = now
             status = self.portfolio.get_status()
-            shadow_info = ""
-            if self.shadow_enabled:
-                ss = self.shadow_portfolio.get_summary()
-                shadow_info = f" | Shadow V9: {ss['n_open']}pos ${ss['total_pnl']:+.2f}"
             # Yield info
             yield_info = ""
             if self.yield_mgr is not None:
@@ -1273,7 +961,7 @@ class MLBot:
                 f"DD={status['dd']:.1%} | "
                 f"Pos={status['positions']}/{len(ML_V15_PAIRS)} | "
                 f"DailyPnL=${status['daily_pnl']:+.2f} | "
-                f"Regime={self.strategy.regime}{shadow_info}{yield_info}"
+                f"Regime={self.strategy.regime}{yield_info}"
             )
             for p in status['position_details']:
                 logger.info(f"  {p['pair']} {p['side'].upper()} "
@@ -1294,11 +982,7 @@ class MLBot:
         trades_today = self.portfolio.get_today_trades_from_db()  # Solo V9
         total_pnl = sum(t['pnl'] for t in trades_today)
 
-        # Regime string for all pairs
-        if ML_V15_ENABLED and hasattr(self.strategy, 'get_regimes_str'):
-            regimes_str = self.strategy.get_regimes_str()
-        else:
-            regimes_str = self.strategy.regime
+        regimes_str = self.strategy.get_regimes_str()
 
         if self.recent_errors:
             errors_str = "\n".join(f"  ⚠️ {e[:80]}" for e in self.recent_errors[-5:])
@@ -1317,16 +1001,7 @@ class MLBot:
         else:
             pnl_emoji = '📈' if total_pnl >= 0 else '📉'
 
-            # Model info for heartbeat
-            if ML_V15_ENABLED:
-                v15_coins = [p.split('/')[0] for p in self.strategy.pairs]
-                model_str = f"🧠 Expert Committee | {', '.join(v15_coins)}\n"
-            elif self.v14_mode:
-                model_str = f"🤖 Ensemble ({len(ML_V14_EXPERTS)} expertos)\n"
-            elif ML_V1304_ENABLED:
-                model_str = "🔬 Ridge LONG_ONLY\n"
-            else:
-                model_str = ""
+            model_str = "🧠 Motor V2\n"
 
             send_alert(
                 f"🟢 <b>{BOT_VERSION} OK</b>\n"
@@ -1349,27 +1024,17 @@ class MLBot:
         wr = (wins / len(trades_today) * 100) if trades_today else 0
         total_pnl = sum(t['pnl'] for t in trades_today)
 
-        # Shadow summary
-        shadow_str = ""
-        if self.shadow_enabled:
-            ss = self.shadow_portfolio.get_summary()
-            shadow_str = (
-                f"\n👻 <b>Shadow</b>: {ss['n_trades']}t | "
-                f"${ss['total_pnl']:+,.2f} | WR {ss['win_rate']:.0f}%"
-            )
-
         pnl_emoji = '📈' if total_pnl >= 0 else '📉'
         send_alert(
             f"📊 <b>RESUMEN DIARIO {BOT_VERSION}</b>\n"
             f"━━━━━━━━━━━━━━━\n"
             f"📈 Trades: {len(trades_today)} | "
             f"✅ {wins} ❌ {losses} | WR {wr:.0f}%\n"
-            f"{pnl_emoji} PnL: <b>${total_pnl:+,.2f}</b>"
-            f"{shadow_str}\n"
+            f"{pnl_emoji} PnL: <b>${total_pnl:+,.2f}</b>\n"
             f"━━━━━━━━━━━━━━━\n"
             f"💰 Balance: <b>${status['balance']:,.2f}</b>\n"
             f"⚠️ DD: {status['dd']:.1%}\n"
-            f"📊 Regimes: {self.strategy.get_regimes_str() if hasattr(self.strategy, 'get_regimes_str') else self.strategy.regime}\n"
+            f"📊 Regimes: {self.strategy.get_regimes_str()}\n"
             f"📈 Posiciones: {status['positions']}/{ML_MAX_CONCURRENT}"
         )
 

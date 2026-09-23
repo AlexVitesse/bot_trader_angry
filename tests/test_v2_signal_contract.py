@@ -1,5 +1,5 @@
 """El payload de _generate_v2_signal debe cumplir el contrato que consume
-ml_bot._execute_v14_signal / portfolio_manager.open_position:
+ml_bot._execute_signal / portfolio_manager.open_position:
 
   - direction: int 1 (LONG) / -1 (SHORT)   -> open_position hace `direction == 1`
   - price: float                            -> open_position lo exige posicional
@@ -33,7 +33,7 @@ def _payload(side):
         'ts_entry': '2026-08-09 00:00:00+00:00', 'regime': 'BEAR/RANGE',
     }
     try:
-        sigs = strat._generate_v2_signal('BTC/USDT', _FakeExchange(), None)
+        sigs = strat._generate_v2_signal('BTC/USDT', _FakeExchange())
     finally:
         mod._v2_engine.get_live_signal = original
     assert len(sigs) == 1, f'esperaba 1 senal, obtuve {len(sigs)}'
@@ -41,7 +41,6 @@ def _payload(side):
 
 
 def demo():
-    assert mod.V2_AVAILABLE, 'v2_engine no importable'
 
     long_sig = _payload('LONG')
     short_sig = _payload('SHORT')
