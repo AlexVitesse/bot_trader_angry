@@ -77,6 +77,26 @@ def _ohlcv(exchange, pair: str, timeframe: str, limit: int,
             time.sleep(delay)
 
 
+def _funding_df(pair: str) -> Optional[pd.DataFrame]:
+    """Historial de funding para el veto de V2 (el backtest lo aplicaba; en
+    vivo iba None -> funding_z=0). La API devuelve hasta 500 registros
+    (~166 dias), de sobra para el z-score de 168 velas 4h (28 dias). Sin red
+    -> None, igual que antes."""
+    try:
+        resp = requests.get(f'{FAPI_BASE}/fapi/v1/fundingRate',
+                            params={'symbol': pair.replace('/', ''),
+                                    'limit': 1000}, timeout=10)
+        resp.raise_for_status()
+        df = pd.DataFrame(resp.json())
+        df.index = pd.to_datetime(df['fundingTime'].astype('int64'), unit='ms',
+                                  utc=True)
+        return df[['fundingRate']].astype(float).rename(
+            columns={'fundingRate': 'funding_rate'}).sort_index()
+    except Exception as e:
+        logger.warning(f'[V2] {pair}: funding no disponible ({e}), veto apagado')
+        return None
+
+
 @dataclass
 class PairState:
     """Per-pair cached state updated by update_regime()."""
@@ -425,7 +445,8 @@ class MLStrategyV15:
                 logger.warning(f'[V2] {pair}: fetch daily fallo ({e}), '
                                f'fallback a derivacion desde 4h')
             # Llamar al engine V2: devuelve None o dict con side, trail_dist, etc.
-            sig = _v2_engine.get_live_signal(df_4h, df_1d=df_1d, df_funding=None)
+            sig = _v2_engine.get_live_signal(df_4h, df_1d=df_1d,
+                                             df_funding=_funding_df(pair))
             if sig is None:
                 logger.info(f'[V2] {pair}: no signal')
                 return []

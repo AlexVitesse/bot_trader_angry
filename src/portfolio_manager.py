@@ -9,7 +9,7 @@ import sqlite3
 import logging
 import time
 import ccxt
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from typing import Optional, Dict, List
 from pathlib import Path
@@ -60,6 +60,10 @@ class Position:
     sl_order_id: Optional[str] = None
     trail_mode: str = 'default'       # 'default' or 'tight' (ADA/SOL)
     trail_fixed_dist: float = 0.0     # 0.008 = 0.8% for tight trailing
+    # 'pending' = guardada ANTES de mandar la orden; si el proceso muere entre
+    # la orden y el fill, el arranque la adopta con estos parametros del motor
+    # en vez de con el TP/SL generico de get_pair_tp_sl (AUDITORIA_2026-09 §2.4).
+    status: str = 'open'
 
 
 class PortfolioManager:
@@ -75,7 +79,6 @@ class PortfolioManager:
         self.daily_date = datetime.now(timezone.utc).strftime('%Y-%m-%d')
         self.paused = False
         self.killed = False
-        self.consecutive_losses = 0  # Racha de SL consecutivos
         self.trade_log: List[dict] = []
         self._init_db()
 
@@ -162,6 +165,11 @@ class PortfolioManager:
                 conn.commit()
             except Exception:
                 pass
+            try:
+                conn.execute("ALTER TABLE ml_positions ADD COLUMN status TEXT DEFAULT 'open'")
+                conn.commit()
+            except Exception:
+                pass
         finally:
             conn.close()
 
@@ -173,15 +181,16 @@ class PortfolioManager:
                     (symbol, entry_time, side, direction, entry_price, quantity,
                      notional, leverage, tp_price, sl_price, tp_pct, sl_pct, atr_pct,
                      trail_active, trail_sl, peak_price, regime, confidence, bars,
-                     max_hold, sl_order_id, trail_mode, trail_fixed_dist, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     max_hold, sl_order_id, trail_mode, trail_fixed_dist, status,
+                     updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 pos.pair, pos.entry_time.isoformat(), pos.side, pos.direction,
                 pos.entry_price, pos.quantity, pos.notional, pos.leverage,
                 pos.tp_price, pos.sl_price, pos.tp_pct, pos.sl_pct, pos.atr_pct,
                 1 if pos.trail_active else 0, pos.trail_sl, pos.peak_price,
                 pos.regime, pos.confidence, pos.bars, pos.max_hold,
-                pos.sl_order_id, pos.trail_mode, pos.trail_fixed_dist,
+                pos.sl_order_id, pos.trail_mode, pos.trail_fixed_dist, pos.status,
                 datetime.now(timezone.utc).isoformat()
             ))
             conn.commit()
@@ -259,6 +268,7 @@ class PortfolioManager:
                     sl_order_id=r.get('sl_order_id'),
                     trail_mode=r.get('trail_mode', 'default') or 'default',
                     trail_fixed_dist=float(r.get('trail_fixed_dist', 0) or 0),
+                    status=r.get('status') or 'open',
                 )
                 self.positions[pos.pair] = pos
                 logger.info(f"[PM] Posicion recuperada (DB): {pos.pair} {pos.side} "
@@ -271,6 +281,8 @@ class PortfolioManager:
 
         # --- Paso 2.5: Colocar SL orders en exchange para todas las posiciones ---
         for pair, pos in self.positions.items():
+            if pos.status == 'pending':
+                continue  # sin red: se resuelve en update_positions
             # Cancel any stale SL order from previous session
             if pos.sl_order_id:
                 self._cancel_exchange_sl(pair, pos.sl_order_id)
@@ -305,6 +317,9 @@ class PortfolioManager:
         peak = self._get_state('peak_balance')
         if peak:
             self.peak_balance = float(peak)
+        # El kill switch sobrevive al reinicio: antes vivia en memoria y un
+        # crash (run_bot.sh relanza en 30 s) lo borraba. AUDITORIA_2026-09 §2.6
+        self.killed = self._get_state('killed') == '1'
 
         # Restaurar daily_pnl desde DB (sobrevive reinicios)
         today_trades = self.get_today_trades_from_db()
@@ -340,40 +355,19 @@ class PortfolioManager:
             exchange_pairs.add(pair)
 
             if pair in self.positions:
-                # Verify entry price matches exchange (source of truth)
-                db_entry = self.positions[pair].entry_price
+                pos = self.positions[pair]
                 ex_entry = float(ep.get('entryPrice', 0) or 0)
-                if ex_entry > 0 and abs(db_entry - ex_entry) / ex_entry > 0.01:
-                    # Entry price mismatch >1% - DB is stale, update from exchange
+                mismatch = (ex_entry > 0 and
+                            abs(pos.entry_price - ex_entry) / ex_entry > 0.01)
+                if pos.status == 'pending' or mismatch:
+                    # Entry/qty del exchange (fuente de verdad); salida del motor.
                     logger.warning(
-                        f"[PM] {pair}: entry price mismatch! "
-                        f"DB=${db_entry:,.2f} vs Exchange=${ex_entry:,.2f} - "
-                        f"actualizando desde exchange"
-                    )
-                    old_pos = self.positions[pair]
-                    side_str = ep.get('side', old_pos.side)
-                    direction = 1 if side_str == 'long' else -1
-                    leverage = int(ep.get('leverage', old_pos.leverage) or old_pos.leverage)
-                    ep_notional = contracts * ex_entry
-                    pair_tp, pair_sl = get_pair_tp_sl(pair)
-                    if direction == 1:
-                        tp_price = ex_entry * (1 + pair_tp)
-                        sl_price = ex_entry * (1 - pair_sl)
-                    else:
-                        tp_price = ex_entry * (1 - pair_tp)
-                        sl_price = ex_entry * (1 + pair_sl)
-                    updated = Position(
-                        pair=pair, side=side_str, direction=direction,
-                        entry_price=ex_entry, quantity=contracts,
-                        notional=ep_notional, leverage=leverage,
-                        tp_price=tp_price, sl_price=sl_price,
-                        tp_pct=pair_tp, sl_pct=pair_sl,
-                        atr_pct=old_pos.atr_pct, regime=old_pos.regime,
-                        confidence=old_pos.confidence,
-                        peak_price=ex_entry, max_hold=old_pos.max_hold,
-                    )
-                    self.positions[pair] = updated
-                    self._save_position(updated)
+                        f"[PM] {pair}: adoptando desde exchange "
+                        f"({'pendiente' if pos.status == 'pending' else 'entry mismatch'}) "
+                        f"DB=${pos.entry_price:,.2f} vs Exchange=${ex_entry:,.2f}")
+                    adopted = self._adopt(pos, ep)
+                    self.positions[pair] = adopted
+                    self._save_position(adopted)
                 continue
 
             # Posicion en exchange SIN registro en DB -> adoptarla
@@ -414,7 +408,52 @@ class PortfolioManager:
         # Posiciones en DB que ya no existen en exchange (cerradas por SL/manual/externo)
         stale = [p for p in self.positions if p not in exchange_pairs]
         for pair in stale:
-            self._handle_stale_position(pair)
+            if self.positions[pair].status == 'pending':
+                # La orden nunca entro: no hay trade que registrar.
+                logger.warning(f"[PM] {pair}: posicion pendiente sin fill en "
+                               f"exchange, descartada")
+                del self.positions[pair]
+                self._delete_position(pair)
+            else:
+                self._handle_stale_position(pair)
+
+    def _set_stops(self, pos: Position, entry: float):
+        """Fija entry y stops iniciales a partir de los parametros del motor."""
+        d = pos.direction
+        pos.entry_price = entry
+        pos.peak_price = entry
+        pos.tp_price = entry * (1 + d * pos.tp_pct)
+        pos.sl_price = entry * (1 - d * pos.sl_pct)
+        pos.trail_active, pos.trail_sl = False, None
+        if pos.trail_mode == 'tight' and pos.trail_fixed_dist > 0:
+            pos.trail_active = True
+            pos.trail_sl = entry * (1 - d * pos.trail_fixed_dist)
+            pos.tp_price = entry * (2.0 if d == 1 else 0.5)  # red lejana
+
+    def _adopt(self, tpl: Position, ep: dict) -> Position:
+        """Posicion real del exchange con los parametros de salida de `tpl`."""
+        contracts = float(ep.get('contracts', 0) or 0)
+        entry = float(ep.get('entryPrice', 0) or 0) or tpl.entry_price
+        pos = replace(tpl, quantity=contracts, notional=contracts * entry,
+                      leverage=int(ep.get('leverage') or tpl.leverage),
+                      status='open')
+        self._set_stops(pos, entry)
+        return pos
+
+    def _effective_sl(self, pos: Position) -> float:
+        return pos.trail_sl if (pos.trail_active and pos.trail_sl) else pos.sl_price
+
+    def _move_exchange_sl(self, pos: Position, new_sl: float):
+        """Coloca el stop nuevo ANTES de cancelar el viejo. Si falla, el viejo
+        sigue vigente y `sl_order_id` sigue apuntando a una orden viva; dos stops
+        reduceOnly durante un instante es inocuo. AUDITORIA_2026-09 §2.5"""
+        sl_id = self._place_exchange_sl(pos.pair, pos.side, pos.quantity, new_sl)
+        if not sl_id:
+            logger.warning(f"[PM] {pos.pair}: stop nuevo no colocado, se mantiene "
+                           f"el anterior (id={pos.sl_order_id})")
+            return
+        self._cancel_exchange_sl(pos.pair, pos.sl_order_id)
+        pos.sl_order_id = sl_id
 
     # =========================================================================
     # EXCHANGE SL ORDERS
@@ -643,19 +682,24 @@ class PortfolioManager:
         # obsoleto en cuanto cambia el capital (que es lo que paso con los $300).
         notional = min(notional, self.balance * ML_MAX_NOTIONAL_PCT)
 
-        # TP/SL precios (V13.01: per-pair)
-        if direction == 1:
-            tp_price = price * (1 + pair_tp)
-            sl_price = price * (1 - pair_sl)
-        else:
-            tp_price = price * (1 - pair_tp)
-            sl_price = price * (1 + pair_sl)
-
         max_hold = (max_hold_override if max_hold_override
                     else ML_MAX_HOLD.get(regime, 15))
 
         # Cantidad en base currency
         quantity = notional / price
+
+        # Plantilla con los parametros de salida del motor: se usa para el
+        # registro 'pending', para adoptar un duplicado y tras el fill.
+        pos = Position(
+            pair=pair, side=side, direction=direction,
+            entry_price=price, quantity=quantity, notional=notional,
+            leverage=lev, tp_price=0.0, sl_price=0.0,
+            tp_pct=pair_tp, sl_pct=pair_sl,
+            atr_pct=atr_pct, regime=regime, confidence=confidence,
+            max_hold=max_hold, trail_mode=trail_mode,
+            trail_fixed_dist=trail_fixed_dist, status='pending',
+        )
+        self._set_stops(pos, price)
 
         try:
             # Safety check: verify no open position on exchange before placing order
@@ -673,29 +717,7 @@ class PortfolioManager:
                                 f"abierta en exchange ({contracts} contracts) - "
                                 f"adoptando en vez de abrir nueva"
                             )
-                            # Adopt the existing position instead
-                            side_str = ep.get('side', 'long')
-                            ep_dir = 1 if side_str == 'long' else -1
-                            ep_entry = float(ep.get('entryPrice', 0) or 0)
-                            ep_lev = int(ep.get('leverage', 3) or 3)
-                            ep_notional = contracts * ep_entry
-                            adopt_tp, adopt_sl = get_pair_tp_sl(pair)
-                            if ep_dir == 1:
-                                ep_tp = ep_entry * (1 + adopt_tp)
-                                ep_sl = ep_entry * (1 - adopt_sl)
-                            else:
-                                ep_tp = ep_entry * (1 - adopt_tp)
-                                ep_sl = ep_entry * (1 + adopt_sl)
-                            adopted = Position(
-                                pair=pair, side=side_str, direction=ep_dir,
-                                entry_price=ep_entry, quantity=contracts,
-                                notional=ep_notional, leverage=ep_lev,
-                                tp_price=ep_tp, sl_price=ep_sl,
-                                tp_pct=adopt_tp, sl_pct=adopt_sl,
-                                atr_pct=atr_pct, regime=regime,
-                                confidence=confidence,
-                                peak_price=ep_entry, max_hold=max_hold,
-                            )
+                            adopted = self._adopt(pos, ep)
                             self.positions[pair] = adopted
                             self._save_position(adopted)
                             return False  # Don't send "trade opened" alert
@@ -711,6 +733,13 @@ class PortfolioManager:
             if quantity <= 0:
                 logger.warning(f"[PM] Cantidad invalida para {pair}: {quantity}")
                 return False
+            pos.quantity = quantity
+
+            # Registro ANTES de la orden. Si algo revienta de aqui en adelante la
+            # posicion queda 'pending' y update_positions/sync la resuelven contra
+            # el exchange (adoptar con estos parametros o descartar).
+            self.positions[pair] = pos
+            self._save_position(pos)
 
             # Colocar orden
             order_side = 'buy' if direction == 1 else 'sell'
@@ -722,54 +751,22 @@ class PortfolioManager:
             )
 
             fill_price = self._order_fill_price(order, symbol_ccxt, price)
-            filled_qty = float(order.get('filled') or quantity)
-
-            # Recalcular TP/SL con precio real de fill (V13.01: per-pair)
-            if direction == 1:
-                tp_price = fill_price * (1 + pair_tp)
-                sl_price = fill_price * (1 - pair_sl)
-            else:
-                tp_price = fill_price * (1 - pair_tp)
-                sl_price = fill_price * (1 + pair_sl)
-
-            actual_notional = filled_qty * fill_price
-
-            pos = Position(
-                pair=pair, side=side, direction=direction,
-                entry_price=fill_price, quantity=filled_qty,
-                notional=actual_notional, leverage=lev,
-                tp_price=tp_price, sl_price=sl_price,
-                tp_pct=pair_tp, sl_pct=pair_sl,
-                atr_pct=atr_pct, regime=regime, confidence=confidence,
-                peak_price=fill_price, max_hold=max_hold,
-                trail_mode=trail_mode, trail_fixed_dist=trail_fixed_dist,
-            )
-
-            # Tight trailing: activate immediately with fixed distance
-            if trail_mode == 'tight' and trail_fixed_dist > 0:
-                pos.trail_active = True
-                pos.peak_price = fill_price
-                if direction == 1:
-                    pos.trail_sl = fill_price * (1 - trail_fixed_dist)
-                    pos.tp_price = fill_price * 2.0  # safety net far away
-                else:
-                    pos.trail_sl = fill_price * (1 + trail_fixed_dist)
-                    pos.tp_price = fill_price * 0.5  # safety net far away
-                sl_price = pos.trail_sl  # exchange SL = trail SL
-
-            self.positions[pair] = pos
+            pos.quantity = float(order.get('filled') or quantity)
+            pos.notional = pos.quantity * fill_price
+            self._set_stops(pos, fill_price)
+            pos.status = 'open'
             self._save_position(pos)
 
             # Place SL order on exchange as safety net
-            effective_sl = pos.trail_sl if pos.trail_active and pos.trail_sl else sl_price
-            sl_id = self._place_exchange_sl(pair, side, filled_qty, effective_sl)
+            sl_id = self._place_exchange_sl(pair, side, pos.quantity,
+                                            self._effective_sl(pos))
             if sl_id:
                 pos.sl_order_id = sl_id
                 self._save_position(pos)
 
-            margin = actual_notional / lev
+            margin = pos.notional / lev
             logger.info(f"[PM] ABIERTO {pair} {side.upper()} @ ${fill_price:,.2f} | "
-                        f"Qty={filled_qty} | Notional=${actual_notional:.0f} | "
+                        f"Qty={pos.quantity} | Notional=${pos.notional:.0f} | "
                         f"Margin=${margin:.1f} | Lev={lev}x | Conf={confidence:.2f}")
             return True
 
@@ -785,11 +782,16 @@ class PortfolioManager:
         if not self.positions:
             return []
 
+        # Una orden quedo a medias (crash de red entre la orden y el fill):
+        # resolverla contra el exchange antes de gestionar nada.
+        if any(p.status == 'pending' for p in self.positions.values()):
+            self._reconcile_with_exchange()
+
         closed_trades = []
 
         # Fetch precios actuales
         try:
-            pairs = list(self.positions.keys())
+            pairs = [p for p, pos in self.positions.items() if pos.status == 'open']
             tickers = {}
             for pair in pairs:
                 try:
@@ -841,15 +843,19 @@ class PortfolioManager:
             if exit_price and exit_reason:
                 to_close.append((pair, exit_price, exit_reason))
             else:
-                # Update trailing stop and sync exchange SL if changed
-                old_eff_sl = pos.trail_sl if (pos.trail_active and pos.trail_sl) else pos.sl_price
-                self._update_trailing(pos, price)
-                new_eff_sl = pos.trail_sl if (pos.trail_active and pos.trail_sl) else pos.sl_price
-                if old_eff_sl and old_eff_sl > 0 and abs(new_eff_sl - old_eff_sl) / old_eff_sl > 0.001:
-                    self._cancel_exchange_sl(pair, pos.sl_order_id)
-                    sl_id = self._place_exchange_sl(pair, pos.side, pos.quantity, new_eff_sl)
-                    if sl_id:
-                        pos.sl_order_id = sl_id
+                # Posicion sin stop en exchange (adopcion, fallo al colocarlo):
+                # reintentar cada tick hasta que haya red de seguridad.
+                if not pos.sl_order_id:
+                    pos.sl_order_id = self._place_exchange_sl(
+                        pair, pos.side, pos.quantity, self._effective_sl(pos))
+                # V2 (tight): el trail solo se mueve con velas 4h cerradas, igual
+                # que el backtest -> update_trail_on_closed_bars.
+                if pos.trail_mode != 'tight':
+                    old_eff_sl = self._effective_sl(pos)
+                    self._update_trailing(pos, price)
+                    new_eff_sl = self._effective_sl(pos)
+                    if old_eff_sl and old_eff_sl > 0 and abs(new_eff_sl - old_eff_sl) / old_eff_sl > 0.001:
+                        self._move_exchange_sl(pos, new_eff_sl)
                 self._save_position(pos)
 
         # Cerrar posiciones
@@ -860,25 +866,50 @@ class PortfolioManager:
 
         return closed_trades
 
-    def _update_trailing(self, pos: Position, price: float):
-        """Actualiza trailing stop para una posicion."""
-        # Tight mode: fixed distance, always active
-        if pos.trail_mode == 'tight':
-            dist = pos.trail_fixed_dist
-            if pos.direction == 1:  # LONG
-                if price > (pos.peak_price or 0):
-                    pos.peak_price = price
-                new_sl = pos.peak_price * (1 - dist)
-                if pos.trail_sl is None or new_sl > pos.trail_sl:
-                    pos.trail_sl = new_sl
-            else:  # SHORT
-                if pos.peak_price is None or price < pos.peak_price:
-                    pos.peak_price = price
-                new_sl = pos.peak_price * (1 + dist)
-                if pos.trail_sl is None or new_sl < pos.trail_sl:
-                    pos.trail_sl = new_sl
-            return
+    def update_trail_on_closed_bars(self):
+        """Trail V2 (tight) por vela 4h CERRADA, como `_sim_long_trailing`.
 
+        El backtest sube el peak con el high de cada vela ya cerrada; entre
+        velas solo se chequea el stop. Antes el bot lo subia con el ticker cada
+        30 s: stop mas ceñido que el simulado (re-simulado a 1h: PF 2,06 ->
+        1,93, 13/82 trades cambian). AUDITORIA_2026-09 §2.1, plan 2.3 (a).
+
+        Idempotente: recalcula desde la vela de entrada, asi que tras un
+        reinicio o una vela perdida se pone al dia solo.
+        """
+        bar_ms = 4 * 3600 * 1000
+        now_ms = time.time() * 1000
+        for pair, pos in list(self.positions.items()):
+            if pos.status != 'open' or pos.trail_mode != 'tight':
+                continue
+            since = int(pos.entry_time.timestamp() * 1000) // bar_ms * bar_ms
+            try:
+                bars = self.exchange.fetch_ohlcv(pair, '4h', since=since,
+                                                 limit=pos.max_hold + 5)
+            except Exception as e:
+                logger.warning(f"[PM] {pair}: sin velas para el trail ({e})")
+                continue
+            closed = [b for b in bars if b[0] >= since and b[0] + bar_ms <= now_ms]
+            if not closed:
+                continue
+            dist, old_sl = pos.trail_fixed_dist, pos.trail_sl
+            if pos.direction == 1:
+                pos.peak_price = max(pos.peak_price or pos.entry_price,
+                                     max(b[2] for b in closed))
+                pos.trail_sl = max(old_sl or 0.0, pos.peak_price * (1 - dist))
+            else:
+                pos.peak_price = min(pos.peak_price or pos.entry_price,
+                                     min(b[3] for b in closed))
+                pos.trail_sl = min(old_sl or float('inf'),
+                                   pos.peak_price * (1 + dist))
+            if pos.trail_sl != old_sl:
+                logger.info(f"[PM] Trail {pair}: peak=${pos.peak_price:,.2f} "
+                            f"stop=${pos.trail_sl:,.2f}")
+                self._move_exchange_sl(pos, pos.trail_sl)
+            self._save_position(pos)
+
+    def _update_trailing(self, pos: Position, price: float):
+        """Trailing por tick del modo 'default' (legacy, no lo usa V2)."""
         if pos.trail_active:
             # Actualizar peak y trail_sl
             if pos.direction == 1:
@@ -995,14 +1026,9 @@ class PortfolioManager:
                     f"PnL: ${pnl:{emoji}.2f} | Razon: {reason} | "
                     f"Balance: ${self.balance:.2f}")
 
-        # Racha de perdidas consecutivas (validado: C APROBADO)
-        if reason == 'SL':
-            self.consecutive_losses += 1
-            if self.consecutive_losses >= 3 and not self.paused:
-                self.paused = True
-                logger.warning(f"[PM] PAUSA: {self.consecutive_losses} SL consecutivos")
-        else:
-            self.consecutive_losses = 0
+        # Sin pausa por racha de perdidas: no existe en el simulador y contaba
+        # por etiqueta ('SL' incluia stops ganadores). Quedan el limite diario
+        # y el kill switch. AUDITORIA_2026-09 §2.3, plan 1.1 opcion (a).
 
         self.trade_log.append(trade)
         return trade
@@ -1017,6 +1043,7 @@ class PortfolioManager:
             dd = (self.peak_balance - self.balance) / self.peak_balance
             if dd >= ML_MAX_DD_PCT:
                 self.killed = True
+                self._save_state('killed', '1')
                 logger.critical(f"[PM] KILL SWITCH: DD {dd:.1%} >= {ML_MAX_DD_PCT:.0%} | "
                                 f"Peak=${self.peak_balance:.2f} Balance=${self.balance:.2f}")
                 return False

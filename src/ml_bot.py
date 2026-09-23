@@ -247,6 +247,14 @@ class MLBot:
 
         # 3. Recuperar posiciones
         self.portfolio.sync_positions()
+        if self.portfolio.killed:
+            # exit 0 = run_bot.sh no relanza. Rearmar a mano tras revisar:
+            # sqlite3 <ML_DB_FILE> "DELETE FROM ml_state WHERE key='killed'"
+            msg = ("Kill switch activo desde una sesion anterior. Bot NO "
+                   "arranca. Rearmar: DELETE FROM ml_state WHERE key='killed'")
+            logger.critical(f"[BOT] {msg}")
+            send_alert(f"🚨 <b>KILL SWITCH PERSISTENTE</b>\n{msg}")
+            sys.exit(0)
 
         # 3b. Recuperar posiciones shadow
         if self.shadow_enabled:
@@ -470,7 +478,6 @@ class MLBot:
         if self.portfolio.paused:
             self.portfolio.paused = False
             self.portfolio.daily_pnl = 0.0  # Reset para que check_risk() no re-pause
-            self.portfolio.consecutive_losses = 0  # Reset racha
             self._pause_notified = False
             logger.info("[BOT] Reanudado via comando /resume (daily_pnl reset)")
             send_alert(
@@ -561,10 +568,11 @@ class MLBot:
             count_before = cur.fetchone()[0]
             # Borrar trades
             cur.execute("DELETE FROM ml_trades")
-            # Reset estado
-            cur.execute("UPDATE ml_state SET peak = balance WHERE id = 1")
             conn.commit()
             conn.close()
+            # Reset del peak: en memoria tambien, o refresh_balance lo reescribe.
+            self.portfolio.peak_balance = self.portfolio.balance
+            self.portfolio._save_state('peak_balance', str(self.portfolio.balance))
             send_alert(
                 f"🗑️ <b>BD RESETEADA</b>\n"
                 f"━━━━━━━━━━━━━━━\n"
@@ -917,6 +925,9 @@ class MLBot:
                 logger.critical("[BOT] 3 velas sin red -> saliendo para que "
                                 "systemd reinicie el proceso")
                 sys.exit(1)   # SystemExit no lo captura el `except Exception`
+
+        # Trail V2 con la vela recien cerrada, antes de buscar senales nuevas.
+        self.portfolio.update_trail_on_closed_bars()
 
         # V14: Flujo simplificado
         if self.v14_mode:
