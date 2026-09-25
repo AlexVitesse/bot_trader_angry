@@ -27,7 +27,11 @@ STREAMS = {
     'btcusdt@forceOrder': 0,
     'btcusdt@bookTicker': 1,
 }
-URL = 'wss://fstream.binance.com/stream?streams=' + '/'.join(STREAMS)
+# Binance movio las liquidaciones a la ruta /market (sep-2026): en la ruta
+# vieja el socket conecta pero no llega ni un forceOrder. bookTicker, al
+# reves, solo llega por la vieja. Una conexion por ruta.
+RUTA = {'btcusdt@forceOrder': 'market/'}
+BASE = 'wss://fstream.binance.com/'
 
 log = logging.getLogger('record_stream')
 
@@ -94,14 +98,23 @@ def _por_dia(rows):
 
 async def main():
     g = Grabador()
+    rutas = {}
+    for s in STREAMS:
+        rutas.setdefault(RUTA.get(s, ''), []).append(s)
     tareas = [asyncio.create_task(g.volcar_periodico())]
     tareas += [asyncio.create_task(g.muestrear(s, c)) for s, c in STREAMS.items() if c]
+    tareas += [asyncio.create_task(escuchar(g, r, ss)) for r, ss in rutas.items()]
+    await asyncio.gather(*tareas)
+
+
+async def escuchar(g: Grabador, ruta: str, streams: list):
+    url = f'{BASE}{ruta}stream?streams=' + '/'.join(streams)
     espera = 5
     while True:
         try:
             # Binance cierra el socket cada 24 h; se reabre y se sigue.
-            async with websockets.connect(URL, ping_interval=60, max_size=2**22) as ws:
-                log.info(f'conectado: {", ".join(STREAMS)}')
+            async with websockets.connect(url, ping_interval=60, max_size=2**22) as ws:
+                log.info(f'conectado {url}')
                 espera = 5
                 async for msg in ws:
                     m = json.loads(msg)
