@@ -15,6 +15,10 @@
 >   dentro de un bucle que lo relanza. Escribe en `data_live/` (ignorado por
 >   git).
 > - `compare_live_vs_sim.py` reporta slippage por evento y tipo de orden.
+> - **2026-09-25:** las liquidaciones solo llegan por la ruta `/market`
+>   (`bc7d2ac`); en la ruta vieja el socket conecta pero no manda nada.
+>   `bookTicker` real: ~2,3 MB/día (~830 MB/año, no 180). Detalle y consumo
+>   medido en `docs/SESION_2026-09-25.md`.
 
 ## Por qué
 

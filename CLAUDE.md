@@ -290,6 +290,7 @@ docs/
   SESION_2026-08-22.md     # Criterio de validación corregido + mapa de familias cerrado
   SESION_2026-09-22.md     # Bug de fills demo-fapi: 2 ganadores registrados como pérdidas; VPS
   SESION_2026-09-23.md     # Ejecución del plan 2026-09 (fases 0-7), bootstrap honesto, despliegue
+  SESION_2026-09-25.md     # Taker/premium rechazados + grabación de ejecución en vivo (capas A y B) desplegada
   INVESTIGACION_GITHUB_ML_2026-09.md  # 25 repos de ML revisados + qué pasó al probar cada idea
   FUENTES_DE_DATOS_2026-09.md  # Por qué pierde el bot agresivo + inventario de fuentes de datos
   GRABACION_DATOS_VIVO.md      # Snapshots de ejecución (ml_exec_snapshots) + recorder de streams
@@ -443,6 +444,10 @@ Detalle: `experiments/criterio_validacion/`, `experiments/estacionalidad/`,
 >   derivados, otras fuentes/horizontes y un bot agresivo multi-régimen con
 >   Kelly. Ninguno mejora V2; el agresivo pierde −12,6%/año en backtest.
 >   Detalle: `docs/SESION_2026-09-23.md` Parte 12.
+> - **2026-09-25**: ratio taker y premium index también rechazados (4/4
+>   hipótesis de derivados fuera). El bot graba el mercado en cada orden
+>   (`ml_exec_snapshots`) y `scripts/record_stream.py` graba liquidaciones y
+>   bookTicker en `data_live/` del VPS. Ver `docs/SESION_2026-09-25.md`.
 > - Vivo y simulado ya son el mismo sistema (trail por vela cerrada, régimen
 >   con 1000 velas, funding, sin pausa por racha) y cada trade guarda su
 >   salida simulada y su PnL real → el KPI del punto 3 ya se mide solo.
