@@ -286,6 +286,8 @@ class MLBot:
             f"━━━━━━━━━━━━━━━\n"
             f"<b>Monitoreo:</b>\n"
             f"  /status - Estado del bot\n"
+            f"  /status agresivo - Bot agresivo (paper $100)\n"
+            f"  /log agresivo - Log del bot agresivo\n"
             f"  /yield - Estado del yield manager\n"
             f"  /log - Descargar archivo de log\n"
             f"  /backup - Descargar backup de BD\n"
@@ -386,8 +388,10 @@ class MLBot:
         send_alert("▶️ Yield manager ACTIVADO. Reanudando rebalanceos.")
         logger.info("[BOT] /yield_on")
 
-    def _cmd_status(self):
-        """Responde al comando /status de Telegram."""
+    def _cmd_status(self, arg: str = ""):
+        """Responde al comando /status de Telegram (/status agresivo: el otro bot)."""
+        if arg.strip().lower() == 'agresivo':
+            return self._status_agresivo()
         status = self.portfolio.get_status()
         uptime_h = (time.time() - self._start_time) / 3600
         trades_today = self.portfolio.get_today_trades_from_db()
@@ -408,6 +412,46 @@ class MLBot:
             f"⏱️ Uptime: {uptime_h:.1f}h"
             f"{paused_str}"
         )
+
+    def _status_agresivo(self):
+        """Status del bot AGRESIVO: es otro proceso (paper interno), se leen su
+        estado de papel y su DB. Precios en vivo para el PnL no realizado."""
+        import json
+        import sqlite3
+        from config.settings import DATA_DIR
+        try:
+            s = json.loads((DATA_DIR / 'paper_agresivo_state.json').read_text())
+            con = sqlite3.connect(DATA_DIR / 'ml_agresivo.db')
+            pnls = [r[0] for r in con.execute("SELECT pnl FROM ml_trades")]
+            peak = con.execute("SELECT value FROM ml_state WHERE key='peak_balance'").fetchone()
+            con.close()
+        except Exception as e:
+            send_alert(f"⚠️ Sin datos del bot agresivo todavia ({e})", tag='AGRESIVO')
+            return
+        lineas, no_real = [], 0.0
+        for sym, p in s['positions'].items():
+            d = 1 if p['side'] == 'long' else -1
+            try:
+                px = float(self.exchange_public.fetch_ticker(sym)['last'])
+                pnl = (px - p['entry']) * p['qty'] * d
+                no_real += pnl
+                extra = f" | ${pnl:+,.2f}"
+            except Exception:
+                extra = ""
+            lineas.append(f"  {'🟢' if d == 1 else '🔴'} {sym.split('/')[0]} {p['side'].upper()} "
+                          f"@ {p['entry']:,.4g}{extra}")
+        bal = s['balance']
+        pico = max(float(peak[0]) if peak else bal, bal)
+        gan = sum(1 for x in pnls if x > 0)
+        wr = f"{gan / len(pnls):.0%}" if pnls else "-"
+        send_alert(
+            f"🟣 <b>STATUS AGRESIVO (paper $100)</b>\n"
+            f"━━━━━━━━━━━━━━━\n"
+            f"💰 Balance: ${bal:,.2f} (inicio $100) | abierto ${no_real:+,.2f}\n"
+            f"📊 Trades: {len(pnls)} | WR {wr} | PnL ${sum(pnls):+,.2f}\n"
+            f"⚠️ DD: {1 - bal / pico:.1%}\n"
+            f"📈 Posiciones: {len(s['positions'])}/3\n" + ("\n".join(lineas) or "  (ninguna)"),
+            tag='AGRESIVO')
 
     def _cmd_resume(self):
         """Responde al comando /resume de Telegram - reanuda el bot pausado."""
@@ -432,7 +476,8 @@ class MLBot:
         """Responde al comando /log [N] - envia log actual o rotado N (1-5)."""
         import re
         a = arg.strip().lower()
-        name = "ml_bot.log" if a == "v2" else LOG_NAME     # /log v2 -> bot V2 paper
+        # /log agresivo -> log del otro proceso; /log v2 -> el de V2
+        name = {"v2": "ml_bot.log", "agresivo": "agresivo.log"}.get(a, LOG_NAME)
         n = int(a) if a.isdigit() else 0
         if n > 0:
             log_file = LOGS_DIR / f"{name}.{n}"

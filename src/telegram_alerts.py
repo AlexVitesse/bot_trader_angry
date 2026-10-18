@@ -36,11 +36,12 @@ def _send_message(text: str):
         logger.warning(f"[TG] No se pudo enviar alerta: {e}")
 
 
-def send_alert(text: str):
-    """Envia alerta en un thread separado (no bloquea el bot)."""
+def send_alert(text: str, tag: str = None):
+    """Envia alerta en un thread separado (no bloquea el bot).
+    tag: etiqueta del bot del que se habla (por defecto, el que envia)."""
     if not TELEGRAM_ENABLED:
         return
-    text = f"[{BOT_VERSION}] {text}"   # dos bots escriben al mismo chat
+    text = f"[{tag or BOT_VERSION}] {text}"   # dos bots escriben al mismo chat
     t = threading.Thread(target=_send_message, args=(text,), daemon=True)
     t.start()
 
