@@ -142,9 +142,11 @@ class PortfolioSim:
                  max_concurrent: int = 3, max_misma_dir: int = 2,
                  leverage: int = 4, max_notional_pct: float = 2.5,
                  capital: float = 10_000.0, aplicar_funding: bool = True,
-                 costes: str = 'nuevos', sizing=None):
+                 costes: str = 'nuevos', sizing=None, params_por_par: dict = None):
         self.datos = datos
         self.params = params or v2.PARAMS_V2
+        # params distintos por par (experiments/multiactivo/: trail escalado por ATR)
+        self.params_par = params_por_par or {}
         self.risk_pct = risk_pct
         self.max_concurrent = max_concurrent
         self.max_misma_dir = max_misma_dir
@@ -263,19 +265,24 @@ class PortfolioSim:
                 del abiertas[par]
 
             # ---------- 3. ejecutar pendientes al OPEN de esta vela ----------
+            quedan = []    # par sin vela en este ts (temporalidades mezcladas): esperar a la suya
             for par, sig in pendientes:
                 i = pos_en[par].get(ts)
-                if i is None or par in abiertas:
+                if i is None:
+                    quedan.append((par, sig))
+                    continue
+                if par in abiertas:
                     continue
                 d = self.datos[par]
                 entrada = float(d['open'].iloc[i])       # fill posterior al cierre
                 atr = float(d['atr_pct'].iloc[i - 1]) if i > 0 else float(d['atr_pct'].iloc[i])
+                prm = self.params_par.get(par, self.params)
                 if sig == 'A_LONG':
-                    mult, fl, ce = 2.5, self.params['a_trail_floor_pct'], self.params['a_trail_ceiling_pct']
-                    mb, direccion = self.params['a_max_bars'], 1
+                    mult, fl, ce = 2.5, prm['a_trail_floor_pct'], prm['a_trail_ceiling_pct']
+                    mb, direccion = prm['a_max_bars'], 1
                 else:
-                    mult, fl, ce = 2.0, self.params['f_trail_floor_pct'], self.params['f_trail_ceiling_pct']
-                    mb = self.params['f_max_bars']
+                    mult, fl, ce = 2.0, prm['f_trail_floor_pct'], prm['f_trail_ceiling_pct']
+                    mb = prm['f_max_bars']
                     direccion = 1 if sig == 'F_LONG' else -1
                 trail = min(max(atr * mult, fl), ce)
 
@@ -293,7 +300,7 @@ class PortfolioSim:
                     stop=entrada * (1 - trail * direccion), extremo=entrada,
                     equity_entrada=equity, ts_entrada=ts,
                 )
-            pendientes = []
+            pendientes = quedan
 
             # ---------- 4. detectar senales en la vela CERRADA ----------
             for par, d in self.datos.items():
@@ -302,7 +309,7 @@ class PortfolioSim:
                 i = pos_en[par].get(ts)
                 if i is None:
                     continue
-                sig = v2.detect_signal(d, i, self.params)
+                sig = v2.detect_signal(d, i, self.params_par.get(par, self.params))
                 if sig is not None:
                     pendientes.append((par, sig))
 

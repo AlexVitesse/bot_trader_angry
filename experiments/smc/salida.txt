@@ -1,0 +1,34 @@
+
+BTC 4h 2019-01-01 -> 2026-02-27
+  variante         n  tr/a     WR    PF  R medio    CAGR     DD p bloq 30d
+  swing/long      51   7.1  21.6%  0.77   -0.074   -3.1%  39.3%      0.779
+  swing/short     52   7.3  25.0%  0.93   +0.003   -1.2%  18.4%      0.605
+  swing/ambas    101  14.1  22.8%  0.83   -0.052   -4.5%  42.9%      0.775
+  pdhl/long       23   3.2  21.7%  0.63   -0.099   -2.1%  16.4%      0.826
+  pdhl/short      24   3.4  33.3%  1.38   +0.287   +1.4%  13.7%      0.254
+  pdhl/ambas      45   6.3  28.9%  1.03   +0.147   -0.1%  25.4%      0.479
+
+ETH (cross-asset) 4h 2020-01-01 -> 2026-02-27
+  variante         n  tr/a     WR    PF  R medio    CAGR     DD p bloq 30d
+  swing/long      42   6.8  23.8%  0.63   -0.202   -4.4%  32.9%      0.897
+  swing/short     62  10.1  21.0%  0.62   -0.276   -6.5%  37.7%      0.949
+  swing/ambas    101  16.4  22.8%  0.65   -0.223   -9.6%  54.9%      0.979
+  pdhl/long       19   3.1  15.8%  0.29   -0.544   -4.0%  22.4%      0.980
+  pdhl/short      30   4.9  23.3%  1.07   +0.110   +0.1%  14.0%      0.468
+  pdhl/ambas      49   8.0  20.4%  0.74   -0.144   -3.9%  25.7%      0.783
+
+NULL SINTETICO BTC (300 series; stat = mean(r) por trade)
+  bloques de 42 velas (7 dias):
+    swing/long    obs -0.3876%  mediana null -0.0132%  p 0.797  p con seleccion (max de 6) 0.993
+    swing/short   obs -0.1063%  mediana null -0.3047%  p 0.227  p con seleccion (max de 6) 0.873
+    swing/ambas   obs -0.2698%  mediana null -0.1707%  p 0.620  p con seleccion (max de 6) 0.960
+    pdhl/long     obs -0.6126%  mediana null +0.0185%  p 0.883  p con seleccion (max de 6) 1.000
+    pdhl/short    obs +0.4928%  mediana null -0.7216%  p 0.023  p con seleccion (max de 6) 0.347
+    pdhl/ambas    obs +0.0485%  mediana null -0.3088%  p 0.173  p con seleccion (max de 6) 0.703
+  bloques de 180 velas (30 dias):
+    swing/long    obs -0.3876%  mediana null -0.5623%  p 0.153  p con seleccion (max de 6) 1.000
+    swing/short   obs -0.1063%  mediana null +0.1892%  p 0.923  p con seleccion (max de 6) 0.993
+    swing/ambas   obs -0.2698%  mediana null -0.2030%  p 0.667  p con seleccion (max de 6) 1.000
+    pdhl/long     obs -0.6126%  mediana null -0.9156%  p 0.270  p con seleccion (max de 6) 1.000
+    pdhl/short    obs +0.4928%  mediana null +0.4812%  p 0.483  p con seleccion (max de 6) 0.520
+    pdhl/ambas    obs +0.0485%  mediana null -0.2245%  p 0.153  p con seleccion (max de 6) 0.963

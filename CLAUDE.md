@@ -307,6 +307,8 @@ experiments/               # Un README por experimento. Los negativos están
   derivados_ratios/        # Ratio taker y premium index 4h: etapa 1 p 0,31 y 0,43. Rechazado
   predictibilidad_fuentes/ # 10 celdas (BTC 1h/1d, panel altcoins, derivados): R2 OOS < 0 en todas. Sin señal que cubra costes
   riesgo/                  # CAGR/DD/P(kill) por nivel de riesgo: al 4,5% DD hist. 42,4% (kill al 45%)
+  multiactivo/             # V2 en SPY/QQQ/IWM/GLD/TLT diario: 0/5 pasan el null; la cartera no sube CAGR a igual DD. Rechazado
+  smc/                     # Smart Money/ICT codificado (6 variantes): WR 22-33%, nada sobrevive al null. Rechazado
   agresivo/                # Bot ML multi-régimen + Kelly (9 pares): AUC 0,497, CAGR −12,6%, DD 50,5%. Rechazado
   criterio_validacion/     # El 7/12 folds dejaba pasar el 53% de sistemas sin edge
   presupuesto_informacion/ # No caben los parámetros: 11 episodios, 131 trades

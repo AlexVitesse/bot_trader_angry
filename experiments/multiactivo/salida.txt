@@ -1,0 +1,27 @@
+ATR% mediano BTC 4h = 1.58%
+
+1. POR ACTIVO (historia completa, riesgo 2%/trade)
+  activo desde          k      trail A    n  tr/a     WR    PF    CAGR     DD     B&H  DD B&H  p bloq  p null
+  SPY    1993-01-29  0.74  1.9%-4.5%    54   1.6  46.3%  1.30   +0.3%  11.0%  +10.8%   55.2%   0.217   0.370
+  QQQ    1999-03-10  1.00  2.5%-6.0%    49   1.8  36.7%  0.96   -0.1%  16.8%  +10.7%   83.0%   0.549   0.790
+  IWM    2000-05-26  1.08  2.7%-6.5%    42   1.6  33.3%  1.17   +0.2%  11.1%   +8.4%   58.6%   0.351   0.210
+  GLD    2004-11-18  0.76  1.9%-4.6%    67   3.1  52.2%  1.92   +1.8%  11.5%  +10.3%   45.6%   0.007   0.240
+  TLT    2002-07-30  0.64  1.6%-3.9%    57   2.4  45.6%  1.28   +0.5%  13.8%   +3.4%   48.4%   0.196   0.210
+  (p bloq: H0 mean(r)<=0, bloques de 90 dias. p null: V2 sobre series con bloques de 30 velas barajados.
+   Bonferroni m=5 -> corte 0,01)
+
+2. CARTERA 2019-01-10 -> 2026-02-27 (periodo de BTC)
+  riesgo | BTC solo CAGR     DD | BTC+ETFs CAGR     DD    n | ETFs solos CAGR     DD
+    2.0% |        +11.1%  21.5% |        +15.6%  28.1%  251 |           +4.4%  17.1%
+    3.0% |        +16.4%  30.9% |        +22.2%  39.6%  250 |           +5.7%  24.7%
+    4.5% |        +23.5%  42.4% |        +30.5%  49.9%  239 |           +6.3%  36.9%
+    6.0% |        +27.2%  50.0% |        +31.1%  51.7%  224 |           +7.8%  37.1%
+    8.0% |        +28.7%  56.7% |        +36.5%  55.8%  223 |           +8.9%  39.5%
+   10.0% |        +28.4%  60.5% |        +37.4%  57.6%  222 |           +9.3%  38.6%
+
+  Correlacion mensual del PnL de cada sleeve con el de BTC:
+  GLD=-0.08  IWM=-0.24  QQQ=-0.02  SPY=+0.18  TLT=+0.07
+  Contribucion por sleeve a riesgo 2% (suma de r):
+  BTC/USDT=+81.1%  GLD=+25.3%  IWM=+5.9%  QQQ=+2.3%  SPY=+1.5%  TLT=-2.0%
+
+  ETFs solos 2005 -> 2026, riesgo 2%: n=234 WR 43.2% PF 1.35 CAGR +2.5% DD 34.0%
