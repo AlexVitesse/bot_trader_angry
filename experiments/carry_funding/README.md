@@ -23,6 +23,8 @@ estructuralmente distinta que faltaba.
 | Beta apalancada (SOL sobre señal BTC) | `agent_M` | evaluado |
 | Deep learning (LSTM) | `docs/archive/EXPERIMENTO_BTC_V2.md` | REJECT (16,7% WR, −44,65%) |
 | Smart Money Concepts / ICT (barrida + MSS + OTE) | `experiments/smc/` (2026-10) | REJECT (WR 22-33%, p con selección 0,35-1,0; ETH tampoco) |
+| Sentimiento Fear & Greed (contrarian y euforia en rupturas) | `experiments/sentimiento/` (2026-10) | REJECT (etapa 1 p 0,64 y 0,43) |
+| Noticias clasificadas por LLM | `experiments/sentimiento/` (2026-10) | GRABANDO hacia adelante; evaluación pre-registrada |
 | V2 en oro y bolsa (diversificación) | `experiments/multiactivo/` (2026-10) | REJECT (0/5 ETFs pasan el null; la cartera no mejora a igual DD) |
 
 > ⚠️ **Corrección**: `presupuesto_informacion/README.md` listaba "on-chain"

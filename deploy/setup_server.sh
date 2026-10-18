@@ -20,6 +20,8 @@ LINE="@reboot sleep 30 && pgrep -f run_bot.sh >/dev/null || (cd $BOT_DIR && PYTH
 # Grabador de streams (docs/GRABACION_DATOS_VIVO.md, capa B). Proceso aparte:
 # si muere se relanza a los 30 s y el bot no se entera.
 REC="@reboot sleep 40 && pgrep -f record_stream.py >/dev/null || (cd $BOT_DIR && nohup bash -c 'while true; do $PYTHON scripts/record_stream.py; sleep 30; done' >> logs/record_stream.log 2>&1 &)"
-( crontab -l 2>/dev/null | grep -v 'run_bot.sh' | grep -v 'record_stream.py'; echo "$LINE"; echo "$REC" ) | crontab -
+# Experto de noticias (experiments/sentimiento/): solo graba, usa el Ollama local.
+NEWS="@reboot sleep 90 && pgrep -f record_news.py >/dev/null || (cd $BOT_DIR && nohup bash -c 'while true; do $PYTHON scripts/record_news.py; sleep 60; done' >> logs/record_news.log 2>&1 &)"
+( crontab -l 2>/dev/null | grep -v 'run_bot.sh' | grep -v 'record_stream.py' | grep -v 'record_news.py'; echo "$LINE"; echo "$REC"; echo "$NEWS" ) | crontab -
 echo "cron @reboot instalado:"
-crontab -l | grep -E 'run_bot.sh|record_stream.py'
+crontab -l | grep -E 'run_bot.sh|record_stream.py|record_news.py'

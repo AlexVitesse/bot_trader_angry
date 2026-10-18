@@ -273,6 +273,7 @@ src/
   telegram_alerts.py     # Alertas + TelegramPoller
 
 scripts/record_stream.py # Graba forceOrder/bookTicker en data_live/ (proceso aparte, cron @reboot)
+scripts/record_news.py   # Titulares RSS + clasificacion qwen3:14b (Ollama del VPS) en data_live/news.db. NO opera
   yield_manager.py       # APAGADO (YIELD_MANAGER_ENABLED=False) hasta validarlo
 
 config/
@@ -308,6 +309,7 @@ experiments/               # Un README por experimento. Los negativos están
   predictibilidad_fuentes/ # 10 celdas (BTC 1h/1d, panel altcoins, derivados): R2 OOS < 0 en todas. Sin señal que cubra costes
   riesgo/                  # CAGR/DD/P(kill) por nivel de riesgo: al 4,5% DD hist. 42,4% (kill al 45%)
   multiactivo/             # V2 en SPY/QQQ/IWM/GLD/TLT diario: 0/5 pasan el null; la cartera no sube CAGR a igual DD. Rechazado
+  sentimiento/             # Fear&Greed rechazado (etapa 1 p 0,64/0,43) + experto de noticias LLM local GRABANDO (scripts/record_news.py)
   smc/                     # Smart Money/ICT codificado (6 variantes): WR 22-33%, nada sobrevive al null. Rechazado
   agresivo/                # Bot ML multi-régimen + Kelly (9 pares): AUC 0,497, CAGR −12,6%, DD 50,5%. Rechazado
   criterio_validacion/     # El 7/12 folds dejaba pasar el 53% de sistemas sin edge

@@ -1,0 +1,4 @@
+BTC 2019-01-01 -> 2026-02-27 | FG 2019-01-01 -> 2026-02-27 (2615 dias)
+
+S1-FEAR  (FG<=25, 7 dias): grupo n=495  resto n=2113  diferencia -0.0030 (-0.30%)  null mediana +0.0007  rotaciones 2555  p=0.6446  no pasa
+S1-GREED (FG>=75, rupturas 4h, 12 velas): grupo n=130  resto n=387  diferencia -0.0027 (-0.27%)  null mediana -0.0009  rotaciones 2555  p=0.4297  no pasa
