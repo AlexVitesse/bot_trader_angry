@@ -185,7 +185,17 @@ solo V2 lee comandos.
 Historia completa (incluye los años que se usaron para elegir la variante),
 así que es un techo, no una expectativa. El walk-forward con parámetros
 congelados dio +6,2%/año a 2% (costes viejos). **Al 4,5% el DD histórico
-(43,4%) ya roza el kill switch (45%).**
+(43,4%) ya roza el kill switch (45%).** En 200 series sintéticas que conservan
+las rachas de régimen, **el 4,5% toca el kill switch en el 7,5% de las
+historias de 7 años**; al 3,4%, en el 1,5% (`experiments/dd_sizing/`). El 3% a
+3 años de `riesgo/` lo subestimaba.
+
+**V2 contra comprar BTC (2026-10, `experiments/benchmark_bh/`):** V2 está fuera
+del mercado el 87% del tiempo (exposición media 0,176). A igual exposición, su
+CAGR/DD (0,58) supera a BTC spot (0,53), pero **no de forma significativa**
+(p=0,33). BTC al 100% tiene mejor CAGR/DD que V2 (0,66), con DD del 77%. Lo que
+más aporta V2 es **quedarse fuera en los mercados bajistas** (0 trades en 2022
+y 2026).
 
 **Evidencia estadística (Fase 4, `experiments/bootstrap_bloques/`):**
 
@@ -208,6 +218,9 @@ aquí era un solo número repetido (`r ∝ risk_pct`, AUDITORIA_2026-09 §1.1).
 
 **Lo que falta antes de capital real:**
 1. Paper trade 6-12 meses cubriendo al menos un tramo alcista, ≥30 trades.
+   **Ojo:** eso mide la ejecución, no el edge. Para distinguir V2 de cero solo
+   con trades en vivo hacen falta **≥65 trades (~2,8 años)** según el Minimum
+   Track Record Length, y es un suelo (`experiments/benchmark_bh/`, E0).
 2. Real vs simulado **por trade** (`experiments/ejecucion_vivo/compare_live_vs_sim.py`):
    divergencia < 25% a 50 trades.
 3. DD real ≤ 30%.
@@ -332,6 +345,12 @@ experiments/               # Un README por experimento. Los negativos están
   sentimiento/             # Fear&Greed rechazado (etapa 1 p 0,64/0,43) + experto de noticias LLM local GRABANDO (scripts/record_news.py)
   smc/                     # Smart Money/ICT codificado (6 variantes): WR 22-33%, nada sobrevive al null. Rechazado
   agresivo/                # Bot ML multi-régimen + Kelly (9 pares): AUC 0,497, CAGR −12,6%, DD 50,5%. Rechazado
+  benchmark_bh/            # V2 vs BTC a igual exposición (p=0,33) + MinTRL 65 trades + por subperiodo
+  dd_sizing/               # Riesgo según DD (CPPI): no pasa (p=0,44); P(kill) 4,5% = 7,5% en sintéticas
+  vol_target_pos/          # Vol objetivo dentro del trade: no se activa (trades de ~2 días)
+  donchian_ensemble/       # Ensemble Donchian 20-480: CAGR/DD 0,30, DD 53,7%. Rechazado
+  piramide/                # Piramidación Turtle: 0,44 vs 0,52 a igual exposición. Rechazado
+  mixta_v2_btc/            # 50% V2 + BTC spot 0,176: CAGR/DD 0,85, no pasa la historia (p=0,18) pero gana en 99% de sintéticas
   criterio_validacion/     # El 7/12 folds dejaba pasar el 53% de sistemas sin edge
   presupuesto_informacion/ # No caben los parámetros: 11 episodios, 131 trades
   predictibilidad/         # No hay señal: R² in-sample 0,068%
@@ -456,6 +475,19 @@ Detalle: `experiments/criterio_validacion/`, `experiments/estacionalidad/`,
 ---
 
 ## Próximos Pasos Prioritarios
+
+> **2026-10-19**: segunda revisión de GitHub y 6 experimentos pre-registrados
+> (`docs/PLAN_GITHUB_2026-10.md`). **Ninguno pasa.**
+> - Riesgo según DD, vol objetivo dentro del trade, ensemble de periodos
+>   Donchian y piramidación: todos rechazados. El retorno de V2 está en entrar
+>   con todo en la ruptura, una posición a la vez, y salir con el trail.
+>   Repartir la entrada, el periodo o recortar tras pérdidas lo empeora.
+> - **Mezcla V2 + pata pequeña de BTC spot:** CAGR/DD 0,85 contra 0,58. Falla
+>   el criterio histórico (p=0,18), pero mejora a V2 en el 99% de las series
+>   sintéticas (85% sin deriva). Es diversificación, no edge. **No validada:**
+>   adoptarla es decisión del usuario.
+> - Decisiones pendientes: nivel de riesgo (P(kill) 7,5% a 7 años al 4,5%) y
+>   si añadir la pata BTC.
 
 > **2026-09-23**: auditoría y plan de mejoras ejecutados (fases 0-7,
 > `docs/PLAN_MEJORAS_2026-09.md`). Lo nuevo que cambia prioridades:

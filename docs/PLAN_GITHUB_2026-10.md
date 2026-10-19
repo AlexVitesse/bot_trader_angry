@@ -17,6 +17,8 @@
 | E3 | hecho (2026-10-19) | **H3 no pasa**: CAGR/DD 0,30 contra 0,55 de V2, DD 53,7%, null p=0,21. `experiments/donchian_ensemble/` |
 | E5 | hecho (2026-10-19) | **H5 no pasa**: CAGR/DD 0,44 contra 0,52 a igual exposición, null p=0,13. `experiments/piramide/` |
 
+| E6 (extra) | hecho (2026-10-19) | Mezcla 50% V2 + 50% BTC spot al 0,176. **H6 no pasa**: historia p=0,18. Pero en el null sintético mejora a V2 en el 99% de las series (85% sin deriva). `experiments/mixta_v2_btc/` |
+
 **Balance: 0 de 4 tests pasan** (E2 no llegó a activarse). Lo único que sale con mejor CAGR/DD que V2 es la mezcla 50/50 con BTC (0,72), y es descriptivo, sin testear.
 
 ## Reglas comunes (pre-registro)

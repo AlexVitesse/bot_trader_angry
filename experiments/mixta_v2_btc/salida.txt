@@ -1,0 +1,13 @@
+  V2               CAGR +23.5%  DD 40.6%  CAGR/DD  0.58
+  Mezcla           CAGR +17.7%  DD 20.9%  CAGR/DD  0.85
+  BTC spot 0.176   CAGR +10.5%  DD 20.0%  CAGR/DD  0.53
+
+(a) delta CAGR/DD observado +0.269  bootstrap mediana +0.156  IC90 [-0.181, +0.567]  p = 0.1827  -> NO cumple (p<0,01)
+
+Null sintetico: 200 series, bloques de 180 velas ...
+  deriva real  delta>0 en 99.0%  mediana CAGR/DD: mezcla +0.74  V2 +0.46  BTC +0.64  (series 200)
+  deriva 1/2   delta>0 en 94.0%  mediana CAGR/DD: mezcla +0.38  V2 +0.22  BTC +0.34  (series 200)
+  deriva 0     delta>0 en 85.5%  mediana CAGR/DD: mezcla +0.15  V2 +0.09  BTC +0.12  (series 200)
+
+(b) delta>0 en 99.0% de las series con deriva real -> cumple (>=90%)
+H6: NO pasa
