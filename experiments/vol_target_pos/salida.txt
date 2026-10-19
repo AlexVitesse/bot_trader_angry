@@ -1,0 +1,8 @@
+Reducciones de E2: 0 en 165 trades
+brazo             riesgo   expo    CAGR     DD  CAGR/DD    PF
+E2                 4.50%  0.161  +23.5%  42.4%     0.55  1.65
+V2-m               4.50%  0.161  +23.5%  42.4%     0.55  1.65
+V2 4,5%            4.50%  0.161  +23.5%  42.4%     0.55  1.65
+Diario: E2 0.58  V2-m 0.58
+
+H2: mediana delta CAGR/DD +0.000  IC90 [+0.000, +0.000]  p = P(delta<=0) = 1.0000 -> NO pasa (alpha 0,01)

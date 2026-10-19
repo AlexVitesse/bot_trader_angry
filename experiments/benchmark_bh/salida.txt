@@ -1,0 +1,28 @@
+V2 (4,5%, notional 2,0): n=165 WR 44.2% PF 1.65 CAGR +23.5% DD 42.4%
+  tiempo en mercado: 13.1%  exposicion media: 0.176  media con posicion: 1.341
+
+=== PRIMARIO (pre-registrado): 2019-01-10 -> 2026-02-27 ===
+  k = 0.194
+  V2                     expo  0.176  CAGR  +23.5%  DD  40.6%  CAGR/DD  0.58
+  B&H-w (perp)           expo  0.176  CAGR   +8.1%  DD  20.8%  CAGR/DD  0.39
+  B&H-vt (perp)          expo  0.176  CAGR   +6.5%  DD  22.8%  CAGR/DD  0.28
+  B&H-w (spot)           expo  0.176  CAGR  +10.5%  DD  20.0%  CAGR/DD  0.53
+  B&H-vt (spot)          expo  0.176  CAGR   +8.8%  DD  22.0%  CAGR/DD  0.40
+  Mixta 50/50 (perp)     expo         CAGR  +16.4%  DD  22.7%  CAGR/DD  0.72
+  B&H 100% spot (ref)    expo  1.000  CAGR  +50.2%  DD  76.6%  CAGR/DD  0.66
+
+  H1 primario: mean(d) anualizado +4.48%  p = 0.3331  -> NO pasa (alpha 0,01)
+  Secundario: P(CAGR/DD V2 <= B&H-vt) en bootstrap pareado = 0.197
+
+=== SENSIBILIDAD (desde 2019-03-16, col None): 2019-03-16 -> 2026-02-27 ===
+  k = 0.195
+  V2                     expo  0.180  CAGR  +23.9%  DD  40.6%  CAGR/DD  0.59
+  B&H-w (perp)           expo  0.180  CAGR   +8.2%  DD  21.3%  CAGR/DD  0.39
+  B&H-vt (perp)          expo  0.180  CAGR   +7.2%  DD  23.1%  CAGR/DD  0.31
+  B&H-w (spot)           expo  0.180  CAGR  +10.7%  DD  20.4%  CAGR/DD  0.52
+  B&H-vt (spot)          expo  0.180  CAGR   +9.6%  DD  22.2%  CAGR/DD  0.43
+  Mixta 50/50 (perp)     expo         CAGR  +16.7%  DD  22.8%  CAGR/DD  0.73
+  B&H 100% spot (ref)    expo  1.000  CAGR  +49.4%  DD  76.6%  CAGR/DD  0.64
+
+=== E0 MinTRL === SR/trade 0.180  skew 1.45  kurt 4.80
+  MinTRL (95%, vs SR 0) = 65 trades = 2.8 años a 23.1 trades/año

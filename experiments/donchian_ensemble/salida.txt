@@ -1,0 +1,11 @@
+  V2 (4,5%)                  n  165  WR  44.2%  PF  1.65  CAGR  +23.5%  DD  42.4%  CAGR/DD  0.55
+  Control: A55 + F en 2 libros n  211  WR  42.7%  PF  1.53  CAGR  +23.4%  DD  47.5%  CAGR/DD  0.49
+  Ensemble 5xA + F           n  592  WR  41.6%  PF  1.41  CAGR  +16.2%  DD  53.7%  CAGR/DD  0.30
+  trades por libro: {'BTC/USDT#A120': 89, 'BTC/USDT#A20': 154, 'BTC/USDT#A240': 74, 'BTC/USDT#A480': 64, 'BTC/USDT#A55': 116, 'BTC/USDT#F': 95}
+  rechazos: {}
+
+Null sintetico: 200 series, bloques de 180 velas ...
+  Ensemble: CAGR real +16.2%  null mediana +11.6%  p95 +23.3%  p = 0.210
+  V2 (ref): CAGR real +23.5%  null mediana +14.3%  p95 +24.7%  p = 0.090
+
+H3: (1) null p<0,01: False   (2) CAGR/DD >= V2: False   -> NO pasa

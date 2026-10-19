@@ -107,6 +107,9 @@ class Pos:
     funding_pagado: float = 0.0
     equity_entrada: float = 0.0   # denominador correcto para el retorno del trade
     ts_entrada: object = None
+    pnl_parcial: float = 0.0      # realizado en reducciones (hook ajuste)
+    pend_add: float = 0.0         # notional a anadir al open de la sig. vela (hook piramide)
+    n_adds: int = 0
 
 
 @dataclass
@@ -142,7 +145,8 @@ class PortfolioSim:
                  max_concurrent: int = 3, max_misma_dir: int = 2,
                  leverage: int = 4, max_notional_pct: float = 2.5,
                  capital: float = 10_000.0, aplicar_funding: bool = True,
-                 costes: str = 'nuevos', sizing=None, params_por_par: dict = None):
+                 costes: str = 'nuevos', sizing=None, params_por_par: dict = None,
+                 ajuste=None, piramide=None):
         self.datos = datos
         self.params = params or v2.PARAMS_V2
         # params distintos por par (experiments/multiactivo/: trail escalado por ATR)
@@ -158,6 +162,12 @@ class PortfolioSim:
         # sizing(par, ts, equity, trail) -> notional o None (= sizing por trail).
         # Lo usa experiments/vol_sizing/; por defecto, el sizing de siempre.
         self.sizing = sizing
+        # ajuste(par, ts, pos) -> notional objetivo o None, en cada vela con la
+        # posicion abierta. Solo reducciones (experiments/vol_target_pos/).
+        self.ajuste = ajuste
+        # piramide(par, ts, pos, i) -> notional a anadir (0 = nada), decidido al
+        # close y llenado al OPEN de la vela siguiente (experiments/piramide/).
+        self.piramide = piramide
 
     # -- gates de can_open, replicando portfolio_manager.can_open -------------
     def _puede_abrir(self, par, direccion, abiertas, notional, equity):
@@ -189,7 +199,7 @@ class PortfolioSim:
 
         # funding 8h vigente en cada vela (BTC; NaN fuera de cobertura)
         fund_rate = {}
-        if self.costes['funding_hist'] and 'BTC/USDT' in self.datos:
+        if self.costes['funding_hist'] and any(p.startswith('BTC/USDT') for p in self.datos):
             fs = _funding_btc()
             r = fs.reindex(maestro.union(fs.index)).ffill().reindex(maestro)
             r[maestro < fs.index[0]] = np.nan
@@ -203,6 +213,21 @@ class PortfolioSim:
         curva_ts, curva_eq = [], []
 
         for ts in maestro:
+            # ---------- 0. anadidos de piramide al OPEN de esta vela ----------
+            for par, p in abiertas.items():
+                i = pos_en[par].get(ts)
+                if p.pend_add <= 0 or i is None:
+                    continue
+                eq_prev = curva_eq[-1] if curva_eq else cash
+                add = min(p.pend_add, eq_prev * self.max_notional_pct - p.notional)
+                if add > 0 and (p.notional + add) / self.leverage <= eq_prev:
+                    px = float(self.datos[par]['open'].iloc[i])
+                    qty = p.notional / p.entrada + add / px
+                    p.notional += add
+                    p.entrada = p.notional / qty          # precio medio
+                    p.n_adds += 1
+                p.pend_add = 0.0
+
             # ---------- 1. marcar a mercado ----------
             no_realizado = 0.0
             for par, p in abiertas.items():
@@ -228,7 +253,7 @@ class PortfolioSim:
                 p = abiertas[par]
                 p.barras += 1
                 if self.aplicar_funding:                 # 4h = medio periodo de 8h
-                    rate = fund_rate.get(ts, np.nan) if par == 'BTC/USDT' else np.nan
+                    rate = fund_rate.get(ts, np.nan) if par.startswith('BTC/USDT') else np.nan
                     if pd.isna(rate):
                         rate = FUNDING_8H
                     p.funding_pagado += p.notional * rate * 0.5 * p.direccion
@@ -251,15 +276,26 @@ class PortfolioSim:
                     else:
                         p.extremo = min(p.extremo, lo)
                         p.stop = min(p.stop, p.extremo * (1 + p.trail))
+                    if self.ajuste is not None:
+                        obj = self.ajuste(par, ts, p)
+                        if obj is not None and obj < p.notional:
+                            delta = p.notional - obj
+                            parcial = ((cl - p.entrada) / p.entrada * p.direccion
+                                       - 2 * comision) * delta
+                            cash += parcial
+                            p.pnl_parcial += parcial
+                            p.notional = obj
+                    if self.piramide is not None:
+                        p.pend_add = self.piramide(par, ts, p, i) or 0.0
                     continue
 
                 bruto = (salida - p.entrada) / p.entrada * p.direccion
-                pnl = (bruto - 2 * comision) * p.notional - p.funding_pagado
-                cash += pnl
+                pnl = (bruto - 2 * comision) * p.notional - p.funding_pagado + p.pnl_parcial
+                cash += pnl - p.pnl_parcial
                 trades.append({
                     'par': par, 'sig': p.sig, 'dir': p.direccion,
                     'ts_entrada': p.ts_entrada, 'ts_salida': ts, 'motivo': motivo, 'barras': p.barras,
-                    'notional': p.notional, 'pnl': pnl,
+                    'notional': p.notional, 'trail': p.trail, 'pnl': pnl, 'n_adds': p.n_adds,
                     'r': pnl / p.equity_entrada,   # equity de ENTRADA, no de salida
                 })
                 del abiertas[par]

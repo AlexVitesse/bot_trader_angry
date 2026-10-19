@@ -1,0 +1,18 @@
+Riesgo medio usado por E4: 3.42%  (min 1.59%)
+brazo             n    CAGR     DD  CAGR/DD
+E4              165  +18.8%  32.6%     0.58
+Fijo 3.42%      165  +18.5%  34.6%     0.53
+Fijo 4,50%      165  +23.5%  42.4%     0.55
+
+Reconstruccion E4: final 3.4159 vs simulador 3.4159
+
+H4: mediana delta CAGR/DD (E4 - Fijo-m) = +0.014  IC90 [-0.118, +0.212]  p = P(delta<=0) = 0.4386 -> NO pasa (alpha 0,01)
+
+Monte Carlo 3 anos (70 trades, bloques de 10, DD al cierre de trade):
+  E4           P(kill)  0.00%  DD p95 30.2%  CAGR med +18.4%  P(perder) 10.9%
+  Fijo 3.42%   P(kill)  0.54%  DD p95 34.7%  CAGR med +18.2%  P(perder)  8.2%
+  Fijo 4,50%   P(kill)  2.86%  DD p95 42.0%  CAGR med +23.1%  P(perder)  8.8%
+
+Null sintetico: 200 series, bloques de 180 velas ...
+  series validas 200: P(kill) E4 0.0%  Fijo-m 1.5%  Fijo 4,5% 7.5%
+  mediana delta CAGR/DD -0.057  fraccion delta>0 19.5%

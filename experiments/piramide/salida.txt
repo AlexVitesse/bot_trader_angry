@@ -1,0 +1,15 @@
+E5: trades 165, con >=1 anadido 66.7%, anadidos por trade 1.65, con 3 anadidos 43.6%
+brazo         riesgo   expo    PF    CAGR     DD  CAGR/DD
+E5             1.12%  0.097  1.65  +13.7%  30.8%     0.44
+V2-m           2.64%  0.097  1.65  +14.5%  27.6%     0.52
+V2 4,5%        4.50%         1.65  +23.5%  42.4%     0.55
+  trades con 0 anadidos:  55  PnL total    -10285
+  trades con 1 anadidos:  19  PnL total     -3769
+  trades con 2 anadidos:  19  PnL total     -3502
+  trades con 3 anadidos:  72  PnL total    +32537
+
+Null sintetico: 200 series, bloques de 180 velas ...
+  E5:   CAGR real +13.7%  null mediana +9.2%  p = 0.130
+  V2-m: CAGR real +14.5%  null mediana +9.3%  p = 0.085
+
+H5: (1) CAGR/DD > V2-m: False   (2) null p<0,01: False   -> NO pasa
