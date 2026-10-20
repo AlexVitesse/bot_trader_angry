@@ -59,6 +59,7 @@ class MLBot:
         self.running = False
         self.last_4h_candle = None     # Timestamp de ultima vela procesada
         self.last_regime_date = None   # Fecha de ultimo regime update
+        self.last_alerta_date = None   # Fecha de la ultima alerta de caidas (solo registro)
         self.last_status_log = 0       # Timestamp de ultimo status log
         self.last_daily_summary = None # Fecha de ultimo resumen diario
         self.last_heartbeat = 0        # Timestamp de ultimo heartbeat
@@ -403,7 +404,7 @@ class MLBot:
         from config.settings import DATA_DIR
         from src import pata_btc
         s = pata_btc.cargar(DATA_DIR / 'pata_btc_state.json')
-        mezcla = f"\n{pata_btc.resumen(s)}" if s else ""
+        mezcla = (f"\n{pata_btc.resumen(s)}" if s else "") + self._linea_alerta()
 
         send_alert(
             f"📊 <b>STATUS {BOT_VERSION}</b>\n"
@@ -838,6 +839,8 @@ class MLBot:
             ok = self.strategy.update_regime(self.exchange_public)
             if ok is not False:
                 self.last_regime_date = today
+        if today != self.last_alerta_date:
+            self._alerta_caidas(today)
 
         # Actualizar balance. Ademas hace de sonda de red: si falla, el proceso
         # esta ciego (no puede pedir velas ni operar) y seguir en el loop solo
@@ -859,6 +862,29 @@ class MLBot:
         self.portfolio.update_trail_on_closed_bars()
 
         self._process_signals()
+
+    def _alerta_caidas(self, today: str):
+        """Alerta de caidas E7/E12 (src/alerta_caidas.py): SOLO se graba en
+        data/alerta_caidas.jsonl, no veta nada. Solo perfil V2; si falla se
+        reintenta en la siguiente vela 4h."""
+        from config.settings import BOT_PROFILE, DATA_DIR
+        if BOT_PROFILE != 'v2':
+            return
+        from src import alerta_caidas
+        try:
+            r = alerta_caidas.calcular(self.exchange_public)
+            alerta_caidas.registrar(DATA_DIR / 'alerta_caidas.jsonl', r)
+            self.last_alerta_date = today
+            logger.info(f"[ALERTA] dia={r['dia']} p={r['p']:.3f} umbral={r['umbral']:.3f} "
+                        f"activa={r['activa']} (solo registro, no veta)")
+        except Exception as e:
+            logger.warning(f"[ALERTA] calculo fallo, reintento en la proxima vela: {e}")
+
+    def _linea_alerta(self) -> str:
+        from config.settings import DATA_DIR
+        from src import alerta_caidas
+        r = alerta_caidas.ultimo(DATA_DIR / 'alerta_caidas.jsonl')
+        return f"\n{alerta_caidas.resumen(r)}" if r else ""
 
     def _process_signals(self):
         """Genera las senales del motor y las ejecuta."""
@@ -905,6 +931,9 @@ class MLBot:
         )
 
         if success:
+            alerta = self._linea_alerta().strip()
+            if alerta:
+                logger.info(f"[ALERTA] trade abierto con {alerta}")
             pos = self.portfolio.positions.get(signal['pair'])
             if pos:
                 side = 'LONG' if signal['direction'] == 1 else 'SHORT'
@@ -1113,6 +1142,7 @@ class MLBot:
             f"📊 Regimes: {self.strategy.get_regimes_str()}\n"
             f"📈 Posiciones: {status['positions']}/{ML_MAX_CONCURRENT}"
             f"{mezcla}"
+            f"{self._linea_alerta()}"
         )
 
     def _paso_pata_btc(self, v2_eq: float) -> str:
