@@ -90,7 +90,7 @@ def simular(datos, feats, oos):
                 continue
             pnl = (d * (sal - q['ent']) / q['ent'] - 2 * ag.COM) * q['notional'] - q['fund']
             cash += pnl
-            trades.append({**{k: q[k] for k in ('par', 'tipo', 'dir', 'p', 'riesgo', 'ts')},
+            trades.append({**{k: q[k] for k in ('par', 'tipo', 'dir', 'p', 'riesgo', 'ts', 'notional')},
                            'salida': ts, 'pnl': pnl, 'r': pnl / q['eq_ent']})
             del abiertas[par]
         # 3. pendientes al open de esta vela

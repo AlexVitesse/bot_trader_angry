@@ -1,0 +1,4 @@
+base+oro_z   AUC 0.588  coef [ 0.16  0.33  0.22 -0.52]
+base+dxy_20  AUC 0.479  coef [ 0.16  0.23 -0.09  0.16]
+base+spx_dd  AUC 0.441  coef [ 0.14  0.24 -0.12 -0.07]
+AUC base+macro 0.568  IC90 [0.496, 0.638]  p(AUC<=0,5) = 0.056
