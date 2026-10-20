@@ -327,6 +327,9 @@ docs/
   SESION_2026-09-22.md     # Bug de fills demo-fapi: 2 ganadores registrados como pérdidas; VPS
   SESION_2026-09-23.md     # Ejecución del plan 2026-09 (fases 0-7), bootstrap honesto, despliegue
   SESION_2026-09-25.md     # Taker/premium rechazados + grabación de ejecución en vivo (capas A y B) desplegada
+  SESION_2026-10-20.md     # 12 experimentos (GitHub + especialistas), mezcla en paper, alerta grabándose, informe mensual
+  PLAN_GITHUB_2026-10.md   # E0-E6
+  PLAN_ESPECIALISTAS_2026-10.md  # E7-E12
   INVESTIGACION_GITHUB_ML_2026-09.md  # 25 repos de ML revisados + qué pasó al probar cada idea
   FUENTES_DE_DATOS_2026-09.md  # Por qué pierde el bot agresivo + inventario de fuentes de datos
   GRABACION_DATOS_VIVO.md      # Snapshots de ejecución (ml_exec_snapshots) + recorder de streams
