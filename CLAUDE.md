@@ -408,6 +408,8 @@ Bot producción:      C:\Users\pcdec\AppData\Local\pypoetry\Cache\
 | Comando | Acción |
 |---------|--------|
 | `/status` | Balance, posición, trades hoy |
+| `/status agresivo` | Lo mismo del bot agresivo (paper $100) |
+| `/informe` | Informe del mes en curso: V2, mezcla, agresivo y alerta frente a su backtest. El día 1 sale solo el del mes anterior |
 | `/log` | Últimas líneas del log principal |
 | `/log 1` | Log rotado (ml_bot.log.1) |
 | `/resume` | Reanudar pausa por pérdida diaria (el kill switch NO se levanta por Telegram) |
@@ -495,6 +497,10 @@ Detalle: `experiments/criterio_validacion/`, `experiments/estacionalidad/`,
 >   p=0,105. **No veta.** Desde 2026-10-20 se **graba en vivo** cada día
 >   (`src/alerta_caidas.py` → `data/alerta_caidas.jsonl` en el VPS, línea en
 >   `/status` y en el resumen) para cruzarla con los trades de V2 dentro de 1-2 años.
+> - **Riesgo de V2: se queda en 4,5%** (decisión del usuario 2026-10-20, sabiendo
+>   que P(kill) a 7 años es 7,5% y al 3,4% sería 1,5%).
+> - Telegram: cada bot lleva cabecera propia (🔵 V2 · BTC · demo / 🟣 AGRESIVO ·
+>   paper $100); V2 ya no se llama "V15" en los mensajes. Informe mensual automático.
 > - Mezcla V2 + BTC spot siguiéndose **en paper** en el VPS desde 2026-10-20
 >   (`src/pata_btc.py`, línea en el resumen diario y en `/status`).
 
