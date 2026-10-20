@@ -400,6 +400,10 @@ class MLBot:
         paused_str = "\n⏸️ <b>PAUSADO</b> - usa /resume" if self.portfolio.paused else ""
 
         model_str = f"\n🧠 Motor V2 | {self.strategy.get_regimes_str()}"
+        from config.settings import DATA_DIR
+        from src import pata_btc
+        s = pata_btc.cargar(DATA_DIR / 'pata_btc_state.json')
+        mezcla = f"\n{pata_btc.resumen(s)}" if s else ""
 
         send_alert(
             f"📊 <b>STATUS {BOT_VERSION}</b>\n"
@@ -410,6 +414,7 @@ class MLBot:
             f"{model_str}\n"
             f"⚠️ DD: {status['dd']:.1%}\n"
             f"⏱️ Uptime: {uptime_h:.1f}h"
+            f"{mezcla}"
             f"{paused_str}"
         )
 
@@ -1095,6 +1100,7 @@ class MLBot:
         total_pnl = sum(t['pnl'] for t in trades_today)
 
         pnl_emoji = '📈' if total_pnl >= 0 else '📉'
+        mezcla = self._paso_pata_btc(status['balance'])
         send_alert(
             f"📊 <b>RESUMEN DIARIO {BOT_VERSION}</b>\n"
             f"━━━━━━━━━━━━━━━\n"
@@ -1106,7 +1112,26 @@ class MLBot:
             f"⚠️ DD: {status['dd']:.1%}\n"
             f"📊 Regimes: {self.strategy.get_regimes_str()}\n"
             f"📈 Posiciones: {status['positions']}/{ML_MAX_CONCURRENT}"
+            f"{mezcla}"
         )
+
+    def _paso_pata_btc(self, v2_eq: float) -> str:
+        """Un paso diario de la mezcla V2 + BTC spot en paper (src/pata_btc.py).
+        Solo el perfil V2; nunca rompe el resumen."""
+        from config.settings import BOT_PROFILE, DATA_DIR
+        if BOT_PROFILE != 'v2':
+            return ""
+        from src import pata_btc
+        f = DATA_DIR / 'pata_btc_state.json'
+        try:
+            px = float(self.exchange_public.fetch_ticker('BTC/USDT')['last'])
+            s = pata_btc.paso(pata_btc.cargar(f), v2_eq, px,
+                              datetime.now(timezone.utc).strftime('%Y-%m-%d'))
+            pata_btc.guardar(f, s)
+            return "\n" + pata_btc.resumen(s)
+        except Exception as e:
+            logger.warning(f"[PATA_BTC] paso fallo: {e}")
+            return ""
 
     def _on_kill_switch(self):
         """Maneja kill switch."""
