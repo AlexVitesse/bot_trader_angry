@@ -307,6 +307,8 @@ src/
 
 scripts/record_stream.py # Graba forceOrder/bookTicker en data_live/ (proceso aparte, cron @reboot)
 scripts/record_news.py   # Titulares RSS + clasificacion qwen3:14b (Ollama del VPS) en data_live/news.db. NO opera
+  alerta_caidas.py       # Alerta E7/E12 grabada a diario. SOLO registro, no veta
+  pata_btc.py            # Mezcla V2 + BTC spot en paper (resumen diario). Sin órdenes
   yield_manager.py       # APAGADO (YIELD_MANAGER_ENABLED=False) hasta validarlo
 
 config/
@@ -490,7 +492,9 @@ Detalle: `experiments/criterio_validacion/`, `experiments/estacionalidad/`,
 >   El meta-labeling solo funcionaba con rupturas largas.
 > - Esa alerta como veto de V2: el CAGR/DD 2021-26 sube de 0,19 a 0,41 a igual
 >   exposición (21 trades vetados con PF 0,57), pero el null sintético da
->   p=0,105. **No se conecta.** Pendiente opcional: grabarla en vivo sin vetar.
+>   p=0,105. **No veta.** Desde 2026-10-20 se **graba en vivo** cada día
+>   (`src/alerta_caidas.py` → `data/alerta_caidas.jsonl` en el VPS, línea en
+>   `/status` y en el resumen) para cruzarla con los trades de V2 dentro de 1-2 años.
 > - Mezcla V2 + BTC spot siguiéndose **en paper** en el VPS desde 2026-10-20
 >   (`src/pata_btc.py`, línea en el resumen diario y en `/status`).
 

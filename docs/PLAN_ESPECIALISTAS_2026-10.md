@@ -33,8 +33,17 @@ volumen (E8), el meta-labeling en el agresivo (E9), Hong Kong y Reino Unido
 (E11) no pasan. El veto (E12) mejora mucho la historia, pero no supera el null
 sintético (p=0,105).
 
-Lo único que queda abierto: **grabar la alerta en vivo** junto a cada señal de V2
-(sin vetar) para tener muestra nueva dentro de 1-2 años.
+**Grabación en vivo (hecho 2026-10-20, decisión del usuario):** el bot V2 calcula
+cada día la alerta de E7/E12 y la guarda en `data/alerta_caidas.jsonl` (VPS), sin
+vetar nada. Aparece en `/status`, en el resumen diario y en el log de cada trade
+abierto (`[ALERTA]`). Se reentrena cada día con ventana expansiva
+(`src/alerta_caidas.py`; el test `tests/test_alerta_caidas.py` comprueba que las
+features son las de E7).
+
+**Cómo evaluarla dentro de 1-2 años:** cruzar los trades de V2 por fecha de
+entrada con la alerta del día anterior y repetir la comparación de E12 (media de
+r de los trades en alerta contra el resto) **solo con trades posteriores al
+2026-10-20**. Esa muestra no se usó para diseñar nada.
 
 ## Por qué este orden
 
