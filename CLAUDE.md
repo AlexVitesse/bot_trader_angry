@@ -351,6 +351,10 @@ experiments/               # Un README por experimento. Los negativos están
   donchian_ensemble/       # Ensemble Donchian 20-480: CAGR/DD 0,30, DD 53,7%. Rechazado
   piramide/                # Piramidación Turtle: 0,44 vs 0,52 a igual exposición. Rechazado
   mixta_v2_btc/            # 50% V2 + BTC spot 0,176: CAGR/DD 0,85, no pasa la historia (p=0,18) pero gana en 99% de sintéticas
+  especialistas/           # Alerta de caídas: macro pasa pero es el z60 de BTC, no el oro; volumen no pasa
+  otras_bolsas/            # Hang Seng/FTSE: no pasan; revela que oro_z ≈ btc_z
+  meta_agresivo/           # Meta-labeling + macro como decisor del agresivo BTC: AUC 0,475. Rechazado
+  veto_oro/                # Alerta como veto de V2: historia 0,19 -> 0,41, null p=0,105. No pasa
   criterio_validacion/     # El 7/12 folds dejaba pasar el 53% de sistemas sin edge
   presupuesto_informacion/ # No caben los parámetros: 11 episodios, 131 trades
   predictibilidad/         # No hay señal: R² in-sample 0,068%
@@ -475,6 +479,20 @@ Detalle: `experiments/criterio_validacion/`, `experiments/estacionalidad/`,
 ---
 
 ## Próximos Pasos Prioritarios
+
+> **2026-10-20**: especialistas + decisor, idea del usuario
+> (`docs/PLAN_ESPECIALISTAS_2026-10.md`). **Nada cambia el sistema.**
+> - Macro (oro, DXY, S&P) como alerta de caídas ≥10% en 10 días: pasa el test
+>   pre-registrado (p=0,016), **pero el efecto no es del oro**. Es el z-score de
+>   60 días del propio BTC: "rebote dentro de una bajada" (`otras_bolsas/`).
+>   Volumen, Hong Kong y FTSE: no pasan.
+> - Meta-labeling + macro como decisor del agresivo en BTC: AUC 0,475, no pasa.
+>   El meta-labeling solo funcionaba con rupturas largas.
+> - Esa alerta como veto de V2: el CAGR/DD 2021-26 sube de 0,19 a 0,41 a igual
+>   exposición (21 trades vetados con PF 0,57), pero el null sintético da
+>   p=0,105. **No se conecta.** Pendiente opcional: grabarla en vivo sin vetar.
+> - Mezcla V2 + BTC spot siguiéndose **en paper** en el VPS desde 2026-10-20
+>   (`src/pata_btc.py`, línea en el resumen diario y en `/status`).
 
 > **2026-10-19**: segunda revisión de GitHub y 6 experimentos pre-registrados
 > (`docs/PLAN_GITHUB_2026-10.md`). **Ninguno pasa.**

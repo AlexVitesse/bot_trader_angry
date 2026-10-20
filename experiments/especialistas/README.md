@@ -162,3 +162,11 @@ AUC absoluto de base+macro: 0,568, con IC90 [0,496; 0,638] y p(AUC ≤ 0,5) = 0,
 5. **Qué significa para E9:** la paridad con el oro entra como candidata, pero
    E9 la tiene que justificar con su propio test, sobre los trades del agresivo
    y contra el null sintético. Pasar E7 **no** significa que mejore el dinero.
+
+> ⚠️ **Corrección de la lectura (2026-10-20, tras E11, `experiments/otras_bolsas/`).**
+> El efecto **no es del oro**. `oro_z` correlaciona 0,945 con `btc_z` (el z-score
+> de 60 días de BTC solo), y base + `btc_z` da AUC 0,586 contra 0,588 de
+> `oro_z`. A la base le faltaba esa feature de BTC. La señal real es "rebote
+> dentro de una bajada" (BTC sube en 20 días pero sigue bajo su media de 60).
+> El veredicto pre-registrado (pasa) no se toca, pero **no hay evidencia de que
+> el macro aporte información**.

@@ -10,11 +10,12 @@
 
 | # | qué | estado | resultado |
 |---|---|---|---|
-| E7 | Especialista macro: oro, DXY, S&P 500 → ¿avisa caídas de BTC? | hecho (2026-10-20) | **PASA** (p=0,016; rotación 0,025). Todo viene de la paridad BTC/oro; no ayuda en 2021-22. `experiments/especialistas/` |
+| E7 | Especialista macro: oro, DXY, S&P 500 → ¿avisa caídas de BTC? | hecho (2026-10-20) | **PASA** (p=0,016; rotación 0,025), pero **el efecto no es del oro**: es el z-score de 60 días de BTC (AUC 0,586 sin oro contra 0,588). Ver E11. `experiments/especialistas/` |
 | E8 | Especialista volumen → ¿avisa caídas de BTC? | hecho (2026-10-20) | **No pasa** (p=0,089). No entra en E9 |
 | E9 | Meta-labeling como decisor del agresivo en BTC | hecho (2026-10-20) | **No pasa** etapa 1: AUC 0,475 (p=0,87); sin macro 0,493. El meta-labeling no se traslada a eventos con reversión y cortos. `experiments/meta_agresivo/` |
 | E10 | Conectar al agresivo en vivo (paper) | descartado | E9 no pasó |
-| E11 | Otras bolsas: Hong Kong (`^HSI`) y Reino Unido (`^FTSE`) | pendiente, idea del usuario (2026-10-20) | |
+| E11 | Otras bolsas: Hong Kong (`^HSI`) y Reino Unido (`^FTSE`) | hecho (2026-10-20) | **No pasa** (p=0,99, empeora). Reveló que `oro_z` ≈ `btc_z`. `experiments/otras_bolsas/` |
+| E12 | Alerta de E7 como veto de entradas de V2 | hecho (2026-10-20) | **No pasa**: en la historia el CAGR/DD sube de 0,19 a 0,41 a igual exposición (21 trades vetados, PF 0,57), pero null sintético p=0,105. `experiments/veto_oro/` |
 
 **E11 (por pre-registrar).** No entra en E7: su pre-registro ya está cerrado y
 añadir mercados después sería probar variantes. Se hace aparte, con su propio
@@ -23,6 +24,17 @@ algo**. Si el oro, el dólar y el S&P no aportan, es poco probable que dos bolsa
 más sí lo hagan, y solo sumarían comparaciones múltiples. Lo interesante de Hong
 Kong es el **horario**: cierra hacia las 08:00 UTC, antes de que abra EE. UU.
 Podría avisar dentro del mismo día de BTC, algo que el S&P no puede hacer.
+
+## Balance (2026-10-20)
+
+**Ningún experimento cambia el sistema.** E7 pasó, pero E11 mostró que su
+efecto viene del propio BTC (z-score de 60 días), no del oro ni del macro. El
+volumen (E8), el meta-labeling en el agresivo (E9), Hong Kong y Reino Unido
+(E11) no pasan. El veto (E12) mejora mucho la historia, pero no supera el null
+sintético (p=0,105).
+
+Lo único que queda abierto: **grabar la alerta en vivo** junto a cada señal de V2
+(sin vetar) para tener muestra nueva dentro de 1-2 años.
 
 ## Por qué este orden
 

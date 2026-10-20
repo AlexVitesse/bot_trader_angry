@@ -29,22 +29,33 @@ def leer_macro(nombre):
     return s
 
 
+def alinear(s: pd.Series, idx) -> pd.Series:
+    """Fecha habil t disponible desde t+1: el asof da el ultimo valor estrictamente anterior a d."""
+    return s.set_axis(s.index + pd.Timedelta(days=1)).reindex(idx, method='ffill')
+
+
+def z_relativo(c: pd.Series, nombre: str) -> pd.Series:
+    """z-score de 60 dias de log(BTC / serie), con la serie alineada."""
+    x = np.log(c / alinear(leer_macro(nombre), c.index))
+    return (x - x.rolling(60).mean()) / x.rolling(60).std()
+
+
 def macro_diario(c: pd.Series) -> pd.DataFrame:
     """Features E7 por dia UTC dado el cierre diario de BTC (real o sintetico).
     Macro en su calendario habil; fecha habil t disponible desde t+1, asi el
     asof da el ultimo valor estrictamente anterior a d."""
-    oro, dxy, spx = (leer_macro(n) for n in ('oro', 'dxy', 'spx'))
-    alin = lambda s: s.set_axis(s.index + pd.Timedelta(days=1)).reindex(c.index, method='ffill')  # noqa: E731
-    x = np.log(c / alin(oro))
-    return pd.DataFrame({'oro_z': (x - x.rolling(60).mean()) / x.rolling(60).std(),
-                         'dxy_20': alin(dxy / dxy.shift(20) - 1),
-                         'spx_dd': alin(spx / spx.rolling(60).max() - 1)}, index=c.index)
+    dxy, spx = leer_macro('dxy'), leer_macro('spx')
+    return pd.DataFrame({'oro_z': z_relativo(c, 'oro'),
+                         'dxy_20': alinear(dxy / dxy.shift(20) - 1, c.index),
+                         'spx_dd': alinear(spx / spx.rolling(60).max() - 1, c.index)}, index=c.index)
 
 
-def construir():
-    v = pd.read_parquet(ROOT / 'data' / 'BTC_USDT_4h_full.parquet').astype(float)
-    if v.index.tz is None:
-        v.index = v.index.tz_localize('UTC')
+def construir(v: pd.DataFrame = None):
+    """Tabla diaria (etiqueta + features) desde velas 4h de BTC (por defecto, el parquet real)."""
+    if v is None:
+        v = pd.read_parquet(ROOT / 'data' / 'BTC_USDT_4h_full.parquet').astype(float)
+        if v.index.tz is None:
+            v.index = v.index.tz_localize('UTC')
     d = v.resample('1D').agg({'open': 'first', 'high': 'max', 'low': 'min',
                               'close': 'last', 'volume': 'sum'}).dropna()
     c = d['close']

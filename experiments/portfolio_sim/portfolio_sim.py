@@ -323,6 +323,9 @@ class PortfolioSim:
                 trail = min(max(atr * mult, fl), ce)
 
                 notional = self.sizing and self.sizing(par, ts, equity, trail)
+                if notional is not None and notional <= 0:      # veto (experiments/veto_oro/)
+                    rechazos['veto'] = rechazos.get('veto', 0) + 1
+                    continue
                 if notional is None:
                     notional = (equity * self.risk_pct) / trail
                 notional = min(notional, equity * self.max_notional_pct)

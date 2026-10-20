@@ -1,0 +1,4 @@
+corr btc_z con oro_z: 0.945
+btc_z        AUC 0.586 coef [ 0.15  0.36  0.26 -0.59]
+oro_z        AUC 0.588 coef [ 0.16  0.33  0.22 -0.52]
+btc_z+oro_z  AUC 0.591 coef [ 0.15  0.36  0.26 -0.5  -0.1 ]
