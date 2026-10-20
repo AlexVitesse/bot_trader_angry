@@ -13,6 +13,11 @@ from config.settings import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, TELEGRAM_ENABL
 logger = logging.getLogger(__name__)
 
 TELEGRAM_API_URL = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}"
+CABECERA = {
+    'V2': '🔵🔵 <b>V2 · BTC · cuenta demo</b> 🔵🔵',
+    'AGRESIVO': '🟣🟣 <b>AGRESIVO · paper $100</b> 🟣🟣',
+    'INFORME': '📅 <b>INFORME · V2 + AGRESIVO</b>',
+}
 
 
 def _send_message(text: str):
@@ -41,7 +46,9 @@ def send_alert(text: str, tag: str = None):
     tag: etiqueta del bot del que se habla (por defecto, el que envia)."""
     if not TELEGRAM_ENABLED:
         return
-    text = f"[{tag or BOT_VERSION}] {text}"   # dos bots escriben al mismo chat
+    # dos bots escriben al mismo chat: cabecera con color y cuenta para no confundirlos
+    tag = tag or BOT_VERSION
+    text = f"{CABECERA.get(tag, f'[{tag}]')}\n{text}"
     t = threading.Thread(target=_send_message, args=(text,), daemon=True)
     t.start()
 

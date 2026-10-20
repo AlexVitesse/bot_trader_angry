@@ -260,6 +260,7 @@ class MLBot:
         self.tg_poller = TelegramPoller(callbacks={
             '/help': self._cmd_help,
             '/status': self._cmd_status,
+            '/informe': lambda: self._informe_mensual(),   # sin args: mes en curso
             '/yield': self._cmd_yield,
             '/yield_reset': self._cmd_yield_reset,
             '/yield_off': self._cmd_yield_off,
@@ -288,6 +289,7 @@ class MLBot:
             f"<b>Monitoreo:</b>\n"
             f"  /status - Estado del bot\n"
             f"  /status agresivo - Bot agresivo (paper $100)\n"
+            f"  /informe - Informe del mes en curso (V2 + agresivo)\n"
             f"  /log agresivo - Log del bot agresivo\n"
             f"  /yield - Estado del yield manager\n"
             f"  /log - Descargar archivo de log\n"
@@ -880,6 +882,33 @@ class MLBot:
         except Exception as e:
             logger.warning(f"[ALERTA] calculo fallo, reintento en la proxima vela: {e}")
 
+    def _informe_mensual(self, automatico: bool = False):
+        """Informe por Telegram (src/informe_mensual.py). Automatico: mes anterior,
+        una vez por mes. /informe: mes en curso."""
+        import json
+        import pandas as pd
+        from config.settings import BOT_PROFILE, DATA_DIR
+        from src import informe_mensual
+        if BOT_PROFILE != 'v2':
+            return
+        ahora = pd.Timestamp.now(tz='UTC')
+        marca = DATA_DIR / 'informe_mensual.json'
+        if automatico:
+            ini, fin, titulo = informe_mensual.mes_anterior(ahora)
+            try:
+                if json.loads(marca.read_text()).get('mes') == ini.strftime('%Y-%m'):
+                    return
+            except (OSError, ValueError):
+                pass
+        else:
+            ini, fin, titulo = informe_mensual.mes_en_curso(ahora)
+        try:
+            send_alert(informe_mensual.generar(DATA_DIR, ini, fin, titulo), tag='INFORME')
+            if automatico:
+                marca.write_text(json.dumps({'mes': ini.strftime('%Y-%m')}))
+        except Exception as e:
+            logger.error(f"[INFORME] fallo: {e}")
+
     def _linea_alerta(self) -> str:
         from config.settings import DATA_DIR
         from src import alerta_caidas
@@ -1071,8 +1100,12 @@ class MLBot:
                 logger.info(f"  {p['pair']} {p['side'].upper()} "
                             f"@ ${p['entry']:.2f} | trail={p['trail']}")
 
-        # Resumen diario a las 23:55 UTC
+        # Informe mensual el dia 1 (solo V2; lo recuerda en disco para no repetirlo al reiniciar)
         utcnow = datetime.now(timezone.utc)
+        if utcnow.day == 1 and utcnow.hour >= 1:
+            self._informe_mensual(automatico=True)
+
+        # Resumen diario a las 23:55 UTC
         if utcnow.hour == 23 and utcnow.minute >= 55:
             today = utcnow.strftime('%Y-%m-%d')
             if self.last_daily_summary != today:

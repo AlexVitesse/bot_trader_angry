@@ -124,7 +124,7 @@ ML_ENTRY_LIMIT_TIMEOUT_S = 60
 # =============================================================================
 # VERSION DEL BOT (centralizado para Telegram y logs)
 # =============================================================================
-BOT_VERSION = "V15"  # Cambiar aqui para actualizar todos los mensajes
+BOT_VERSION = "V2"   # nombre del bot en Telegram (antes "V15"; el motor es V2 desde 2026-08)
 
 # ============================================================================
 # V2 paper trading 3 meses (2026-05-19 start) — ver docs/PLAN_PAPER_3MESES.md
