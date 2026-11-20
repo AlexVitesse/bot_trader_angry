@@ -95,7 +95,7 @@ mensaje.
 | ¿Cuánto cuesta de verdad entrar y salir? (slippage real vs 0,02% asumido) | Capa A | a 30 trades reales (~1 año) |
 | ¿El maker post-only con 60 s de timeout llena, o casi siempre acaba en market? | Capa A (`order_type`) | a 20 entradas |
 | ¿El stop con gap del simulador se parece al fill real del stop? | Capa A `exit_fill` vs `ml_trades.exit_sim` | a 30 salidas |
-| ¿Nuestro tamaño al 4,5% de riesgo mueve el libro? | Capa A `depth_*_1pct` vs notional | inmediato, por trade |
+| ¿Nuestro tamaño al 4,5% de riesgo mueve el libro? | Capa A `depth_*_1pct` vs notional | **cerrada 2026-10-29: no** (notional ≈ 0,001–0,004% del libro a ±1%; `docs/SESION_2026-10-29.md` §5) |
 | ¿Las cascadas de liquidación coinciden con nuestros stops? | Capa B `forceOrder` + `ml_trades` | 12 meses, y solo descriptivo |
 | ¿Hay señal en el libro a 4h? | Capa B `depth20` | **no antes de 2-3 años**; no es el objetivo |
 

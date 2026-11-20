@@ -167,6 +167,17 @@ solo V2 lee comandos.
 - **No conectar a capital real** sin pasar los requisitos de validación de
   abajo. Su resultado en vivo se compara con la predicción del backtest
   (pierde), no con V2.
+- **2026-11-20** (`docs/SESION_2026-11-20.md`): arreglados el mínimo de qty
+  de BTC (sube a 0,001 si no pasa de 2× el riesgo), las features en vivo (750
+  días de historia, como el backtest) y el **funding**: antes era constante
+  (~14%/año a favor de los shorts) y ahora es el histórico de cada par. Con el
+  real, 2026 desde $100 da **−39,6%** y los shorts dejan de ganar (−$1,5). Una
+  revisión independiente (`experiments/agresivo_revision/`) no encuentra edge
+  ni antes de costes y rechaza el momentum cross-sectional. El paper se queda
+  en $100 (el usuario quiere empezar con $100 reales). **El agresivo no va a
+  real.**
+- Dos procesos `src.ml_bot` con la misma línea de comando: identificar cuál es
+  cuál por `BOT_PROFILE` en `/proc/<pid>/environ` antes de matar uno.
 
 ## Candidato real para paper trade — V2 (lo desplegado)
 
@@ -328,6 +339,8 @@ docs/
   SESION_2026-09-23.md     # Ejecución del plan 2026-09 (fases 0-7), bootstrap honesto, despliegue
   SESION_2026-09-25.md     # Taker/premium rechazados + grabación de ejecución en vivo (capas A y B) desplegada
   SESION_2026-10-20.md     # 12 experimentos (GitHub + especialistas), mezcla en paper, alerta grabándose, informe mensual
+  SESION_2026-10-29.md     # Caídas del VPS (44h + 86h): 1 señal V2 perdida (habría sido SL), huecos en datos vivos
+  SESION_2026-11-20.md     # Agresivo: min qty BTC, EMA en vivo, funding real; 2026 desde $100 −39,6%; revisión independiente
   PLAN_GITHUB_2026-10.md   # E0-E6
   PLAN_ESPECIALISTAS_2026-10.md  # E7-E12
   INVESTIGACION_GITHUB_ML_2026-09.md  # 25 repos de ML revisados + qué pasó al probar cada idea
@@ -349,7 +362,8 @@ experiments/               # Un README por experimento. Los negativos están
   multiactivo/             # V2 en SPY/QQQ/IWM/GLD/TLT diario: 0/5 pasan el null; la cartera no sube CAGR a igual DD. Rechazado
   sentimiento/             # Fear&Greed rechazado (etapa 1 p 0,64/0,43) + experto de noticias LLM local GRABANDO (scripts/record_news.py)
   smc/                     # Smart Money/ICT codificado (6 variantes): WR 22-33%, nada sobrevive al null. Rechazado
-  agresivo/                # Bot ML multi-régimen + Kelly (9 pares): AUC 0,497, CAGR −12,6%, DD 50,5%. Rechazado
+  agresivo/                # Bot ML multi-régimen + Kelly (9 pares): AUC 0,495, CAGR −12,6%, DD 51,1%. Rechazado. 2026 desde $100 −39,6% (funding real)
+  agresivo_revision/       # Revisión independiente: sin edge bruto, shorts = funding regalado, momentum XS rechazado
   benchmark_bh/            # V2 vs BTC a igual exposición (p=0,33) + MinTRL 65 trades + por subperiodo
   dd_sizing/               # Riesgo según DD (CPPI): no pasa (p=0,44); P(kill) 4,5% = 7,5% en sintéticas
   vol_target_pos/          # Vol objetivo dentro del trade: no se activa (trades de ~2 días)
