@@ -295,7 +295,9 @@ class MLStrategyV15:
         if since is None:
             filas = _ohlcv(exchange, pair, '4h', limit)
         else:
-            ms = int(pd.Timestamp(since, tz='UTC').timestamp() * 1000)
+            ts = pd.Timestamp(since)          # str o Timestamp, con o sin tz
+            ts = ts.tz_localize('UTC') if ts.tzinfo is None else ts
+            ms = int(ts.timestamp() * 1000)
             while True:
                 lote = exchange.fetch_ohlcv(pair, '4h', since=ms, limit=1500)
                 if not lote:

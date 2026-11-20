@@ -36,3 +36,16 @@ def test_no_ml_attributes_left():
     s = mod.MLStrategyV15()
     assert not hasattr(s, 'short_model')
     assert s.load_models() == len(s.pairs)
+
+
+def test_df_4h_since_acepta_str_y_timestamp_con_tz():
+    # 2026-11-20: el vivo paso un Timestamp con tz y pd.Timestamp(.., tz=) reventaba.
+    import pandas as pd
+
+    class Ex:
+        def fetch_ohlcv(self, pair, tf, since=None, limit=None):
+            return [[since + i * 14_400_000, 1, 1, 1, 1, 1] for i in range(3)]
+
+    for since in ('2020-01-01', pd.Timestamp.now(tz='UTC') - pd.Timedelta(days=750)):
+        df = mod.MLStrategyV15._df_4h(None, Ex(), 'BTC/USDT', since=since)
+        assert len(df) == 2                       # sin la vela en curso
