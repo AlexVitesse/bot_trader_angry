@@ -50,3 +50,6 @@ data/yield_state.json
 
 # Datos grabados en vivo (scripts/record_stream.py)
 data_live/
+
+# Instrucciones de Claude (locales, no van al repo)
+CLAUDE.md
