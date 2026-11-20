@@ -348,3 +348,28 @@ if __name__ == '__main__':
         if name.startswith('test_'):
             fn()
             print('OK', name)
+
+
+def test_qty_below_exchange_min_is_bumped_or_skipped():
+    # Caso real 2026-11-18 (agresivo $113): riesgo 1,7%, trail 4,8%, BTC $62.724
+    # -> qty 0,00064 < minimo 0,001 y la orden reventaba.
+    ex = FakeExchange(price=62_724.6)
+    ex.markets = {PAIR + ':USDT': {'limits': {'amount': {'min': 0.001}}}}
+    pm, _ = _pm(ex)
+    pm.balance = pm.peak_balance = 112.87
+    assert pm.open_position(PAIR, -1, 0.42, 'BEAR', 62_724.6, 0.02,
+                            tp_pct_override=0.1, sl_pct_override=0.048,
+                            trail_mode='tight', trail_fixed_dist=0.048,
+                            risk_override=0.017)
+    assert pm.positions[PAIR].quantity == 0.001
+
+    # Riesgo tan chico que subir al minimo pasaria del doble -> se omite.
+    ex2 = FakeExchange(price=62_724.6)
+    ex2.markets = ex.markets
+    pm2, _ = _pm(ex2)
+    pm2.balance = pm2.peak_balance = 112.87
+    assert not pm2.open_position(PAIR, -1, 0.42, 'BEAR', 62_724.6, 0.02,
+                                 tp_pct_override=0.1, sl_pct_override=0.048,
+                                 trail_mode='tight', trail_fixed_dist=0.048,
+                                 risk_override=0.005)
+    assert ex2.position is None

@@ -565,6 +565,12 @@ class PortfolioManager:
         except Exception:
             pass  # Order might already be filled or cancelled
 
+    def _min_qty(self, pair: str) -> float:
+        """Cantidad minima del mercado. ccxt de futuros indexa 'BTC/USDT:USDT'."""
+        m = getattr(self.exchange, 'markets', None) or {}
+        mk = m.get(pair) or m.get(f"{pair}:USDT") or {}
+        return float(mk.get('limits', {}).get('amount', {}).get('min') or 0)
+
     def _enter(self, pair: str, side: str, qty: float, ref_price: float) -> tuple:
         """Entrada maker con fallback a market. Devuelve (precio medio, qty).
 
@@ -604,8 +610,7 @@ class PortfolioManager:
                     filled = float(o.get('filled') or 0)
                     cost = filled * float(o.get('average') or ref_price)
         rest = qty - filled
-        min_qty = ((getattr(self.exchange, 'markets', None) or {}).get(pair, {})
-                   .get('limits', {}).get('amount', {}).get('min') or 0)
+        min_qty = self._min_qty(pair)
         maker_q = filled
         if rest > 1e-12 and rest >= min_qty:
             rest = float(self.exchange.amount_to_precision(pair, rest))
@@ -863,6 +868,21 @@ class PortfolioManager:
             # Set leverage
             symbol_ccxt = pair
             self.exchange.set_leverage(lev, symbol_ccxt)
+
+            # Minimo del exchange: con balance pequeno (paper $100) la qty de BTC
+            # cae bajo 0,001 y la orden revienta. Se sube al minimo si eso no
+            # pasa del doble del riesgo pedido ni del tope de notional.
+            # ponytail: umbral fijo 2x; afinarlo si el paper crece o baja mucho.
+            min_qty = self._min_qty(pair)
+            if quantity < min_qty:
+                if min_qty * price <= min(2 * notional, self.balance * ML_MAX_NOTIONAL_PCT):
+                    logger.info(f"[PM] {pair}: qty {quantity:.6f} < minimo {min_qty}, "
+                                f"subida al minimo (riesgo x{min_qty / quantity:.2f})")
+                    quantity = min_qty
+                else:
+                    logger.warning(f"[PM] {pair}: qty {quantity:.6f} < minimo {min_qty} "
+                                   f"y subirla pasaria del doble del riesgo, se omite")
+                    return False
 
             # Precision
             quantity = float(self.exchange.amount_to_precision(symbol_ccxt, quantity))
