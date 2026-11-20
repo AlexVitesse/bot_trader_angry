@@ -146,3 +146,29 @@ siquiera en demo como sustituto de V2.
     'confidence' (p), 'setup': 'agr_<tipo>', 'engine': 'agresivo'}`.
   - El bot tiene que usar `risk_pct` de la señal como riesgo por trade (hoy
     `open_position` usa `ML_RISK_PER_TRADE × sizing_mult`).
+
+## 2026 desde $100 (corrido el 2026-11-20, `backtest_2026.py`)
+
+Mismo motor y cartera, arrancando el 1-ene-2026 con $100 y DD desde cero.
+Datos completados con fapi hasta el 19-nov. Salida: `salida_2026.txt`.
+
+| tramo | final | DD máx | trades | WR | PF | LONG | SHORT |
+|---|--:|--:|--:|--:|--:|--:|--:|
+| 2026-01-01 → 11-19 | **$67,66 (−32,3%)** | 45,1% | 273 | 37,7% | 0,79 | 128, −$40,7 | 145, +$8,4 |
+| 2026-10-17 → 11-19 (mismo arranque que el vivo) | $105,77 (+5,8%) | — | 22 | 45% | — | 6, −$21,8 | 16, +$27,6 |
+| **Vivo (paper)**, mismo tramo | $114,5 (+14,5%) | — | 18 | 38,9% | 1,58 | 5, −$7,8 | 13, +$22,3 |
+
+BTC −29,5% en el año. Pierde en 9 de 11 meses; el riesgo se va frenando solo
+con el DD (de ~3,5% a ~0,3%), por eso a partir de junio casi no se mueve.
+El vivo comparte la forma (shorts ganan, longs pierden en un mercado que
+cae) y ~12 de sus 18 trades coinciden con el simulado; va +9 puntos por encima.
+Las diferencias vienen de que casi todas las señales tienen p ≈ 0,40-0,45 y el
+umbral de operar (riesgo ≥ 1%) cae en p ≈ 0,40: cualquier diferencia pequeña
+cambia qué trades entran. Dos fuentes medidas (vela 2026-10-18 16:00):
+- **EMA200 diaria con 1500 velas 4h (250 días) en vivo** contra la historia
+  completa en el backtest: la EMA no ha convergido. `btc_ema_d` +0,098 en vivo
+  contra +0,066; `dist_ema_d` de XRP 0,039 contra 0,085.
+- **Fecha de corte del modelo**: el vivo reentrena en cada reinicio del
+  proceso (el bundle vive en memoria) y el backtest el día 1 de cada mes.
+(Una primera versión de esta tabla decía −2,0% y 14 trades: `predicciones`
+arrancaba en el primer día de mes posterior a `DESDE` y se saltó octubre.)

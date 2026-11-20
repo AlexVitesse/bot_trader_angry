@@ -32,9 +32,12 @@ FAPI_BASE = 'https://fapi.binance.com'
 # 195 < 222 y get_live_signal devolvia None SIEMPRE. 420 -> ~365 utiles.
 V2_LOOKBACK = 420
 # Motor agresivo: historia para entrenar (como el backtest, desde 2020) y
-# velas para las features en vivo (EMA200 diaria = 1200 velas 4h + margen).
+# historia para las features en vivo. Con 1500 velas (250 dias) la EMA200
+# diaria no habia convergido y el vivo veia otra cosa que el backtest (BTC a
+# +9,8% de su EMA en vez de +6,6%, 2026-10-18; experiments/agresivo/README.md).
+# 750 dias: el peso del arranque queda en (199/201)^750 = 0,06%. 3 llamadas/par.
 AGR_DESDE = '2020-01-01'
-AGR_LOOKBACK = 1500
+AGR_HIST = pd.Timedelta(days=750)
 AGR_REENTRENO = pd.Timedelta(days=30)
 
 
@@ -324,10 +327,11 @@ class MLStrategyV15:
             b = self._agr_bundle
             if b is None or pd.Timestamp.now(tz='UTC') - b['entrenado'] > AGR_REENTRENO:
                 self._agr_entrenar(pairs, exchange)
-            dfs = {p: self._df_4h(exchange, p, limit=AGR_LOOKBACK) for p in pairs}
+            desde = pd.Timestamp.now(tz='UTC') - AGR_HIST
+            dfs = {p: self._df_4h(exchange, p, since=desde) for p in pairs}
             btc = dfs.get('BTC/USDT')
             if btc is None:
-                btc = self._df_4h(exchange, 'BTC/USDT', limit=AGR_LOOKBACK)
+                btc = self._df_4h(exchange, 'BTC/USDT', since=desde)
             sigs = _agr.señal_vivo(self._agr_bundle, dfs, btc, open_pairs, dd_actual)
         except Exception as e:
             logger.error(f'[AGR] error generando senales: {e}')

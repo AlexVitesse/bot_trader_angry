@@ -70,3 +70,15 @@ if __name__ == '__main__':
         if name.startswith('test_'):
             fn()
             print('OK', name)
+
+
+def test_historia_en_vivo_converge_a_la_completa():
+    # El vivo calcula las features con AGR_HIST de historia; deben coincidir con
+    # las del backtest (historia completa) en la ultima vela.
+    from src.ml_strategy_v15 import AGR_HIST
+    df = _velas(n=9000, seed=3)                       # ~4 anos
+    full = ag.features(df, df).iloc[-1]
+    vivo = df[df.index >= df.index[-1] - AGR_HIST]
+    corto = ag.features(vivo, vivo).iloc[-1]
+    for k in ('dist_ema', 'btc_ema'):
+        assert abs(full[k] - corto[k]) < 1e-3, (k, full[k], corto[k])
