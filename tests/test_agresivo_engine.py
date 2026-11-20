@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 
 import numpy as np
+import pytest
 import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -82,3 +83,20 @@ def test_historia_en_vivo_converge_a_la_completa():
     corto = ag.features(vivo, vivo).iloc[-1]
     for k in ('dist_ema', 'btc_ema'):
         assert abs(full[k] - corto[k]) < 1e-3, (k, full[k], corto[k])
+
+
+def test_funding_historico_en_etiquetas():
+    """Sin historial = la constante de antes; con historial, el short cobra lo
+    que pago el long y solo en las velas de 00/08/16 UTC."""
+    df = _velas()
+    f0 = ag.features(df, df)
+    assert np.allclose(f0['fund'], ag.FUND_8H * 0.5)
+    tasas = pd.Series(0.001, index=pd.date_range(pd.Timestamp('2021-01-01 00:00:00.003', tz='UTC'),
+                                                  df.index[-1], freq='8h'))
+    f1 = ag.features(df, df, tasas)
+    assert f1['fund'].sum() == pytest.approx(tasas.sum())
+    assert set(f1.loc[f1['fund'] > 0].index.hour) == {0, 8, 16}
+    e0, e1 = ag.etiquetar(f0), ag.etiquetar(f1)
+    barras = (e0['fin'] - e0['ini']) / ag.BAR
+    real = e1['dir'] * (e0['pnl'] - e1['pnl']) + ag.FUND_8H * 0.5 * barras   # funding cobrado
+    assert np.allclose(real, 0.0005 * barras, atol=0.001 + 1e-12)

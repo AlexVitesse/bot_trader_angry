@@ -83,6 +83,32 @@ def _funding_df(pair: str) -> Optional[pd.DataFrame]:
         return None
 
 
+def _funding_hist(pair: str, since: str) -> Optional[pd.Series]:
+    """Todo el funding del par desde `since` (para las etiquetas del agresivo,
+    como experiments/agresivo/backtest.funding). Sin red -> None y el motor usa
+    la constante de antes."""
+    try:
+        ts = pd.Timestamp(since)
+        ts = ts.tz_localize('UTC') if ts.tzinfo is None else ts
+        ms, filas = int(ts.timestamp() * 1000), []
+        while True:
+            resp = requests.get(f'{FAPI_BASE}/fapi/v1/fundingRate', timeout=20,
+                                params={'symbol': pair.replace('/', ''),
+                                        'startTime': ms, 'limit': 1000})
+            resp.raise_for_status()
+            lote = resp.json()
+            filas += lote
+            if len(lote) < 1000:
+                break
+            ms = lote[-1]['fundingTime'] + 1
+        return pd.Series([float(x['fundingRate']) for x in filas],
+                         index=pd.to_datetime([x['fundingTime'] for x in filas],
+                                              unit='ms', utc=True))
+    except Exception as e:
+        logger.warning(f'[AGR] {pair}: funding no disponible ({e}), etiquetas con la constante')
+        return None
+
+
 @dataclass
 class PairState:
     """Per-pair cached state updated by update_regime()."""
@@ -317,7 +343,7 @@ class MLStrategyV15:
         btc = datos.get('BTC/USDT')
         if btc is None:
             btc = self._df_4h(exchange, 'BTC/USDT', since=AGR_DESDE)
-        feats = {p: _agr.features(d, btc) for p, d in datos.items()}
+        feats = {p: _agr.features(d, btc, _funding_hist(p, AGR_DESDE)) for p, d in datos.items()}
         self._agr_bundle = _agr.reentrenar(feats, pd.Timestamp.now(tz='UTC'))
         self._agr_bundle['entrenado'] = pd.Timestamp.now(tz='UTC')
         b = self._agr_bundle

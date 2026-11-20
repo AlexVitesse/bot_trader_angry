@@ -11,7 +11,8 @@ Diseno fijado ANTES de ver resultados (experiments/agresivo/README.md):
       mr           close < banda inferior BB(20,2) -> LONG; > superior -> SHORT
   - Etiqueta: trade con salida tipo V2 A (trailing sin look-ahead, trail =
     clip(atr_pct*2.5, 2,5%, 6%), max 60 velas), entrada open i+1, stop con gap,
-    0,06%/lado + funding constante 0,013%/8h (longs pagan, shorts cobran).
+    0,06%/lado + funding historico de cada par (columna 'fund' de features;
+    sin historial, constante 0,013%/8h: longs pagan, shorts cobran).
     r_R = PnL / trail (resultado en multiplos del riesgo), y = r_R > 0.
   - Modelo: HistGradientBoostingClassifier(max_depth=3, min_samples_leaf=200,
     l2=1.0, max_iter=200, lr=0.05) con sample_weight = unicidad, calibrado con
@@ -33,7 +34,7 @@ FEAT = ['atr_pct', 'bb_width', 'dist_ema_d', 'ret20_d', 'ret60_d', 'btc_ema_d',
         'dir'] + [f't_{t}' for t in TIPOS]
 
 COM = 0.0006                 # comision + slippage por lado
-FUND_8H = 0.00013            # funding constante (longs pagan)
+FUND_8H = 0.00013            # funding si no hay historial (longs pagan)
 TRAIL_MULT, TRAIL_MIN, TRAIL_MAX = 2.5, 0.025, 0.06
 MAX_BARS = 60
 PURGA_VELAS = 60
@@ -48,9 +49,25 @@ def _dist_ema200_diaria(df: pd.DataFrame) -> pd.Series:
     return df['close'] / ema.reindex(df.index, method='ffill') - 1
 
 
-def features(df_4h: pd.DataFrame, df_btc_4h: pd.DataFrame) -> pd.DataFrame:
-    """Features por vela usando solo informacion hasta el cierre de la vela."""
+def fondeo_por_vela(idx: pd.DatetimeIndex, rates) -> np.ndarray:
+    """Funding cobrado en el open de cada vela 4h (0 si no toca). Sin historial
+    o antes del primer registro: la constante FUND_8H/2 por vela, como antes.
+    Hasta 2026-11 era siempre la constante (~14%/año a favor de los shorts; el
+    real fue 4,2% en 2022 y 2,3% en 2026: experiments/agresivo_revision/)."""
+    if rates is None or len(rates) == 0:
+        return np.full(len(idx), FUND_8H * 0.5)
+    r = pd.Series(rates.values, index=rates.index.floor('4h'))
+    r = r.groupby(level=0).sum()
+    out = r.reindex(idx).fillna(0.0).values
+    out[idx < r.index[0]] = FUND_8H * 0.5
+    return out
+
+
+def features(df_4h: pd.DataFrame, df_btc_4h: pd.DataFrame, funding=None) -> pd.DataFrame:
+    """Features por vela usando solo informacion hasta el cierre de la vela.
+    `funding`: Series de tasas (indice = fundingTime UTC) para las etiquetas."""
     df = df_4h[['open', 'high', 'low', 'close']].astype(float).copy()
+    df['fund'] = fondeo_por_vela(df.index, funding)
     h, l, c = df['high'], df['low'], df['close']
     tr = pd.concat([h - l, (h - c.shift()).abs(), (l - c.shift()).abs()], axis=1).max(axis=1)
     df['atr_pct'] = tr.ewm(alpha=1 / 14, adjust=False).mean() / c
@@ -126,6 +143,7 @@ def etiquetar(f: pd.DataFrame) -> pd.DataFrame:
     """Eventos etiquetados de un par. Salida tipo V2: stop previo primero, gap."""
     o, h, l, c = (f[k].values for k in ('open', 'high', 'low', 'close'))
     atr = f['atr_pct'].values
+    fcum = np.concatenate([[0.0], np.cumsum(f['fund'].values)])   # fcum[k] = sum fund[:k]
     cand = _candidatos_vector(f)
     filas = []
     for i, tipo, d in cand.itertuples(index=False):
@@ -150,8 +168,8 @@ def etiquetar(f: pd.DataFrame) -> pd.DataFrame:
                 stop = min(stop, ext * (1 + trail))
         if sal is None:
             continue                                   # sin resolver
-        barras = sal_j - e
-        pnl = d * (sal - ent) / ent - 2 * COM - d * FUND_8H * 0.5 * barras
+        # funding de los opens e+1..sal_j (la entrada es al open de e)
+        pnl = d * (sal - ent) / ent - 2 * COM - d * (fcum[sal_j + 1] - fcum[e + 1])
         fila = fila_modelo(f, i, tipo, d)
         fila.update({'t': f.index[i], 'ini': f.index[e], 'fin': f.index[sal_j],
                      'tipo': tipo, 'trail': trail, 'pnl': pnl,

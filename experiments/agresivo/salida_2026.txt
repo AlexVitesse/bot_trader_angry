@@ -1,70 +1,77 @@
 datos hasta: 2026-11-19 20:00:00+00:00
 
 === AGRESIVO 2026-01-01 -> 2026-11-19, $100 ===
-final $67.66 (-32.3%) | DD max 45.1% | trades 273 | WR 37.7% | PF 0.79 | riesgo medio 1.31%
+final $60.39 (-39.6%) | DD max 47.1% | trades 289 | WR 35.3% | PF 0.66 | riesgo medio 0.96%
 BTC en el mismo tramo: -29.5%
 
 por lado:
          n    wr    pnl
 lado                   
-LONG   128  0.33 -40.72
-SHORT  145  0.42   8.38
+LONG   150  0.30 -38.16
+SHORT  139  0.41  -1.45
 
 por mes (equity a fin de mes y trades abiertos ese mes):
+C:\Users\pcdec\OneDrive\Documentos\MIS EMPRENDIMIENTOS\BOTDETRADINGAGRESIVO\experiments\agresivo\backtest_2026.py:74: UserWarning: Converting to PeriodArray/Index representation will drop timezone information.
   g = tr.groupby(tr['ts'].dt.to_period('M'))
+C:\Users\pcdec\OneDrive\Documentos\MIS EMPRENDIMIENTOS\BOTDETRADINGAGRESIVO\experiments\agresivo\backtest_2026.py:76: UserWarning: Converting to PeriodArray/Index representation will drop timezone information.
   index=mes.index.to_period('M'))
+C:\Users\pcdec\OneDrive\Documentos\MIS EMPRENDIMIENTOS\BOTDETRADINGAGRESIVO\experiments\agresivo\backtest_2026.py:79: UserWarning: Converting to PeriodArray/Index representation will drop timezone information.
   tr[tr.dir == 1].groupby(tr['ts'].dt.to_period('M')).size().rename('long')).join(
+C:\Users\pcdec\OneDrive\Documentos\MIS EMPRENDIMIENTOS\BOTDETRADINGAGRESIVO\experiments\agresivo\backtest_2026.py:80: UserWarning: Converting to PeriodArray/Index representation will drop timezone information.
   tr[tr.dir == -1].groupby(tr['ts'].dt.to_period('M')).size().rename('short'))
          equity    ret  trades    wr  long  short
-2026-01  100.04  0.000      35  0.37  23.0     12
-2026-02   90.96 -0.091      29  0.45  19.0     10
-2026-03   84.98 -0.066      27  0.33  11.0     16
-2026-04   77.18 -0.092      26  0.38  16.0     10
-2026-05   72.28 -0.064      26  0.31  11.0     15
-2026-06   69.05 -0.045      28  0.25  19.0      9
-2026-07   69.89  0.012      18  0.44  11.0      7
-2026-08   68.64 -0.018      29  0.45  10.0     19
-2026-09   66.81 -0.027      21  0.29   0.0     21
-2026-10   67.92  0.016      20  0.55   2.0     18
-2026-11   67.66 -0.004      14  0.36   6.0      8
+2026-01   78.03 -0.220      39  0.28  27.0     12
+2026-02   73.29 -0.061      31  0.35  22.0      9
+2026-03   69.33 -0.054      29  0.28  12.0     17
+2026-04   64.20 -0.074      25  0.28  15.0     10
+2026-05   64.25  0.001      27  0.41  16.0     11
+2026-06   60.35 -0.061      31  0.23  24.0      7
+2026-07   61.28  0.015      20  0.50  12.0      8
+2026-08   60.62 -0.011      26  0.46  10.0     16
+2026-09   59.69 -0.015      23  0.39   0.0     23
+2026-10   60.10  0.007      22  0.55   3.0     19
+2026-11   60.39  0.005      16  0.25   9.0      7
 
 por par:
             n    wr    pnl
 par                       
-BTC/USDT   39  0.33 -18.84
-DOGE/USDT  22  0.27 -17.28
-AVAX/USDT  27  0.30 -10.36
-BNB/USDT   38  0.26  -5.72
-SOL/USDT   22  0.32  -2.88
-XRP/USDT   30  0.53   2.41
-ADA/USDT   42  0.50   2.43
-LINK/USDT  26  0.42   3.69
-ETH/USDT   27  0.41  14.21
+BTC/USDT   42  0.33 -13.86
+AVAX/USDT  25  0.28  -8.99
+SOL/USDT   22  0.27  -7.82
+DOGE/USDT  24  0.38  -6.61
+LINK/USDT  32  0.31  -6.35
+ADA/USDT   40  0.45  -0.87
+XRP/USDT   32  0.34   0.84
+ETH/USDT   32  0.41   1.47
+BNB/USDT   40  0.35   2.57
 
 === tramo en vivo (desde 2026-10-17) simulado ===
       par  lado  tipo                        ts                    salida  riesgo     pnl
- BNB/USDT SHORT don55 2026-10-18 20:00:00+00:00 2026-10-19 00:00:00+00:00  0.0048 -0.3370
- XRP/USDT SHORT don55 2026-10-18 20:00:00+00:00 2026-10-19 00:00:00+00:00  0.0013 -0.0917
- XRP/USDT SHORT    mr 2026-10-21 00:00:00+00:00 2026-10-21 12:00:00+00:00  0.0050 -0.3141
-DOGE/USDT SHORT    mr 2026-10-20 20:00:00+00:00 2026-10-26 12:00:00+00:00  0.0015  0.0937
- ADA/USDT SHORT    mr 2026-10-21 16:00:00+00:00 2026-10-28 20:00:00+00:00  0.0039  0.4365
-LINK/USDT SHORT    mr 2026-10-28 20:00:00+00:00 2026-10-29 12:00:00+00:00  0.0028  0.0217
- XRP/USDT SHORT    mr 2026-10-28 00:00:00+00:00 2026-10-30 04:00:00+00:00  0.0050  0.5741
-LINK/USDT SHORT    mr 2026-10-29 16:00:00+00:00 2026-10-30 04:00:00+00:00  0.0031  0.3248
- ETH/USDT SHORT    mr 2026-11-02 04:00:00+00:00 2026-11-03 12:00:00+00:00  0.0047  0.0044
- BTC/USDT SHORT    mr 2026-11-02 04:00:00+00:00 2026-11-04 04:00:00+00:00  0.0057  0.1925
- XRP/USDT SHORT    mr 2026-11-03 16:00:00+00:00 2026-11-04 04:00:00+00:00  0.0036 -0.0152
- BNB/USDT SHORT don20 2026-11-04 04:00:00+00:00 2026-11-04 12:00:00+00:00  0.0037 -0.2612
- ETH/USDT SHORT    mr 2026-11-04 12:00:00+00:00 2026-11-04 16:00:00+00:00  0.0022 -0.1835
- XRP/USDT SHORT    mr 2026-11-04 12:00:00+00:00 2026-11-09 12:00:00+00:00  0.0041  1.0321
- BNB/USDT SHORT don55 2026-11-12 12:00:00+00:00 2026-11-13 08:00:00+00:00  0.0047  0.3657
- BTC/USDT SHORT    mr 2026-11-04 16:00:00+00:00 2026-11-13 12:00:00+00:00  0.0022  0.6227
- SOL/USDT  LONG    mr 2026-11-14 04:00:00+00:00 2026-11-14 20:00:00+00:00  0.0039 -0.2152
- XRP/USDT  LONG    mr 2026-11-14 04:00:00+00:00 2026-11-14 20:00:00+00:00  0.0025 -0.1549
- ADA/USDT  LONG    mr 2026-11-14 20:00:00+00:00 2026-11-15 00:00:00+00:00  0.0087 -0.6113
-DOGE/USDT  LONG    mr 2026-11-14 20:00:00+00:00 2026-11-15 00:00:00+00:00  0.0087 -0.6113
- ETH/USDT  LONG    mr 2026-11-15 00:00:00+00:00 2026-11-17 12:00:00+00:00  0.0099 -0.1151
-AVAX/USDT  LONG    mr 2026-11-15 00:00:00+00:00 2026-11-18 16:00:00+00:00  0.0085 -0.3022
+ BNB/USDT SHORT don55 2026-10-18 20:00:00+00:00 2026-10-19 00:00:00+00:00  0.0043 -0.2676
+ SOL/USDT SHORT don20 2026-10-18 20:00:00+00:00 2026-10-19 00:00:00+00:00  0.0020 -0.1199
+ XRP/USDT SHORT    mr 2026-10-21 00:00:00+00:00 2026-10-21 12:00:00+00:00  0.0034 -0.1879
+DOGE/USDT SHORT    mr 2026-10-20 20:00:00+00:00 2026-10-26 12:00:00+00:00  0.0010  0.0555
+ ADA/USDT SHORT    mr 2026-10-21 16:00:00+00:00 2026-10-28 20:00:00+00:00  0.0031  0.2977
+ BNB/USDT  LONG    mr 2026-10-24 16:00:00+00:00 2026-10-29 08:00:00+00:00  0.0014  0.0843
+LINK/USDT SHORT    mr 2026-10-28 20:00:00+00:00 2026-10-29 12:00:00+00:00  0.0013  0.0088
+ XRP/USDT SHORT    mr 2026-10-28 00:00:00+00:00 2026-10-30 04:00:00+00:00  0.0037  0.3844
+LINK/USDT SHORT    mr 2026-10-29 16:00:00+00:00 2026-10-30 04:00:00+00:00  0.0008  0.0711
+ XRP/USDT SHORT    mr 2026-11-02 04:00:00+00:00 2026-11-03 12:00:00+00:00  0.0030 -0.0621
+ BTC/USDT SHORT    mr 2026-11-02 04:00:00+00:00 2026-11-04 04:00:00+00:00  0.0037  0.1102
+ XRP/USDT SHORT    mr 2026-11-03 16:00:00+00:00 2026-11-04 04:00:00+00:00  0.0047 -0.0184
+ ETH/USDT SHORT    mr 2026-11-04 12:00:00+00:00 2026-11-04 16:00:00+00:00  0.0020 -0.1486
+ XRP/USDT SHORT    mr 2026-11-04 12:00:00+00:00 2026-11-09 12:00:00+00:00  0.0027  0.5952
+ SOL/USDT  LONG    mr 2026-11-09 00:00:00+00:00 2026-11-10 12:00:00+00:00  0.0015 -0.0594
+ BNB/USDT SHORT don55 2026-11-12 12:00:00+00:00 2026-11-13 08:00:00+00:00  0.0048  0.3212
+ BTC/USDT SHORT    mr 2026-11-04 16:00:00+00:00 2026-11-13 12:00:00+00:00  0.0019  0.4598
+ XRP/USDT  LONG    mr 2026-11-13 04:00:00+00:00 2026-11-14 04:00:00+00:00  0.0019 -0.0492
+LINK/USDT  LONG    mr 2026-11-14 04:00:00+00:00 2026-11-14 16:00:00+00:00  0.0018 -0.0934
+ SOL/USDT  LONG    mr 2026-11-14 04:00:00+00:00 2026-11-14 20:00:00+00:00  0.0027 -0.1295
+ ADA/USDT  LONG    mr 2026-11-14 16:00:00+00:00 2026-11-14 20:00:00+00:00  0.0036 -0.2212
+DOGE/USDT  LONG    mr 2026-11-14 20:00:00+00:00 2026-11-15 00:00:00+00:00  0.0020 -0.1238
+AVAX/USDT  LONG    mr 2026-11-14 20:00:00+00:00 2026-11-15 00:00:00+00:00  0.0010 -0.0633
+ ETH/USDT  LONG    mr 2026-11-15 00:00:00+00:00 2026-11-17 12:00:00+00:00  0.0051 -0.0474
+AVAX/USDT  LONG    mr 2026-11-15 04:00:00+00:00 2026-11-18 16:00:00+00:00  0.0050 -0.1826
 
 === reales (paper) ===
       par  side                       entry_time                        exit_time   pnl
@@ -87,4 +94,4 @@ DOGE/USDT  long 2026-11-13T04:02:06.654718+00:00 2026-11-14T02:29:31.799901+00:0
 AVAX/USDT  long 2026-11-15T00:02:13.600498+00:00 2026-11-18T16:18:38.832030+00:00 -3.14
  SOL/USDT  long 2026-11-15T00:02:12.948777+00:00 2026-11-20T12:06:59.818220+00:00  1.83
 
-simulado: 22 trades, pnl $+0.46 (sobre equity del backtest) | real: 18 trades, pnl $+14.52 (sobre $100)
+simulado: 25 trades, pnl $+0.61 (sobre equity del backtest) | real: 18 trades, pnl $+14.52 (sobre $100)

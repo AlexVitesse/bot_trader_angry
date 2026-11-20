@@ -1,0 +1,18 @@
+ventana 2020-09-23 -> 2026-11-19, 9 pares
+historia completa: n 318 | CAGR +8.7% | DD 56.2% | CAGR/DD 0.16 | WR 53.1% | PF 1.24 | Sharpe 0.44 | media +0.315%/periodo
+p bloques (4 semanas, media > 0): 0.1091
+null sintetico bloques 7 dias: mediana -0.079% | p = 0.0790
+null sintetico bloques 30 dias: mediana +0.192% | p = 0.2845
+
+por ano (suma de retornos semanales, n, WR):
+        sum  size  <lambda_0>
+2020  0.385    12       0.750
+2021  0.094    52       0.596
+2022  0.249    52       0.558
+2023  0.223    52       0.462
+2024  0.102    53       0.528
+2025  0.195    52       0.596
+2026 -0.246    45       0.378
+
+tramo NO visto antes (2026-03 ->): n 37 | CAGR -20.1% | DD 18.4% | CAGR/DD -1.09 | WR 43.2% | PF 0.60 | Sharpe -1.36 | media -0.406%/periodo
+correlacion semanal con BTC: -0.01

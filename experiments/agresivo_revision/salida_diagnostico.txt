@@ -1,0 +1,24 @@
+candidatos 23928 | trail medio 5.11% | duracion media 10.7 velas
+          r_R  bruto_R  coste_R  fund_R
+lado                                   
+LONG  -0.0258   0.0151   0.0251  0.0158
+SHORT -0.0340  -0.0231   0.0253 -0.0144
+todos: {'r_R': -0.0298, 'bruto_R': -0.0035, 'coste_R': 0.0252, 'fund_R': 0.0011}
+
+por tipo (bruto / neto):
+             bruto_R    r_R
+lado  tipo                 
+LONG  comp    -0.017 -0.060
+      don20    0.054  0.014
+      don55    0.104  0.067
+      mr      -0.028 -0.070
+SHORT comp     0.004 -0.007
+      don20   -0.024 -0.033
+      don55    0.003 -0.010
+      mr      -0.035 -0.046
+riesgo 1.0%: notional medio 0.20x equity; coste por trade 0.025% del equity; x381 trades/ano = 9.6%/ano
+riesgo 3.5%: notional medio 0.69x equity; coste por trade 0.088% del equity; x381 trades/ano = 33.6%/ano
+100 USD, riesgo 1.0%: notional mediano 20 USD; bajo el minimo: 23% de candidatos (BTC 100%)
+100 USD, riesgo 2.0%: notional mediano 39 USD; bajo el minimo: 4% de candidatos (BTC 39%)
+100 USD, riesgo 3.5%: notional mediano 68 USD; bajo el minimo: 1% de candidatos (BTC 5%)
+100 USD, riesgo 4.5%: notional mediano 88 USD; bajo el minimo: 0% de candidatos (BTC 0%)

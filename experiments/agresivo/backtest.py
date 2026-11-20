@@ -14,6 +14,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / 'experiments' / 'portfolio_sim'))
 from src import agresivo_engine as ag  # noqa: E402
+from src.ml_strategy_v15 import _funding_hist  # noqa: E402
 
 DESDE = pd.Timestamp('2021-01-01', tz='UTC')
 CAPITAL, MAX_POS, MAX_DIR, LEV, MAX_NOT = 10_000.0, 3, 2, 5, 2.5
@@ -29,6 +30,27 @@ def cargar():
             df.index = df.index.tz_localize('UTC')
         out[par] = df[~df.index.duplicated(keep='last')].sort_index()
     return out
+
+
+def funding(par):
+    """Historial de funding de Binance del par (cache en data/, se completa solo)."""
+    ruta = ROOT / 'data' / f"{par.split('/')[0]}_USDT_funding.parquet"
+    viejo = pd.read_parquet(ruta)['rate'] if ruta.exists() else None
+    desde = viejo.index[-1] + pd.Timedelta(milliseconds=1) if viejo is not None else '2019-09-01'
+    nuevo = _funding_hist(par, desde)
+    if nuevo is None:
+        raise RuntimeError(f'{par}: sin funding de Binance')
+    if len(nuevo):
+        viejo = nuevo if viejo is None else pd.concat([viejo, nuevo]).sort_index()
+        viejo = viejo[~viejo.index.duplicated(keep='last')]
+        viejo.to_frame('rate').to_parquet(ruta)
+    return viejo
+
+
+def features_todos(datos):
+    """Features de cada par con su funding real (lo usan las etiquetas y simular)."""
+    btc = datos['BTC/USDT']
+    return {p: ag.features(d, btc, funding(p)) for p, d in datos.items()}
 
 
 def predicciones(ev):
@@ -74,7 +96,7 @@ def simular(datos, feats, oos):
             f, q = feats[par], abiertas[par]
             o, h, l, c = (f[k].iloc[i] for k in ('open', 'high', 'low', 'close'))
             q['barras'] += 1
-            q['fund'] += q['dir'] * ag.FUND_8H * 0.5 * q['notional']
+            q['fund'] += q['dir'] * f['fund'].iloc[i] * q['notional']
             d, sal = q['dir'], None
             if (d == 1 and l <= q['stop']) or (d == -1 and h >= q['stop']):
                 sal = min(q['stop'], o) if d == 1 else max(q['stop'], o)
@@ -150,7 +172,7 @@ def p_bloques(r, L=10, reps=20_000):
 def main():
     datos = cargar()
     btc = datos['BTC/USDT']
-    feats = {p: ag.features(d, btc) for p, d in datos.items()}
+    feats = features_todos(datos)
     ev = ag.eventos_panel(feats)
     print(f'eventos etiquetados: {len(ev)} | por tipo: {ev.tipo.value_counts().to_dict()} '
           f'| y=1: {ev.y.mean():.3f}')

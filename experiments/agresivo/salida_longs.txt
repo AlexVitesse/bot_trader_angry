@@ -1,0 +1,74 @@
+candidatos 23928 (2021-01 -> 2026-11)
+
+1) Todos los candidatos, por lado (r en R, con costes):
+             n     wr  r_medio   suma_R
+lado                                   
+LONG   12290.0  0.360   -0.017 -214.475
+SHORT  11638.0  0.387   -0.042 -494.352
+
+2) Por lado y tipo de entrada:
+                  n     wr  r_medio   suma_R
+lado  tipo                                  
+LONG  comp   1355.0  0.345   -0.057  -77.114
+      don20  1434.0  0.372    0.022   31.111
+      don55  2992.0  0.392    0.069  207.510
+      mr     6509.0  0.346   -0.058 -375.983
+SHORT comp   1266.0  0.406   -0.019  -24.660
+      don20  1412.0  0.383   -0.046  -64.934
+      don55  1908.0  0.398   -0.021  -40.013
+      mr     7052.0  0.382   -0.052 -364.745
+
+3) Por lado y regimen de BTC (EMA200 diaria):
+                          n     wr  r_medio   suma_R
+lado  btc_vs_ema200                                 
+LONG  BTC abajo      5002.0  0.345   -0.064 -320.297
+      BTC arriba     7288.0  0.371    0.015  105.822
+SHORT BTC abajo      4643.0  0.404    0.003   13.642
+      BTC arriba     6995.0  0.376   -0.073 -507.994
+
+4) LONG: tipo x regimen:
+                          n     wr  r_medio   suma_R
+tipo  btc_vs_ema200                                 
+comp  BTC abajo       472.0  0.294   -0.170  -80.405
+      BTC arriba      883.0  0.371    0.004    3.292
+don20 BTC abajo       544.0  0.318   -0.114  -61.768
+      BTC arriba      890.0  0.406    0.104   92.879
+don55 BTC abajo       727.0  0.358    0.007    4.967
+      BTC arriba     2265.0  0.403    0.089  202.543
+mr    BTC abajo      3259.0  0.353   -0.056 -183.090
+      BTC arriba     3250.0  0.339   -0.059 -192.893
+
+5) El modelo: discrimina? (AUC OOS) y los que SI opera (riesgo>=1% a DD 0)
+  LONG: AUC 0.504 | opera 4317 r_medio -0.004 | descarta 7973 r_medio -0.025
+  SHORT: AUC 0.474 | opera 5290 r_medio -0.098 | descarta 6348 r_medio +0.004
+
+6) LONG que el modelo opera, por regimen y tipo:
+                          n     wr  r_medio   suma_R
+btc_vs_ema200 tipo                                  
+BTC abajo     comp    181.0  0.249   -0.293  -53.034
+              don20   109.0  0.321   -0.105  -11.392
+              don55   177.0  0.316   -0.059  -10.528
+              mr     1727.0  0.341   -0.083 -143.168
+BTC arriba    comp    323.0  0.402    0.048   15.563
+              don20   170.0  0.418    0.227   38.554
+              don55   580.0  0.422    0.173  100.052
+              mr     1050.0  0.365    0.044   45.821
+
+7) LONG por año (todos / los que opera):
+           n  r_medio  n_opera  r_opera  pct_BTC_abajo
+año                                                   
+2021  2094.0    0.061   1051.0    0.070          0.249
+2022  2096.0   -0.159    590.0   -0.297          0.971
+2023  1954.0    0.023    274.0    0.259          0.175
+2024  2214.0    0.011    554.0    0.103          0.093
+2025  2224.0    0.054   1006.0    0.102          0.268
+2026  1708.0   -0.116    842.0   -0.174          0.762
+
+8) Calibracion LONG (p del modelo vs tasa real):
+                n      p   real      r
+bin                                   
+(0.0, 0.35]  2237  0.324  0.342 -0.091
+(0.35, 0.4]  6240  0.376  0.368  0.006
+(0.4, 0.45]  2896  0.418  0.347 -0.019
+(0.45, 0.5]   628  0.470  0.425  0.057
+(0.5, 1.0]    289  0.540  0.329 -0.107

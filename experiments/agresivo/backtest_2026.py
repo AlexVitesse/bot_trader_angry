@@ -50,7 +50,7 @@ def main():
     datos = completar(bt.cargar())
     btc = datos['BTC/USDT']
     print('datos hasta:', min(d.index[-1] for d in datos.values()))
-    feats = {p: ag.features(d, btc) for p, d in datos.items()}
+    feats = bt.features_todos(datos)
     oos = bt.predicciones(ag.eventos_panel(feats))
     eq, tr = bt.simular(datos, feats, oos)
     tr['lado'] = tr['dir'].map({1: 'LONG', -1: 'SHORT'})

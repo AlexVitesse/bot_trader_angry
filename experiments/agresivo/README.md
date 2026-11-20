@@ -26,8 +26,9 @@ filtro de régimen: lo decide el modelo.
   stop de la vela anterior), con `trail = clip(atr_pct·2,5; 2,5%; 6%)` y un
   máximo de 60 velas.
 - La entrada es al open de `i+1`, y el stop se llena con gap.
-- Costes: 0,06% por lado más funding constante de 0,013% cada 8h (los longs
-  pagan y los shorts cobran).
+- Costes: 0,06% por lado más funding. Hasta 2026-11-20 era constante, de
+  0,013% cada 8h (los longs pagan y los shorts cobran). Ahora es el
+  **histórico de cada par** (ver "Funding real" al final).
 - `r_R` es el PnL dividido por el trail, en múltiplos de R. `y = r_R > 0`.
 
 **Features (11).** Todas son generalizables entre pares y llevan el signo de la
@@ -154,8 +155,9 @@ Datos completados con fapi hasta el 19-nov. Salida: `salida_2026.txt`.
 
 | tramo | final | DD máx | trades | WR | PF | LONG | SHORT |
 |---|--:|--:|--:|--:|--:|--:|--:|
-| 2026-01-01 → 11-19 | **$67,66 (−32,3%)** | 45,1% | 273 | 37,7% | 0,79 | 128, −$40,7 | 145, +$8,4 |
-| 2026-10-17 → 11-19 (mismo arranque que el vivo) | $105,77 (+5,8%) | — | 22 | 45% | — | 6, −$21,8 | 16, +$27,6 |
+| 2026-01-01 → 11-19, **funding real** | **$60,39 (−39,6%)** | 47,1% | 289 | 35,3% | 0,66 | 150, −$38,2 | 139, −$1,5 |
+| 2026-01-01 → 11-19, funding constante (antes) | $67,66 (−32,3%) | 45,1% | 273 | 37,7% | 0,79 | 128, −$40,7 | 145, +$8,4 |
+| 2026-10-17 → 11-19 (mismo arranque que el vivo, funding constante) | $105,77 (+5,8%) | — | 22 | 45% | — | 6, −$21,8 | 16, +$27,6 |
 | **Vivo (paper)**, mismo tramo | $114,5 (+14,5%) | — | 18 | 38,9% | 1,58 | 5, −$7,8 | 13, +$22,3 |
 
 BTC −29,5% en el año. Pierde en 9 de 11 meses; el riesgo se va frenando solo
@@ -172,3 +174,53 @@ cambia qué trades entran. Dos fuentes medidas (vela 2026-10-18 16:00):
   proceso (el bundle vive en memoria) y el backtest el día 1 de cada mes.
 (Una primera versión de esta tabla decía −2,0% y 14 trades: `predicciones`
 arrancaba en el primer día de mes posterior a `DESDE` y se saltó octubre.)
+
+## Por qué pierden los LONG (2026-11-20, `analisis_longs.py`)
+
+Diagnóstico descriptivo sobre 23.928 candidatos 2021 → nov-2026, con la p
+walk-forward de su mes y r en R con costes (`salida_longs.txt`). **No es una
+búsqueda de filtros**: las celdas buenas se eligieron mirando. Las cifras de
+abajo son con el funding constante; con el real (`salida_longs.txt` actual)
+cambia lo que se dice en "Funding real".
+
+- Dos fuentes de pérdida: los `mr` LONG (comprar la caída bajo la BB inferior:
+  6.509 candidatos, −457 R) y los LONG con **BTC bajo su EMA200 diaria**
+  (−395 R). Las rupturas LONG con BTC arriba ganan (`don55` +0,090 R,
+  `don20` +0,100 R): es la lógica de V2.
+- El modelo no aprende el régimen: opera 1.997 LONG con BTC abajo, todos con
+  r negativo. AUC LONG 0,512; p 0,47-0,54 → acierto real 0,377 (sobreconfiado).
+  En SHORT es peor: AUC 0,478, los que opera rinden −0,098 R y los que
+  descarta +0,019 R.
+- Los años malos de los LONG son 2022 (−0,29 R operados, 97% de candidatos
+  con BTC abajo) y 2026 (−0,14 R, 76%). Los 5 LONG en vivo de nov-2026 son
+  `mr` con BTC abajo: la peor celda.
+- Quitar `mr` y exigir BTC > EMA200 en LONG convierte el agresivo en V2
+  multipar, que ya se rechazó. Para probarlo habría que pre-registrarlo y
+  pasarlo por el null sintético.
+
+## Funding real (2026-11-20)
+
+La revisión de `experiments/agresivo_revision/` encontró que el funding
+constante (0,013%/8h ≈ 14%/año a favor de los shorts) no se parece al real.
+Ahora `agresivo_engine.features(df, btc, funding)` guarda en la columna `fund`
+lo cobrado en el open de cada vela (00/08/16 UTC), las etiquetas lo suman
+entre la entrada y la salida, y `backtest.simular` lo cobra vela a vela.
+Datos: `fapi/v1/fundingRate` (cache en `data/*_USDT_funding.parquet`). El bot
+en vivo lo descarga al reentrenar; sin red usa la constante de antes.
+
+Funding real anual (suma de tasas, %): BTC 30,6 en 2021, 4,2 en 2022 y 3,0 en
+2026; SOL −38,0 en 2022 (los shorts **pagaron**); BNB negativo de 2022 a 2025.
+
+| | constante | real |
+|---|--:|--:|
+| Cartera 2021 → 2026: CAGR / DD | −12,6% / 50,5% | −12,6% / 51,1% |
+| AUC OOS | 0,497 | 0,495 |
+| 2026 desde $100 | −32,3% | **−39,6%** |
+| 2026, SHORT | 145 trades, +$8,4 | 139, **−$1,5** |
+| Candidatos SHORT con BTC bajo EMA200 (r medio) | +0,019 R | **+0,003 R** |
+| Candidatos LONG, r medio | −0,026 R | −0,017 R |
+| SHORT que el modelo opera / descarta | −0,098 / +0,019 R | −0,098 / +0,004 R |
+
+La cartera 2021-26 no cambia porque toca el freno por DD en 2021 y queda casi
+congelada. **Lo único de los shorts que parecía ganar era el funding
+regalado.** Con el real, ni en 2026 (BTC −29,5%) los shorts dejan dinero.
